@@ -7974,7 +7974,7 @@ msgstr "输出包到标准输出"
 
 #: builtin/pack-objects.c:2669
 msgid "include tag objects that refer to objects to be packed"
-msgstr "包括引用了打包对象的 tag"
+msgstr "包括那些引用了待打包对象的 tag"
 
 #: builtin/pack-objects.c:2671
 msgid "keep unreachable objects"
