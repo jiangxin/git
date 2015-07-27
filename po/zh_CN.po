@@ -7974,7 +7974,7 @@ msgstr "输出包到标准输出"
 
 #: builtin/pack-objects.c:2669
 msgid "include tag objects that refer to objects to be packed"
-msgstr "包括引用了打包对象的 tag"
+msgstr "包括引用了打包对象的标签对象"
 
 #: builtin/pack-objects.c:2671
 msgid "keep unreachable objects"
@@ -10314,7 +10314,7 @@ msgstr "显示工作区状态"
 
 #: common-cmds.h:38
 msgid "Create, list, delete or verify a tag object signed with GPG"
-msgstr "创建、列出、删除或校验一个GPG签名的 tag 对象"
+msgstr "创建、列出、删除或校验一个GPG签名的标签对象"
 
 #: parse-options.h:142
 msgid "expiry-date"
