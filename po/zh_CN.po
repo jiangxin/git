@@ -278,7 +278,7 @@ msgid ""
 "\"git branch --set-upstream-to=%s%s%s\"."
 msgstr ""
 "\n"
-"在修改错误后，您可以尝试修改远程跟踪分支，通过执行命令\n"
+"在修复错误后，您可以尝试修改远程跟踪分支，通过执行命令\n"
 "\"git branch --set-upstream-to=%s%s%s\" 。"
 
 #: branch.c:67
@@ -552,7 +552,7 @@ msgstr "%s 有多个取值"
 #: config.c:2226
 #, c-format
 msgid "Could not set '%s' to '%s'"
-msgstr "不能设置 '%s' 至 '%s'"
+msgstr "不能设置 '%s' 为 '%s'"
 
 #: connected.c:69
 msgid "Could not run 'git rev-list'"
@@ -1258,7 +1258,7 @@ msgstr "要为 contents:lines=%s 提供一个正数"
 #: ref-filter.c:103
 #, c-format
 msgid "unrecognized %%(contents) argument: %s"
-msgstr "未识别的 %%(contents) 参数：%s"
+msgstr "未能识别的 %%(contents) 参数：%s"
 
 #: ref-filter.c:113
 #, c-format
@@ -7639,7 +7639,7 @@ msgstr ""
 
 #: builtin/ls-remote.c:50
 msgid "do not print remote URL"
-msgstr "不显示远程 URL"
+msgstr "不打印远程 URL"
 
 #: builtin/ls-remote.c:51 builtin/ls-remote.c:53
 msgid "exec"
@@ -7659,7 +7659,7 @@ msgstr "仅限于分支"
 
 #: builtin/ls-remote.c:58
 msgid "do not show peeled tags"
-msgstr "不显示解析后标签"
+msgstr "不显示已解析的标签"
 
 #: builtin/ls-remote.c:60
 msgid "take url.<base>.insteadOf into account"
