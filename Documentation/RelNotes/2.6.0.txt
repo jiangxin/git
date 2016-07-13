@@ -56,7 +56,7 @@ UI, Workflows & Features
  * A negative !ref entry in multi-value transfer.hideRefs
    configuration can be used to say "don't hide this one".
 
- * After "git am" without "-3" stops, running "git am -" pays attention
+ * After "git am" without "-3" stops, running "git am -3" pays attention
    to "-3" only for the patch that caused the original invocation
    to stop.
 
@@ -83,6 +83,12 @@ UI, Workflows & Features
 
  * "git config --list" output was hard to parse when values consist of
    multiple lines.  "--name-only" option is added to help this.
+
+ * A handful of usability & cosmetic fixes to gitk and l10n updates.
+
+ * A completely empty e-mail address <> is now allowed in the authors
+   file used by git-svn, to match the way it accepts the output from
+   authors-prog.
 
 
 Performance, Internal Implementation, Development Support etc.
@@ -269,7 +275,7 @@ notes for details).
 
  * We rewrote one of the build scripts in Perl but this reimplements
    in Bourne shell.
-   (merge 82aec45 sg/help-group later to maint).
+   (merge 57cee8a sg/help-group later to maint).
 
  * The experimental untracked-cache feature were buggy when paths with
    a few levels of subdirectories are involved.
@@ -327,6 +333,16 @@ notes for details).
    which was found to be a bit confusing to new users.
    (merge ce11360 jk/log-missing-default-HEAD later to maint).
 
+ * Recent versions of scripted "git am" has a performance regression in
+   "git am --skip" codepath, which no longer exists in the built-in
+   version on the 'master' front.  Fix the regression in the last
+   scripted version that appear in 2.5.x maintenance track and older.
+   (merge b9d6689 js/maint-am-skip-performance-regression later to maint).
+
+ * The branch descriptions that are set with "git branch --edit-description"
+   option were used in many places but they weren't clearly documented.
+   (merge 561d2b7 po/doc-branch-desc later to maint).
+
  * Code cleanups and documentation updates.
    (merge 1c601af es/doc-clean-outdated-tools later to maint).
    (merge 3581304 kn/tag-doc-fix later to maint).
@@ -349,3 +365,6 @@ notes for details).
    (merge b8c1d27 ah/pack-objects-usage-strings later to maint).
    (merge 486e1e1 br/svn-doc-include-paths-config later to maint).
    (merge 1733ed3 ee/clean-test-fixes later to maint).
+   (merge 5fcadc3 gb/apply-comment-typofix later to maint).
+   (merge b894d3e mp/t7060-diff-index-test later to maint).
+   (merge d238710 as/config-doc-markup-fix later to maint).

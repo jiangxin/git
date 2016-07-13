@@ -54,6 +54,7 @@ struct slot_results {
 	CURLcode curl_result;
 	long http_code;
 	long auth_avail;
+	long http_connectcode;
 };
 
 struct active_request_slot {
@@ -105,7 +106,9 @@ extern void step_active_slots(void);
 extern void http_init(struct remote *remote, const char *url,
 		      int proactive_auth);
 extern void http_cleanup(void);
+extern struct curl_slist *http_copy_default_headers(void);
 
+extern long int git_curl_ipresolve;
 extern int active_requests;
 extern int http_is_verbose;
 extern size_t http_post_buffer;
@@ -190,7 +193,6 @@ struct http_pack_request {
 	struct packed_git **lst;
 	FILE *packfile;
 	char tmpfile[PATH_MAX];
-	struct curl_slist *range_header;
 	struct active_request_slot *slot;
 };
 
@@ -223,4 +225,6 @@ extern int finish_http_object_request(struct http_object_request *freq);
 extern void abort_http_object_request(struct http_object_request *freq);
 extern void release_http_object_request(struct http_object_request *freq);
 
+/* setup routine for curl_easy_setopt CURLOPT_DEBUGFUNCTION */
+void setup_curl_trace(CURL *handle);
 #endif /* HTTP_H */

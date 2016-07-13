@@ -37,6 +37,7 @@ struct checkout_opts {
 	int overwrite_ignore;
 	int ignore_skipworktree;
 	int ignore_other_worktrees;
+	int show_progress;
 
 	const char *new_branch;
 	const char *new_branch_force;
@@ -55,8 +56,8 @@ static int post_checkout_hook(struct commit *old, struct commit *new,
 			      int changed)
 {
 	return run_hook_le(NULL, "post-checkout",
-			   sha1_to_hex(old ? old->object.sha1 : null_sha1),
-			   sha1_to_hex(new ? new->object.sha1 : null_sha1),
+			   sha1_to_hex(old ? old->object.oid.hash : null_sha1),
+			   sha1_to_hex(new ? new->object.oid.hash : null_sha1),
 			   changed ? "1" : "0", NULL);
 	/* "new" can be NULL when checking out from the index before
 	   a commit exists. */
@@ -241,7 +242,6 @@ static int checkout_paths(const struct checkout_opts *opts,
 	struct checkout state;
 	static char *ps_matched;
 	unsigned char rev[20];
-	int flag;
 	struct commit *head;
 	int errs = 0;
 	struct lock_file *lock_file;
@@ -374,7 +374,7 @@ static int checkout_paths(const struct checkout_opts *opts,
 	if (write_locked_index(&the_index, lock_file, COMMIT_LOCK))
 		die(_("unable to write new index file"));
 
-	read_ref_full("HEAD", 0, rev, &flag);
+	read_ref_full("HEAD", 0, rev, NULL);
 	head = lookup_commit_reference_gently(rev, 1);
 
 	errs |= post_checkout_hook(head, head, 0);
@@ -400,7 +400,7 @@ static void describe_detached_head(const char *msg, struct commit *commit)
 	if (!parse_commit(commit))
 		pp_commit_easy(CMIT_FMT_ONELINE, commit, &sb);
 	fprintf(stderr, "%s %s... %s\n", msg,
-		find_unique_abbrev(commit->object.sha1, DEFAULT_ABBREV), sb.buf);
+		find_unique_abbrev(commit->object.oid.hash, DEFAULT_ABBREV), sb.buf);
 	strbuf_release(&sb);
 }
 
@@ -417,7 +417,7 @@ static int reset_tree(struct tree *tree, const struct checkout_opts *o,
 	opts.reset = 1;
 	opts.merge = 1;
 	opts.fn = oneway_merge;
-	opts.verbose_update = !o->quiet && isatty(2);
+	opts.verbose_update = o->show_progress;
 	opts.src_index = &the_index;
 	opts.dst_index = &the_index;
 	parse_tree(tree);
@@ -501,7 +501,7 @@ static int merge_working_tree(const struct checkout_opts *opts,
 		topts.update = 1;
 		topts.merge = 1;
 		topts.gently = opts->merge && old->commit;
-		topts.verbose_update = !opts->quiet && isatty(2);
+		topts.verbose_update = opts->show_progress;
 		topts.fn = twoway_merge;
 		if (opts->overwrite_ignore) {
 			topts.dir = xcalloc(1, sizeof(*topts.dir));
@@ -509,10 +509,10 @@ static int merge_working_tree(const struct checkout_opts *opts,
 			setup_standard_excludes(topts.dir);
 		}
 		tree = parse_tree_indirect(old->commit ?
-					   old->commit->object.sha1 :
+					   old->commit->object.oid.hash :
 					   EMPTY_TREE_SHA1_BIN);
 		init_tree_desc(&trees[0], tree->buffer, tree->size);
-		tree = parse_tree_indirect(new->commit->object.sha1);
+		tree = parse_tree_indirect(new->commit->object.oid.hash);
 		init_tree_desc(&trees[1], tree->buffer, tree->size);
 
 		ret = unpack_trees(2, trees, &topts);
@@ -548,7 +548,7 @@ static int merge_working_tree(const struct checkout_opts *opts,
 			 * entries in the index.
 			 */
 
-			add_files_to_cache(NULL, NULL, 0);
+			add_files_to_cache(NULL, NULL, 0, 0);
 			/*
 			 * NEEDSWORK: carrying over local changes
 			 * when branches have different end-of-line
@@ -640,7 +640,7 @@ static void update_refs_for_switch(const struct checkout_opts *opts,
 
 	old_desc = old->name;
 	if (!old_desc && old->commit)
-		old_desc = sha1_to_hex(old->commit->object.sha1);
+		old_desc = oid_to_hex(&old->commit->object.oid);
 
 	reflog_msg = getenv("GIT_REFLOG_ACTION");
 	if (!reflog_msg)
@@ -652,7 +652,7 @@ static void update_refs_for_switch(const struct checkout_opts *opts,
 	if (!strcmp(new->name, "HEAD") && !new->path && !opts->force_detach) {
 		/* Nothing to do. */
 	} else if (opts->force_detach || !new->path) {	/* No longer on any branch. */
-		update_ref(msg.buf, "HEAD", new->commit->object.sha1, NULL,
+		update_ref(msg.buf, "HEAD", new->commit->object.oid.hash, NULL,
 			   REF_NODEREF, UPDATE_REFS_DIE_ON_ERR);
 		if (!opts->quiet) {
 			if (old->path && advice_detached_head)
@@ -660,7 +660,8 @@ static void update_refs_for_switch(const struct checkout_opts *opts,
 			describe_detached_head(_("HEAD is now at"), new->commit);
 		}
 	} else if (new->path) {	/* Switch branches. */
-		create_symref("HEAD", new->path, msg.buf);
+		if (create_symref("HEAD", new->path, msg.buf) < 0)
+			die(_("unable to update HEAD"));
 		if (!opts->quiet) {
 			if (old->path && !strcmp(new->path, old->path)) {
 				if (opts->new_branch_force)
@@ -703,7 +704,7 @@ static void describe_one_orphan(struct strbuf *sb, struct commit *commit)
 {
 	strbuf_addstr(sb, "  ");
 	strbuf_addstr(sb,
-		find_unique_abbrev(commit->object.sha1, DEFAULT_ABBREV));
+		find_unique_abbrev(commit->object.oid.hash, DEFAULT_ABBREV));
 	strbuf_addch(sb, ' ');
 	if (!parse_commit(commit))
 		pp_commit_easy(CMIT_FMT_ONELINE, commit, sb);
@@ -761,7 +762,7 @@ static void suggest_reattach(struct commit *commit, struct rev_info *revs)
 			" git branch <new-branch-name> %s\n\n",
 			/* Give ngettext() the count */
 			lost),
-			find_unique_abbrev(commit->object.sha1, DEFAULT_ABBREV));
+			find_unique_abbrev(commit->object.oid.hash, DEFAULT_ABBREV));
 }
 
 /*
@@ -779,10 +780,10 @@ static void orphaned_commit_warning(struct commit *old, struct commit *new)
 	setup_revisions(0, NULL, &revs, NULL);
 
 	object->flags &= ~UNINTERESTING;
-	add_pending_object(&revs, object, sha1_to_hex(object->sha1));
+	add_pending_object(&revs, object, oid_to_hex(&object->oid));
 
 	for_each_ref(add_pending_uninteresting_ref, &revs);
-	add_pending_sha1(&revs, "HEAD", new->object.sha1, UNINTERESTING);
+	add_pending_sha1(&revs, "HEAD", new->object.oid.hash, UNINTERESTING);
 
 	refs = revs.pending;
 	revs.leak_pending = 1;
@@ -980,7 +981,8 @@ static int parse_branchname_arg(int argc, const char **argv,
 		 */
 		int recover_with_dwim = dwim_new_local_branch_ok;
 
-		if (check_filename(NULL, arg) && !has_dash_dash)
+		if (!has_dash_dash &&
+		    (check_filename(NULL, arg) || !no_wildcard(arg)))
 			recover_with_dwim = 0;
 		/*
 		 * Accept "git checkout foo" and "git checkout foo --"
@@ -1108,7 +1110,7 @@ static int checkout_branch(struct checkout_opts *opts,
 		char *head_ref = resolve_refdup("HEAD", 0, sha1, &flag);
 		if (head_ref &&
 		    (!(flag & REF_ISSYMREF) || strcmp(head_ref, new->path)))
-			die_if_checked_out(new->path);
+			die_if_checked_out(new->path, 1);
 		free(head_ref);
 	}
 
@@ -1156,6 +1158,7 @@ int cmd_checkout(int argc, const char **argv, const char *prefix)
 				N_("second guess 'git checkout <no-such-branch>'")),
 		OPT_BOOL(0, "ignore-other-worktrees", &opts.ignore_other_worktrees,
 			 N_("do not check if another worktree is holding the given ref")),
+		OPT_BOOL(0, "progress", &opts.show_progress, N_("force progress reporting")),
 		OPT_END(),
 	};
 
@@ -1163,6 +1166,7 @@ int cmd_checkout(int argc, const char **argv, const char *prefix)
 	memset(&new, 0, sizeof(new));
 	opts.overwrite_ignore = 1;
 	opts.prefix = prefix;
+	opts.show_progress = -1;
 
 	gitmodules_config();
 	git_config(git_checkout_config, &opts);
@@ -1171,6 +1175,13 @@ int cmd_checkout(int argc, const char **argv, const char *prefix)
 
 	argc = parse_options(argc, argv, prefix, options, checkout_usage,
 			     PARSE_OPT_KEEP_DASHDASH);
+
+	if (opts.show_progress < 0) {
+		if (opts.quiet)
+			opts.show_progress = 0;
+		else
+			opts.show_progress = isatty(2);
+	}
 
 	if (conflict_style) {
 		opts.merge = 1; /* implied */

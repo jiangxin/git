@@ -101,8 +101,8 @@ test_expect_success 'oneline' '
 
 test_expect_success 'diff-filter=A' '
 
-	git log --pretty="format:%s" --diff-filter=A HEAD > actual &&
-	git log --pretty="format:%s" --diff-filter A HEAD > actual-separate &&
+	git log --no-renames --pretty="format:%s" --diff-filter=A HEAD > actual &&
+	git log --no-renames --pretty="format:%s" --diff-filter A HEAD > actual-separate &&
 	printf "fifth\nfourth\nthird\ninitial" > expect &&
 	test_cmp expect actual &&
 	test_cmp expect actual-separate
@@ -119,7 +119,7 @@ test_expect_success 'diff-filter=M' '
 
 test_expect_success 'diff-filter=D' '
 
-	actual=$(git log --pretty="format:%s" --diff-filter=D HEAD) &&
+	actual=$(git log --no-renames --pretty="format:%s" --diff-filter=D HEAD) &&
 	expect=$(echo sixth ; echo third) &&
 	verbose test "$actual" = "$expect"
 
@@ -848,7 +848,7 @@ sanitize_output () {
 }
 
 test_expect_success 'log --graph with diff and stats' '
-	git log --graph --pretty=short --stat -p >actual &&
+	git log --no-renames --graph --pretty=short --stat -p >actual &&
 	sanitize_output >actual.sanitized <actual &&
 	test_i18ncmp expect actual.sanitized
 '
@@ -860,12 +860,15 @@ test_expect_success 'dotdot is a parent directory' '
 	test_cmp expect actual
 '
 
-test_expect_success GPG 'log --graph --show-signature' '
+test_expect_success GPG 'setup signed branch' '
 	test_when_finished "git reset --hard && git checkout master" &&
 	git checkout -b signed master &&
 	echo foo >foo &&
 	git add foo &&
-	git commit -S -m signed_commit &&
+	git commit -S -m signed_commit
+'
+
+test_expect_success GPG 'log --graph --show-signature' '
 	git log --graph --show-signature -n1 signed >actual &&
 	grep "^| gpg: Signature made" actual &&
 	grep "^| gpg: Good signature" actual
@@ -890,6 +893,31 @@ test_expect_success GPG 'log --graph --show-signature for merged tag' '
 	grep "^| | gpg: Good signature" actual
 '
 
+test_expect_success GPG '--no-show-signature overrides --show-signature' '
+	git log -1 --show-signature --no-show-signature signed >actual &&
+	! grep "^gpg:" actual
+'
+
+test_expect_success GPG 'log.showsignature=true behaves like --show-signature' '
+	test_config log.showsignature true &&
+	git log -1 signed >actual &&
+	grep "gpg: Signature made" actual &&
+	grep "gpg: Good signature" actual
+'
+
+test_expect_success GPG '--no-show-signature overrides log.showsignature=true' '
+	test_config log.showsignature true &&
+	git log -1 --no-show-signature signed >actual &&
+	! grep "^gpg:" actual
+'
+
+test_expect_success GPG '--show-signature overrides log.showsignature=false' '
+	test_config log.showsignature false &&
+	git log -1 --show-signature signed >actual &&
+	grep "gpg: Signature made" actual &&
+	grep "gpg: Good signature" actual
+'
+
 test_expect_success 'log --graph --no-walk is forbidden' '
 	test_must_fail git log --graph --no-walk
 '
@@ -906,6 +934,35 @@ test_expect_success 'log diagnoses bogus HEAD' '
 	test_i18ngrep broken stderr &&
 	test_must_fail git -C empty log --default totally-bogus 2>stderr &&
 	test_i18ngrep broken stderr
+'
+
+test_expect_success 'set up --source tests' '
+	git checkout --orphan source-a &&
+	test_commit one &&
+	test_commit two &&
+	git checkout -b source-b HEAD^ &&
+	test_commit three
+'
+
+test_expect_success 'log --source paints branch names' '
+	cat >expect <<-\EOF &&
+	09e12a9	source-b three
+	8e393e1	source-a two
+	1ac6c77	source-b one
+	EOF
+	git log --oneline --source source-a source-b >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success 'log --source paints tag names' '
+	git tag -m tagged source-tag &&
+	cat >expect <<-\EOF &&
+	09e12a9	source-tag three
+	8e393e1	source-a two
+	1ac6c77	source-tag one
+	EOF
+	git log --oneline --source source-tag source-a >actual &&
+	test_cmp expect actual
 '
 
 test_done

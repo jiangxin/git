@@ -152,7 +152,7 @@ static int check_local_mod(unsigned char *head, int index_only)
 
 		if (lstat(ce->name, &st) < 0) {
 			if (errno != ENOENT && errno != ENOTDIR)
-				warning("'%s': %s", ce->name, strerror(errno));
+				warning_errno(_("failed to stat '%s'"), ce->name);
 			/* It already vanished from the working tree */
 			continue;
 		}
@@ -211,7 +211,7 @@ static int check_local_mod(unsigned char *head, int index_only)
 		 * "intent to add" entry.
 		 */
 		if (local_changes && staged_changes) {
-			if (!index_only || !(ce->ce_flags & CE_INTENT_TO_ADD))
+			if (!index_only || !ce_intent_to_add(ce))
 				string_list_append(&files_staged, name);
 		}
 		else if (!index_only) {
@@ -314,7 +314,7 @@ int cmd_rm(int argc, const char **argv, const char *prefix)
 		list.entry[list.nr].is_submodule = S_ISGITLINK(ce->ce_mode);
 		if (list.entry[list.nr++].is_submodule &&
 		    !is_staging_gitmodules_ok())
-			die (_("Please, stage your changes to .gitmodules or stash them to proceed"));
+			die (_("Please stage your changes to .gitmodules or stash them to proceed"));
 	}
 
 	if (pathspec.nr) {

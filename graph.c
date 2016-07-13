@@ -234,12 +234,10 @@ struct git_graph *graph_init(struct rev_info *opt)
 	 * We'll automatically grow columns later if we need more room.
 	 */
 	graph->column_capacity = 30;
-	graph->columns = xmalloc(sizeof(struct column) *
-				 graph->column_capacity);
-	graph->new_columns = xmalloc(sizeof(struct column) *
-				     graph->column_capacity);
-	graph->mapping = xmalloc(sizeof(int) * 2 * graph->column_capacity);
-	graph->new_mapping = xmalloc(sizeof(int) * 2 * graph->column_capacity);
+	ALLOC_ARRAY(graph->columns, graph->column_capacity);
+	ALLOC_ARRAY(graph->new_columns, graph->column_capacity);
+	ALLOC_ARRAY(graph->mapping, 2 * graph->column_capacity);
+	ALLOC_ARRAY(graph->new_mapping, 2 * graph->column_capacity);
 
 	/*
 	 * The diff output prefix callback, with this we can make
@@ -670,6 +668,13 @@ static void graph_output_padding_line(struct git_graph *graph,
 
 	graph_pad_horizontally(graph, sb, graph->num_new_columns * 2);
 }
+
+
+int graph_width(struct git_graph *graph)
+{
+	return graph->width;
+}
+
 
 static void graph_output_skip_line(struct git_graph *graph, struct strbuf *sb)
 {

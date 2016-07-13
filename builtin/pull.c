@@ -22,7 +22,8 @@ enum rebase_type {
 	REBASE_INVALID = -1,
 	REBASE_FALSE = 0,
 	REBASE_TRUE,
-	REBASE_PRESERVE
+	REBASE_PRESERVE,
+	REBASE_INTERACTIVE
 };
 
 /**
@@ -42,6 +43,8 @@ static enum rebase_type parse_config_rebase(const char *key, const char *value,
 		return REBASE_TRUE;
 	else if (!strcmp(value, "preserve"))
 		return REBASE_PRESERVE;
+	else if (!strcmp(value, "interactive"))
+		return REBASE_INTERACTIVE;
 
 	if (fatal)
 		die(_("Invalid value for %s: %s"), key, value);
@@ -66,7 +69,7 @@ static int parse_opt_rebase(const struct option *opt, const char *arg, int unset
 }
 
 static const char * const pull_usage[] = {
-	N_("git pull [options] [<repository> [<refspec>...]]"),
+	N_("git pull [<options>] [<repository> [<refspec>...]]"),
 	NULL
 };
 
@@ -83,9 +86,12 @@ static char *opt_commit;
 static char *opt_edit;
 static char *opt_ff;
 static char *opt_verify_signatures;
+static int opt_autostash = -1;
+static int config_autostash;
 static struct argv_array opt_strategies = ARGV_ARRAY_INIT;
 static struct argv_array opt_strategy_opts = ARGV_ARRAY_INIT;
 static char *opt_gpg_sign;
+static int opt_allow_unrelated_histories;
 
 /* Options passed to git-fetch */
 static char *opt_all;
@@ -95,6 +101,7 @@ static int opt_force;
 static char *opt_tags;
 static char *opt_prune;
 static char *opt_recurse_submodules;
+static char *max_children;
 static int opt_dry_run;
 static char *opt_keep;
 static char *opt_depth;
@@ -112,7 +119,7 @@ static struct option pull_options[] = {
 	/* Options passed to git-merge or git-rebase */
 	OPT_GROUP(N_("Options related to merging")),
 	{ OPTION_CALLBACK, 'r', "rebase", &opt_rebase,
-	  N_("false|true|preserve"),
+	  "false|true|preserve|interactive",
 	  N_("incorporate changes by rebasing rather than merging"),
 	  PARSE_OPT_OPTARG, parse_opt_rebase },
 	OPT_PASSTHRU('n', NULL, &opt_diffstat, NULL,
@@ -145,6 +152,8 @@ static struct option pull_options[] = {
 	OPT_PASSTHRU(0, "verify-signatures", &opt_verify_signatures, NULL,
 		N_("verify that the named commit has a valid GPG signature"),
 		PARSE_OPT_NOARG),
+	OPT_BOOL(0, "autostash", &opt_autostash,
+		N_("automatically stash/stash pop before and after rebase")),
 	OPT_PASSTHRU_ARGV('s', "strategy", &opt_strategies, N_("strategy"),
 		N_("merge strategy to use"),
 		0),
@@ -155,6 +164,9 @@ static struct option pull_options[] = {
 	OPT_PASSTHRU('S', "gpg-sign", &opt_gpg_sign, N_("key-id"),
 		N_("GPG sign commit"),
 		PARSE_OPT_OPTARG),
+	OPT_SET_INT(0, "allow-unrelated-histories",
+		    &opt_allow_unrelated_histories,
+		    N_("allow merging unrelated histories"), 1),
 
 	/* Options passed to git-fetch */
 	OPT_GROUP(N_("Options related to fetching")),
@@ -177,6 +189,9 @@ static struct option pull_options[] = {
 	OPT_PASSTHRU(0, "recurse-submodules", &opt_recurse_submodules,
 		N_("on-demand"),
 		N_("control recursive fetching of submodules"),
+		PARSE_OPT_OPTARG),
+	OPT_PASSTHRU('j', "jobs", &max_children, N_("n"),
+		N_("number of submodules pulled in parallel"),
 		PARSE_OPT_OPTARG),
 	OPT_BOOL(0, "dry-run", &opt_dry_run,
 		N_("dry run")),
@@ -299,6 +314,18 @@ static enum rebase_type config_get_rebase(void)
 }
 
 /**
+ * Read config variables.
+ */
+static int git_pull_config(const char *var, const char *value, void *cb)
+{
+	if (!strcmp(var, "rebase.autostash")) {
+		config_autostash = git_config_bool(var, value);
+		return 0;
+	}
+	return git_default_config(var, value, cb);
+}
+
+/**
  * Returns 1 if there are unstaged changes, 0 otherwise.
  */
 static int has_unstaged_changes(const char *prefix)
@@ -378,7 +405,7 @@ static void get_merge_heads(struct sha1_array *merge_heads)
 
 	if (!(fp = fopen(filename, "r")))
 		die_errno(_("could not open '%s' for reading"), filename);
-	while (strbuf_getline(&sb, fp, '\n') != EOF) {
+	while (strbuf_getline_lf(&sb, fp) != EOF) {
 		if (get_sha1_hex(sb.buf, sha1))
 			continue;  /* invalid line: does not start with SHA1 */
 		if (starts_with(sb.buf + GIT_SHA1_HEXSZ, "\tnot-for-merge\t"))
@@ -451,13 +478,13 @@ static void NORETURN die_no_merge_candidates(const char *repo, const char **refs
 			fprintf_ln(stderr, _("Please specify which branch you want to merge with."));
 		fprintf_ln(stderr, _("See git-pull(1) for details."));
 		fprintf(stderr, "\n");
-		fprintf_ln(stderr, "    git pull <remote> <branch>");
+		fprintf_ln(stderr, "    git pull %s %s", _("<remote>"), _("<branch>"));
 		fprintf(stderr, "\n");
 	} else if (!curr_branch->merge_nr) {
 		const char *remote_name = NULL;
 
 		if (for_each_remote(get_only_remote, &remote_name) || !remote_name)
-			remote_name = "<remote>";
+			remote_name = _("<remote>");
 
 		fprintf_ln(stderr, _("There is no tracking information for the current branch."));
 		if (opt_rebase)
@@ -466,12 +493,12 @@ static void NORETURN die_no_merge_candidates(const char *repo, const char **refs
 			fprintf_ln(stderr, _("Please specify which branch you want to merge with."));
 		fprintf_ln(stderr, _("See git-pull(1) for details."));
 		fprintf(stderr, "\n");
-		fprintf_ln(stderr, "    git pull <remote> <branch>");
+		fprintf_ln(stderr, "    git pull %s %s", _("<remote>"), _("<branch>"));
 		fprintf(stderr, "\n");
-		fprintf_ln(stderr, _("If you wish to set tracking information for this branch you can do so with:\n"
-				"\n"
-				"    git branch --set-upstream-to=%s/<branch> %s\n"),
-				remote_name, curr_branch->name);
+		fprintf_ln(stderr, _("If you wish to set tracking information for this branch you can do so with:"));
+		fprintf(stderr, "\n");
+		fprintf_ln(stderr, "    git branch --set-upstream-to=%s/%s %s\n",
+				remote_name, _("<branch>"), curr_branch->name);
 	} else
 		fprintf_ln(stderr, _("Your configuration specifies to merge with the ref '%s'\n"
 			"from the remote, but no such ref was fetched."),
@@ -525,6 +552,8 @@ static int run_fetch(const char *repo, const char **refspecs)
 		argv_array_push(&args, opt_prune);
 	if (opt_recurse_submodules)
 		argv_array_push(&args, opt_recurse_submodules);
+	if (max_children)
+		argv_array_push(&args, max_children);
 	if (opt_dry_run)
 		argv_array_push(&args, "--dry-run");
 	if (opt_keep)
@@ -603,6 +632,8 @@ static int run_merge(void)
 	argv_array_pushv(&args, opt_strategy_opts.argv);
 	if (opt_gpg_sign)
 		argv_array_push(&args, opt_gpg_sign);
+	if (opt_allow_unrelated_histories > 0)
+		argv_array_push(&args, "--allow-unrelated-histories");
 
 	argv_array_push(&args, "FETCH_HEAD");
 	ret = run_command_v_opt(args.argv, RUN_GIT_CMD);
@@ -743,7 +774,7 @@ static int get_octopus_merge_base(unsigned char *merge_base,
 	if (!result)
 		return 1;
 
-	hashcpy(merge_base, result->item->object.sha1);
+	hashcpy(merge_base, result->item->object.oid.hash);
 	return 0;
 }
 
@@ -772,12 +803,21 @@ static int run_rebase(const unsigned char *curr_head,
 	/* Options passed to git-rebase */
 	if (opt_rebase == REBASE_PRESERVE)
 		argv_array_push(&args, "--preserve-merges");
+	else if (opt_rebase == REBASE_INTERACTIVE)
+		argv_array_push(&args, "--interactive");
 	if (opt_diffstat)
 		argv_array_push(&args, opt_diffstat);
 	argv_array_pushv(&args, opt_strategies.argv);
 	argv_array_pushv(&args, opt_strategy_opts.argv);
 	if (opt_gpg_sign)
 		argv_array_push(&args, opt_gpg_sign);
+	if (opt_autostash == 0)
+		argv_array_push(&args, "--no-autostash");
+	else if (opt_autostash == 1)
+		argv_array_push(&args, "--autostash");
+	if (opt_verify_signatures &&
+	    !strcmp(opt_verify_signatures, "--verify-signatures"))
+		warning(_("ignoring --verify-signatures for rebase"));
 
 	argv_array_push(&args, "--onto");
 	argv_array_push(&args, sha1_to_hex(merge_head));
@@ -812,7 +852,7 @@ int cmd_pull(int argc, const char **argv, const char *prefix)
 	if (opt_rebase < 0)
 		opt_rebase = config_get_rebase();
 
-	git_config(git_default_config, NULL);
+	git_config(git_pull_config, NULL);
 
 	if (read_cache_unmerged())
 		die_resolve_conflict("Pull");
@@ -823,13 +863,17 @@ int cmd_pull(int argc, const char **argv, const char *prefix)
 	if (get_sha1("HEAD", orig_head))
 		hashclr(orig_head);
 
+	if (!opt_rebase && opt_autostash != -1)
+		die(_("--[no-]autostash option is only valid with --rebase."));
+
 	if (opt_rebase) {
-		int autostash = 0;
+		int autostash = config_autostash;
+		if (opt_autostash != -1)
+			autostash = opt_autostash;
 
 		if (is_null_sha1(orig_head) && !is_cache_unborn())
 			die(_("Updating an unborn branch with changes added to the index."));
 
-		git_config_get_bool("rebase.autostash", &autostash);
 		if (!autostash)
 			die_on_unclean_work_tree(prefix);
 

@@ -15,6 +15,7 @@
 #include "column.h"
 #include "strbuf.h"
 #include "utf8.h"
+#include "worktree.h"
 
 static const char cut_line[] =
 "------------------------ >8 ------------------------\n";
@@ -897,15 +898,15 @@ static void wt_status_print_verbose(struct wt_status *s)
 static void wt_status_print_tracking(struct wt_status *s)
 {
 	struct strbuf sb = STRBUF_INIT;
-	const char *cp, *ep;
+	const char *cp, *ep, *branch_name;
 	struct branch *branch;
 	char comment_line_string[3];
 	int i;
 
 	assert(s->branch && !s->is_initial);
-	if (!starts_with(s->branch, "refs/heads/"))
+	if (!skip_prefix(s->branch, "refs/heads/", &branch_name))
 		return;
-	branch = branch_get(s->branch + 11);
+	branch = branch_get(branch_name);
 	if (!format_tracking_info(branch, &sb))
 		return;
 
@@ -950,6 +951,7 @@ static void show_merge_in_progress(struct wt_status *s,
 			status_printf_ln(s, color,
 				_("  (fix conflicts and run \"git commit\")"));
 	} else {
+		s-> commitable = 1;
 		status_printf_ln(s, color,
 			_("All conflicts fixed but you are still merging."));
 		if (s->hints)
@@ -988,7 +990,7 @@ static char *read_line_from_git_path(const char *filename)
 		strbuf_release(&buf);
 		return NULL;
 	}
-	strbuf_getline(&buf, fp, '\n');
+	strbuf_getline_lf(&buf, fp);
 	if (!fclose(fp)) {
 		return strbuf_detach(&buf, NULL);
 	} else {
@@ -1063,9 +1065,7 @@ static void abbrev_sha1_in_line(struct strbuf *line)
 				strbuf_addf(line, "%s", split[i]->buf);
 		}
 	}
-	for (i = 0; split[i]; i++)
-		strbuf_release(split[i]);
-
+	strbuf_list_free(split);
 }
 
 static void read_rebase_todolist(const char *fname, struct string_list *lines)
@@ -1076,7 +1076,7 @@ static void read_rebase_todolist(const char *fname, struct string_list *lines)
 	if (!f)
 		die_errno("Could not open file %s for reading",
 			  git_path("%s", fname));
-	while (!strbuf_getline(&line, f, '\n')) {
+	while (!strbuf_getline_lf(&line, f)) {
 		if (line.len && line.buf[0] == comment_line_char)
 			continue;
 		strbuf_trim(&line);
@@ -1264,20 +1264,21 @@ static void show_bisect_in_progress(struct wt_status *s,
 /*
  * Extract branch information from rebase/bisect
  */
-static char *read_and_strip_branch(const char *path)
+static char *get_branch(const struct worktree *wt, const char *path)
 {
 	struct strbuf sb = STRBUF_INIT;
 	unsigned char sha1[20];
+	const char *branch_name;
 
-	if (strbuf_read_file(&sb, git_path("%s", path), 0) <= 0)
+	if (strbuf_read_file(&sb, worktree_git_path(wt, "%s", path), 0) <= 0)
 		goto got_nothing;
 
 	while (sb.len && sb.buf[sb.len - 1] == '\n')
 		strbuf_setlen(&sb, sb.len - 1);
 	if (!sb.len)
 		goto got_nothing;
-	if (starts_with(sb.buf, "refs/heads/"))
-		strbuf_remove(&sb,0, strlen("refs/heads/"));
+	if (skip_prefix(sb.buf, "refs/heads/", &branch_name))
+		strbuf_remove(&sb, 0, branch_name - sb.buf);
 	else if (starts_with(sb.buf, "refs/"))
 		;
 	else if (!get_sha1_hex(sb.buf, sha1)) {
@@ -1308,18 +1309,22 @@ static int grab_1st_switch(unsigned char *osha1, unsigned char *nsha1,
 	struct grab_1st_switch_cbdata *cb = cb_data;
 	const char *target = NULL, *end;
 
-	if (!starts_with(message, "checkout: moving from "))
+	if (!skip_prefix(message, "checkout: moving from ", &message))
 		return 0;
-	message += strlen("checkout: moving from ");
 	target = strstr(message, " to ");
 	if (!target)
 		return 0;
 	target += strlen(" to ");
 	strbuf_reset(&cb->buf);
 	hashcpy(cb->nsha1, nsha1);
-	for (end = target; *end && *end != '\n'; end++)
-		;
+	end = strchrnul(target, '\n');
 	strbuf_add(&cb->buf, target, end - target);
+	if (!strcmp(cb->buf.buf, "HEAD")) {
+		/* HEAD is relative. Resolve it to the right reflog entry. */
+		strbuf_reset(&cb->buf);
+		strbuf_addstr(&cb->buf,
+			      find_unique_abbrev(nsha1, DEFAULT_ABBREV));
+	}
 	return 1;
 }
 
@@ -1341,15 +1346,11 @@ static void wt_status_get_detached_from(struct wt_status_state *state)
 	    (!hashcmp(cb.nsha1, sha1) ||
 	     /* perhaps sha1 is a tag, try to dereference to a commit */
 	     ((commit = lookup_commit_reference_gently(sha1, 1)) != NULL &&
-	      !hashcmp(cb.nsha1, commit->object.sha1)))) {
-		int ofs;
-		if (starts_with(ref, "refs/tags/"))
-			ofs = strlen("refs/tags/");
-		else if (starts_with(ref, "refs/remotes/"))
-			ofs = strlen("refs/remotes/");
-		else
-			ofs = 0;
-		state->detached_from = xstrdup(ref + ofs);
+	      !hashcmp(cb.nsha1, commit->object.oid.hash)))) {
+		const char *from = ref;
+		if (!skip_prefix(from, "refs/tags/", &from))
+			skip_prefix(from, "refs/remotes/", &from);
+		state->detached_from = xstrdup(from);
 	} else
 		state->detached_from =
 			xstrdup(find_unique_abbrev(cb.nsha1, DEFAULT_ABBREV));
@@ -1361,6 +1362,46 @@ static void wt_status_get_detached_from(struct wt_status_state *state)
 	strbuf_release(&cb.buf);
 }
 
+int wt_status_check_rebase(const struct worktree *wt,
+			   struct wt_status_state *state)
+{
+	struct stat st;
+
+	if (!stat(worktree_git_path(wt, "rebase-apply"), &st)) {
+		if (!stat(worktree_git_path(wt, "rebase-apply/applying"), &st)) {
+			state->am_in_progress = 1;
+			if (!stat(worktree_git_path(wt, "rebase-apply/patch"), &st) && !st.st_size)
+				state->am_empty_patch = 1;
+		} else {
+			state->rebase_in_progress = 1;
+			state->branch = get_branch(wt, "rebase-apply/head-name");
+			state->onto = get_branch(wt, "rebase-apply/onto");
+		}
+	} else if (!stat(worktree_git_path(wt, "rebase-merge"), &st)) {
+		if (!stat(worktree_git_path(wt, "rebase-merge/interactive"), &st))
+			state->rebase_interactive_in_progress = 1;
+		else
+			state->rebase_in_progress = 1;
+		state->branch = get_branch(wt, "rebase-merge/head-name");
+		state->onto = get_branch(wt, "rebase-merge/onto");
+	} else
+		return 0;
+	return 1;
+}
+
+int wt_status_check_bisect(const struct worktree *wt,
+			   struct wt_status_state *state)
+{
+	struct stat st;
+
+	if (!stat(worktree_git_path(wt, "BISECT_LOG"), &st)) {
+		state->bisect_in_progress = 1;
+		state->branch = get_branch(wt, "BISECT_START");
+		return 1;
+	}
+	return 0;
+}
+
 void wt_status_get_state(struct wt_status_state *state,
 			 int get_detached_from)
 {
@@ -1369,32 +1410,14 @@ void wt_status_get_state(struct wt_status_state *state,
 
 	if (!stat(git_path_merge_head(), &st)) {
 		state->merge_in_progress = 1;
-	} else if (!stat(git_path("rebase-apply"), &st)) {
-		if (!stat(git_path("rebase-apply/applying"), &st)) {
-			state->am_in_progress = 1;
-			if (!stat(git_path("rebase-apply/patch"), &st) && !st.st_size)
-				state->am_empty_patch = 1;
-		} else {
-			state->rebase_in_progress = 1;
-			state->branch = read_and_strip_branch("rebase-apply/head-name");
-			state->onto = read_and_strip_branch("rebase-apply/onto");
-		}
-	} else if (!stat(git_path("rebase-merge"), &st)) {
-		if (!stat(git_path("rebase-merge/interactive"), &st))
-			state->rebase_interactive_in_progress = 1;
-		else
-			state->rebase_in_progress = 1;
-		state->branch = read_and_strip_branch("rebase-merge/head-name");
-		state->onto = read_and_strip_branch("rebase-merge/onto");
+	} else if (wt_status_check_rebase(NULL, state)) {
+		;		/* all set */
 	} else if (!stat(git_path_cherry_pick_head(), &st) &&
 			!get_sha1("CHERRY_PICK_HEAD", sha1)) {
 		state->cherry_pick_in_progress = 1;
 		hashcpy(state->cherry_pick_head_sha1, sha1);
 	}
-	if (!stat(git_path("BISECT_LOG"), &st)) {
-		state->bisect_in_progress = 1;
-		state->branch = read_and_strip_branch("BISECT_START");
-	}
+	wt_status_check_bisect(NULL, state);
 	if (!stat(git_path_revert_head(), &st) &&
 	    !get_sha1("REVERT_HEAD", sha1)) {
 		state->revert_in_progress = 1;
@@ -1436,9 +1459,7 @@ void wt_status_print(struct wt_status *s)
 	if (s->branch) {
 		const char *on_what = _("On branch ");
 		const char *branch_name = s->branch;
-		if (starts_with(branch_name, "refs/heads/"))
-			branch_name += 11;
-		else if (!strcmp(branch_name, "HEAD")) {
+		if (!strcmp(branch_name, "HEAD")) {
 			branch_status_color = color(WT_STATUS_NOBRANCH, s);
 			if (state.rebase_in_progress || state.rebase_interactive_in_progress) {
 				if (state.rebase_interactive_in_progress)
@@ -1456,7 +1477,8 @@ void wt_status_print(struct wt_status *s)
 				branch_name = "";
 				on_what = _("Not currently on any branch.");
 			}
-		}
+		} else
+			skip_prefix(branch_name, "refs/heads/", &branch_name);
 		status_printf(s, color(WT_STATUS_HEADER, s), "%s", "");
 		status_printf_more(s, branch_status_color, "%s", on_what);
 		status_printf_more(s, branch_color, "%s\n", branch_name);
@@ -1532,7 +1554,7 @@ void wt_status_print(struct wt_status *s)
 			else
 				printf(_("nothing to commit\n"));
 		} else
-			printf(_("nothing to commit, working directory clean\n"));
+			printf(_("nothing to commit, working tree clean\n"));
 	}
 }
 
@@ -1638,24 +1660,24 @@ static void wt_shortstatus_print_tracking(struct wt_status *s)
 		return;
 	branch_name = s->branch;
 
-	if (starts_with(branch_name, "refs/heads/"))
-		branch_name += 11;
-	else if (!strcmp(branch_name, "HEAD")) {
-		branch_name = _("HEAD (no branch)");
-		branch_color_local = color(WT_STATUS_NOBRANCH, s);
-	}
-
-	branch = branch_get(s->branch + 11);
 	if (s->is_initial)
 		color_fprintf(s->fp, header_color, _("Initial commit on "));
+
+	if (!strcmp(s->branch, "HEAD")) {
+		color_fprintf(s->fp, color(WT_STATUS_NOBRANCH, s), "%s",
+			      _("HEAD (no branch)"));
+		goto conclude;
+	}
+
+	skip_prefix(branch_name, "refs/heads/", &branch_name);
+
+	branch = branch_get(branch_name);
 
 	color_fprintf(s->fp, branch_color_local, "%s", branch_name);
 
 	if (stat_tracking_info(branch, &num_ours, &num_theirs, &base) < 0) {
-		if (!base) {
-			fputc(s->null_termination ? '\0' : '\n', s->fp);
-			return;
-		}
+		if (!base)
+			goto conclude;
 
 		upstream_is_gone = 1;
 	}
@@ -1665,10 +1687,8 @@ static void wt_shortstatus_print_tracking(struct wt_status *s)
 	color_fprintf(s->fp, branch_color_remote, "%s", base);
 	free((char *)base);
 
-	if (!upstream_is_gone && !num_ours && !num_theirs) {
-		fputc(s->null_termination ? '\0' : '\n', s->fp);
-		return;
-	}
+	if (!upstream_is_gone && !num_ours && !num_theirs)
+		goto conclude;
 
 #define LABEL(string) (s->no_gettext ? (string) : _(string))
 
@@ -1679,16 +1699,17 @@ static void wt_shortstatus_print_tracking(struct wt_status *s)
 		color_fprintf(s->fp, header_color, LABEL(N_("behind ")));
 		color_fprintf(s->fp, branch_color_remote, "%d", num_theirs);
 	} else if (!num_theirs) {
-		color_fprintf(s->fp, header_color, LABEL(N_(("ahead "))));
+		color_fprintf(s->fp, header_color, LABEL(N_("ahead ")));
 		color_fprintf(s->fp, branch_color_local, "%d", num_ours);
 	} else {
-		color_fprintf(s->fp, header_color, LABEL(N_(("ahead "))));
+		color_fprintf(s->fp, header_color, LABEL(N_("ahead ")));
 		color_fprintf(s->fp, branch_color_local, "%d", num_ours);
 		color_fprintf(s->fp, header_color, ", %s", LABEL(N_("behind ")));
 		color_fprintf(s->fp, branch_color_remote, "%d", num_theirs);
 	}
 
 	color_fprintf(s->fp, header_color, "]");
+ conclude:
 	fputc(s->null_termination ? '\0' : '\n', s->fp);
 }
 

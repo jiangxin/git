@@ -185,7 +185,7 @@ store_stash () {
 
 	git update-ref --create-reflog -m "$stash_msg" $ref_stash $w_commit
 	ret=$?
-	test $ret != 0 && test -z $quiet &&
+	test $ret != 0 && test -z "$quiet" &&
 	die "$(eval_gettext "Cannot update \$ref_stash with \$w_commit")"
 	return $ret
 }
@@ -277,7 +277,7 @@ save_stash () {
 			git clean --force --quiet -d $CLEAN_X_OPTION
 		fi
 
-		if test "$keep_index" = "t" && test -n $i_tree
+		if test "$keep_index" = "t" && test -n "$i_tree"
 		then
 			git read-tree --reset -u $i_tree
 		fi
@@ -305,7 +305,25 @@ show_stash () {
 	ALLOW_UNKNOWN_FLAGS=t
 	assert_stash_like "$@"
 
-	git diff ${FLAGS:---stat} $b_commit $w_commit
+	if test -z "$FLAGS"
+	then
+		if test "$(git config --bool stash.showStat || echo true)" = "true"
+		then
+			FLAGS=--stat
+		fi
+
+		if test "$(git config --bool stash.showPatch || echo false)" = "true"
+		then
+			FLAGS=${FLAGS}${FLAGS:+ }-p
+		fi
+
+		if test -z "$FLAGS"
+		then
+			return 0
+		fi
+	fi
+
+	git diff ${FLAGS} $b_commit $w_commit
 }
 
 show_help () {

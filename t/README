@@ -84,9 +84,9 @@ appropriately before running "make".
 
 -x::
 	Turn on shell tracing (i.e., `set -x`) during the tests
-	themselves. Implies `--verbose`. Note that this can cause
-	failures in some tests which redirect and test the
-	output of shell functions. Use with caution.
+	themselves. Implies `--verbose`. Note that in non-bash shells,
+	this can cause failures in some tests which redirect and test
+	the output of shell functions. Use with caution.
 
 -d::
 --debug::
@@ -562,6 +562,11 @@ library for your script to use.
    when the test script is started with --debug command line
    argument.  This is primarily meant for use during the
    development of a new test script.
+
+ - debug <git-command>
+
+   Run a git command inside a debugger. This is primarily meant for
+   use when debugging a failing test script.
 
  - test_done
 

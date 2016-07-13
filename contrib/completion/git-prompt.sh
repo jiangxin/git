@@ -355,8 +355,8 @@ __git_ps1 ()
 	# incorrect.)
 	#
 	local ps1_expanded=yes
-	[ -z "$ZSH_VERSION" ] || [[ -o PROMPT_SUBST ]] || ps1_expanded=no
-	[ -z "$BASH_VERSION" ] || shopt -q promptvars || ps1_expanded=no
+	[ -z "${ZSH_VERSION-}" ] || [[ -o PROMPT_SUBST ]] || ps1_expanded=no
+	[ -z "${BASH_VERSION-}" ] || shopt -q promptvars || ps1_expanded=no
 
 	local repo_info rev_parse_exit_code
 	repo_info="$(git rev-parse --git-dir --is-inside-git-dir \
@@ -368,7 +368,7 @@ __git_ps1 ()
 		return $exit
 	fi
 
-	local short_sha
+	local short_sha=""
 	if [ "$rev_parse_exit_code" = "0" ]; then
 		short_sha="${repo_info##*$'\n'}"
 		repo_info="${repo_info%$'\n'*}"
@@ -476,10 +476,9 @@ __git_ps1 ()
 		if [ -n "${GIT_PS1_SHOWDIRTYSTATE-}" ] &&
 		   [ "$(git config --bool bash.showDirtyState)" != "false" ]
 		then
-			git diff --no-ext-diff --quiet --exit-code || w="*"
-			if [ -n "$short_sha" ]; then
-				git diff-index --cached --quiet HEAD -- || i="+"
-			else
+			git diff --no-ext-diff --quiet || w="*"
+			git diff --no-ext-diff --cached --quiet || i="+"
+			if [ -z "$short_sha" ] && [ -z "$i" ]; then
 				i="#"
 			fi
 		fi

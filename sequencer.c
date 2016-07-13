@@ -124,42 +124,33 @@ static const char *action_name(const struct replay_opts *opts)
 
 struct commit_message {
 	char *parent_label;
-	const char *label;
-	const char *subject;
+	char *label;
+	char *subject;
 	const char *message;
 };
 
 static int get_message(struct commit *commit, struct commit_message *out)
 {
 	const char *abbrev, *subject;
-	int abbrev_len, subject_len;
-	char *q;
+	int subject_len;
 
-	if (!git_commit_encoding)
-		git_commit_encoding = "UTF-8";
-
-	out->message = logmsg_reencode(commit, NULL, git_commit_encoding);
-	abbrev = find_unique_abbrev(commit->object.sha1, DEFAULT_ABBREV);
-	abbrev_len = strlen(abbrev);
+	out->message = logmsg_reencode(commit, NULL, get_commit_output_encoding());
+	abbrev = find_unique_abbrev(commit->object.oid.hash, DEFAULT_ABBREV);
 
 	subject_len = find_commit_subject(out->message, &subject);
 
-	out->parent_label = xmalloc(strlen("parent of ") + abbrev_len +
-			      strlen("... ") + subject_len + 1);
-	q = out->parent_label;
-	q = mempcpy(q, "parent of ", strlen("parent of "));
-	out->label = q;
-	q = mempcpy(q, abbrev, abbrev_len);
-	q = mempcpy(q, "... ", strlen("... "));
-	out->subject = q;
-	q = mempcpy(q, subject, subject_len);
-	*q = '\0';
+	out->subject = xmemdupz(subject, subject_len);
+	out->label = xstrfmt("%s... %s", abbrev, out->subject);
+	out->parent_label = xstrfmt("parent of %s", out->label);
+
 	return 0;
 }
 
 static void free_message(struct commit *commit, struct commit_message *msg)
 {
 	free(msg->parent_label);
+	free(msg->label);
+	free(msg->subject);
 	unuse_commit_buffer(commit, msg->message);
 }
 
@@ -346,7 +337,7 @@ static int is_index_unchanged(void)
 		if (cache_tree_update(&the_index, 0))
 			return error(_("Unable to update cache tree\n"));
 
-	return !hashcmp(active_cache_tree->sha1, head_commit->tree->object.sha1);
+	return !hashcmp(active_cache_tree->sha1, head_commit->tree->object.oid.hash);
 }
 
 /*
@@ -397,18 +388,18 @@ static int is_original_commit_empty(struct commit *commit)
 
 	if (parse_commit(commit))
 		return error(_("Could not parse commit %s\n"),
-			     sha1_to_hex(commit->object.sha1));
+			     oid_to_hex(&commit->object.oid));
 	if (commit->parents) {
 		struct commit *parent = commit->parents->item;
 		if (parse_commit(parent))
 			return error(_("Could not parse parent commit %s\n"),
-				sha1_to_hex(parent->object.sha1));
-		ptree_sha1 = parent->tree->object.sha1;
+				oid_to_hex(&parent->object.oid));
+		ptree_sha1 = parent->tree->object.oid.hash;
 	} else {
 		ptree_sha1 = EMPTY_TREE_SHA1_BIN; /* commit is root */
 	}
 
-	return !hashcmp(ptree_sha1, commit->tree->object.sha1);
+	return !hashcmp(ptree_sha1, commit->tree->object.oid.hash);
 }
 
 /*
@@ -486,7 +477,7 @@ static int do_pick_commit(struct commit *commit, struct replay_opts *opts)
 
 		if (!opts->mainline)
 			return error(_("Commit %s is a merge but no -m option was given."),
-				sha1_to_hex(commit->object.sha1));
+				oid_to_hex(&commit->object.oid));
 
 		for (cnt = 1, p = commit->parents;
 		     cnt != opts->mainline && p;
@@ -494,28 +485,28 @@ static int do_pick_commit(struct commit *commit, struct replay_opts *opts)
 			p = p->next;
 		if (cnt != opts->mainline || !p)
 			return error(_("Commit %s does not have parent %d"),
-				sha1_to_hex(commit->object.sha1), opts->mainline);
+				oid_to_hex(&commit->object.oid), opts->mainline);
 		parent = p->item;
 	} else if (0 < opts->mainline)
 		return error(_("Mainline was specified but commit %s is not a merge."),
-			sha1_to_hex(commit->object.sha1));
+			oid_to_hex(&commit->object.oid));
 	else
 		parent = commit->parents->item;
 
 	if (opts->allow_ff &&
-	    ((parent && !hashcmp(parent->object.sha1, head)) ||
+	    ((parent && !hashcmp(parent->object.oid.hash, head)) ||
 	     (!parent && unborn)))
-		return fast_forward_to(commit->object.sha1, head, unborn, opts);
+		return fast_forward_to(commit->object.oid.hash, head, unborn, opts);
 
 	if (parent && parse_commit(parent) < 0)
 		/* TRANSLATORS: The first %s will be "revert" or
 		   "cherry-pick", the second %s a SHA1 */
 		return error(_("%s: cannot parse parent commit %s"),
-			action_name(opts), sha1_to_hex(parent->object.sha1));
+			action_name(opts), oid_to_hex(&parent->object.oid));
 
 	if (get_message(commit, &msg) != 0)
 		return error(_("Cannot get commit message for %s"),
-			sha1_to_hex(commit->object.sha1));
+			oid_to_hex(&commit->object.oid));
 
 	/*
 	 * "commit" is an existing commit.  We would want to apply
@@ -532,11 +523,11 @@ static int do_pick_commit(struct commit *commit, struct replay_opts *opts)
 		strbuf_addstr(&msgbuf, "Revert \"");
 		strbuf_addstr(&msgbuf, msg.subject);
 		strbuf_addstr(&msgbuf, "\"\n\nThis reverts commit ");
-		strbuf_addstr(&msgbuf, sha1_to_hex(commit->object.sha1));
+		strbuf_addstr(&msgbuf, oid_to_hex(&commit->object.oid));
 
 		if (commit->parents && commit->parents->next) {
 			strbuf_addstr(&msgbuf, ", reversing\nchanges made to ");
-			strbuf_addstr(&msgbuf, sha1_to_hex(parent->object.sha1));
+			strbuf_addstr(&msgbuf, oid_to_hex(&parent->object.oid));
 		}
 		strbuf_addstr(&msgbuf, ".\n");
 	} else {
@@ -553,16 +544,14 @@ static int do_pick_commit(struct commit *commit, struct replay_opts *opts)
 		 * information followed by "\n\n".
 		 */
 		p = strstr(msg.message, "\n\n");
-		if (p) {
-			p += 2;
-			strbuf_addstr(&msgbuf, p);
-		}
+		if (p)
+			strbuf_addstr(&msgbuf, skip_blank_lines(p + 2));
 
 		if (opts->record_origin) {
 			if (!has_conforming_footer(&msgbuf, NULL, 0))
 				strbuf_addch(&msgbuf, '\n');
 			strbuf_addstr(&msgbuf, cherry_picked_prefix);
-			strbuf_addstr(&msgbuf, sha1_to_hex(commit->object.sha1));
+			strbuf_addstr(&msgbuf, oid_to_hex(&commit->object.oid));
 			strbuf_addstr(&msgbuf, ")\n");
 		}
 	}
@@ -592,17 +581,17 @@ static int do_pick_commit(struct commit *commit, struct replay_opts *opts)
 	 * write it at all.
 	 */
 	if (opts->action == REPLAY_PICK && !opts->no_commit && (res == 0 || res == 1))
-		update_ref(NULL, "CHERRY_PICK_HEAD", commit->object.sha1, NULL,
+		update_ref(NULL, "CHERRY_PICK_HEAD", commit->object.oid.hash, NULL,
 			   REF_NODEREF, UPDATE_REFS_DIE_ON_ERR);
 	if (opts->action == REPLAY_REVERT && ((opts->no_commit && res == 0) || res == 1))
-		update_ref(NULL, "REVERT_HEAD", commit->object.sha1, NULL,
+		update_ref(NULL, "REVERT_HEAD", commit->object.oid.hash, NULL,
 			   REF_NODEREF, UPDATE_REFS_DIE_ON_ERR);
 
 	if (res) {
 		error(opts->action == REPLAY_REVERT
 		      ? _("could not revert %s... %s")
 		      : _("could not apply %s... %s"),
-		      find_unique_abbrev(commit->object.sha1, DEFAULT_ABBREV),
+		      find_unique_abbrev(commit->object.oid.hash, DEFAULT_ABBREV),
 		      msg.subject);
 		print_advice(res == 1, opts);
 		rerere(opts->allow_rerere_auto);
@@ -664,7 +653,7 @@ static int format_todo(struct strbuf *buf, struct commit_list *todo_list,
 
 	for (cur = todo_list; cur; cur = cur->next) {
 		const char *commit_buffer = get_commit_buffer(cur->item, NULL);
-		sha1_abbrev = find_unique_abbrev(cur->item->object.sha1, DEFAULT_ABBREV);
+		sha1_abbrev = find_unique_abbrev(cur->item->object.oid.hash, DEFAULT_ABBREV);
 		subject_len = find_commit_subject(commit_buffer, &subject);
 		strbuf_addf(buf, "%s %s %.*s\n", action_str, sha1_abbrev,
 			subject_len, subject);
@@ -884,9 +873,8 @@ static int sequencer_rollback(struct replay_opts *opts)
 		return rollback_single_pick();
 	}
 	if (!f)
-		return error(_("cannot open %s: %s"), git_path_head_file(),
-						strerror(errno));
-	if (strbuf_getline(&buf, f, '\n')) {
+		return error_errno(_("cannot open %s"), git_path_head_file());
+	if (strbuf_getline_lf(&buf, f)) {
 		error(_("cannot read %s: %s"), git_path_head_file(),
 		      ferror(f) ?  strerror(errno) : _("unexpected end of file"));
 		fclose(f);
@@ -896,6 +884,10 @@ static int sequencer_rollback(struct replay_opts *opts)
 	if (get_sha1_hex(buf.buf, sha1) || buf.buf[40] != '\0') {
 		error(_("stored pre-cherry-pick HEAD file '%s' is corrupt"),
 			git_path_head_file());
+		goto fail;
+	}
+	if (is_null_sha1(sha1)) {
+		error(_("cannot abort from a branch yet to be born"));
 		goto fail;
 	}
 	if (reset_for_rollback(sha1))
@@ -1096,11 +1088,8 @@ int sequencer_pick_revisions(struct replay_opts *opts)
 	walk_revs_populate_todo(&todo_list, opts);
 	if (create_seq_dir() < 0)
 		return -1;
-	if (get_sha1("HEAD", sha1)) {
-		if (opts->action == REPLAY_REVERT)
-			return error(_("Can't revert as initial commit"));
-		return error(_("Can't cherry-pick into empty head"));
-	}
+	if (get_sha1("HEAD", sha1) && (opts->action == REPLAY_REVERT))
+		return error(_("Can't revert as initial commit"));
 	save_head(sha1_to_hex(sha1));
 	save_opts(opts);
 	return pick_commits(todo_list, opts);

@@ -10,7 +10,6 @@
 #include "diff.h"
 #include "revision.h"
 #include "commit-slab.h"
-#include "sigchain.h"
 
 static int is_shallow = -1;
 static struct stat_validity shallow_stat;
@@ -106,7 +105,7 @@ struct commit_list *get_shallow_commits(struct object_array *heads, int depth,
 		cur_depth++;
 		if ((depth != INFINITE_DEPTH && cur_depth >= depth) ||
 		    (is_repository_shallow() && !commit->parents &&
-		     (graft = lookup_commit_graft(commit->object.sha1)) != NULL &&
+		     (graft = lookup_commit_graft(commit->object.oid.hash)) != NULL &&
 		     graft->nr_parent < 0)) {
 			commit_list_insert(commit, &result);
 			commit->object.flags |= shallow_flag;
@@ -168,7 +167,7 @@ static int write_one_shallow(const struct commit_graft *graft, void *cb_data)
 		if (!c || !(c->object.flags & SEEN)) {
 			if (data->flags & VERBOSE)
 				printf("Removing %s from .git/shallow\n",
-				       sha1_to_hex(c->object.sha1));
+				       oid_to_hex(&c->object.oid));
 			return 0;
 		}
 	}
@@ -316,8 +315,8 @@ void prepare_shallow_info(struct shallow_info *info, struct sha1_array *sa)
 	info->shallow = sa;
 	if (!sa)
 		return;
-	info->ours = xmalloc(sizeof(*info->ours) * sa->nr);
-	info->theirs = xmalloc(sizeof(*info->theirs) * sa->nr);
+	ALLOC_ARRAY(info->ours, sa->nr);
+	ALLOC_ARRAY(info->theirs, sa->nr);
 	for (i = 0; i < sa->nr; i++) {
 		if (has_sha1_file(sa->sha1[i])) {
 			struct commit_graft *graft;
@@ -390,7 +389,7 @@ static void paint_down(struct paint_info *info, const unsigned char *sha1,
 	unsigned int i, nr;
 	struct commit_list *head = NULL;
 	int bitmap_nr = (info->nr_bits + 31) / 32;
-	int bitmap_size = bitmap_nr * sizeof(uint32_t);
+	size_t bitmap_size = st_mult(bitmap_nr, sizeof(uint32_t));
 	uint32_t *tmp = xmalloc(bitmap_size); /* to be freed before return */
 	uint32_t *bitmap = paint_alloc(info);
 	struct commit *c = lookup_commit_reference_gently(sha1, 1);
@@ -401,12 +400,8 @@ static void paint_down(struct paint_info *info, const unsigned char *sha1,
 	commit_list_insert(c, &head);
 	while (head) {
 		struct commit_list *p;
-		struct commit *c = head->item;
+		struct commit *c = pop_commit(&head);
 		uint32_t **refs = ref_bitmap_at(&info->ref_bitmap, c);
-
-		p = head;
-		head = head->next;
-		free(p);
 
 		/* XXX check "UNINTERESTING" from pack bitmaps if available */
 		if (c->object.flags & (SEEN | UNINTERESTING))
@@ -431,7 +426,7 @@ static void paint_down(struct paint_info *info, const unsigned char *sha1,
 
 		if (parse_commit(c))
 			die("unable to parse commit %s",
-			    sha1_to_hex(c->object.sha1));
+			    oid_to_hex(&c->object.oid));
 
 		for (p = c->parents; p; p = p->next) {
 			uint32_t **p_refs = ref_bitmap_at(&info->ref_bitmap,
@@ -492,7 +487,7 @@ void assign_shallow_commits_to_refs(struct shallow_info *info,
 	struct paint_info pi;
 
 	trace_printf_key(&trace_shallow, "shallow: assign_shallow_commits_to_refs\n");
-	shallow = xmalloc(sizeof(*shallow) * (info->nr_ours + info->nr_theirs));
+	ALLOC_ARRAY(shallow, info->nr_ours + info->nr_theirs);
 	for (i = 0; i < info->nr_ours; i++)
 		shallow[nr_shallow++] = info->ours[i];
 	for (i = 0; i < info->nr_theirs; i++)

@@ -14,8 +14,12 @@
 #include "sigchain.h"
 #include "version.h"
 #include "string-list.h"
+#include "parse-options.h"
 
-static const char upload_pack_usage[] = "git upload-pack [--strict] [--timeout=<n>] <dir>";
+static const char * const upload_pack_usage[] = {
+	N_("git upload-pack [<options>] <dir>"),
+	NULL
+};
 
 /* Remember to update object flag allocation in object.h */
 #define THEY_HAVE	(1u << 11)
@@ -52,26 +56,28 @@ static int keepalive = 5;
 static int use_sideband;
 static int advertise_refs;
 static int stateless_rpc;
+static const char *pack_objects_hook;
 
 static void reset_timeout(void)
 {
 	alarm(timeout);
 }
 
-static ssize_t send_client_data(int fd, const char *data, ssize_t sz)
+static void send_client_data(int fd, const char *data, ssize_t sz)
 {
-	if (use_sideband)
-		return send_sideband(1, fd, data, sz, use_sideband);
+	if (use_sideband) {
+		send_sideband(1, fd, data, sz, use_sideband);
+		return;
+	}
 	if (fd == 3)
 		/* emergency quit */
 		fd = 2;
 	if (fd == 2) {
 		/* XXX: are we happy to lose stuff here? */
 		xwrite(fd, data, sz);
-		return sz;
+		return;
 	}
 	write_or_die(fd, data, sz);
-	return sz;
 }
 
 static int write_one_shallow(const struct commit_graft *graft, void *cb_data)
@@ -90,35 +96,39 @@ static void create_pack_file(void)
 		"corruption on the remote side.";
 	int buffered = -1;
 	ssize_t sz;
-	const char *argv[13];
-	int i, arg = 0;
+	int i;
 	FILE *pipe_fd;
 
-	if (shallow_nr) {
-		argv[arg++] = "--shallow-file";
-		argv[arg++] = "";
+	if (!pack_objects_hook)
+		pack_objects.git_cmd = 1;
+	else {
+		argv_array_push(&pack_objects.args, pack_objects_hook);
+		argv_array_push(&pack_objects.args, "git");
+		pack_objects.use_shell = 1;
 	}
-	argv[arg++] = "pack-objects";
-	argv[arg++] = "--revs";
-	if (use_thin_pack)
-		argv[arg++] = "--thin";
 
-	argv[arg++] = "--stdout";
+	if (shallow_nr) {
+		argv_array_push(&pack_objects.args, "--shallow-file");
+		argv_array_push(&pack_objects.args, "");
+	}
+	argv_array_push(&pack_objects.args, "pack-objects");
+	argv_array_push(&pack_objects.args, "--revs");
+	if (use_thin_pack)
+		argv_array_push(&pack_objects.args, "--thin");
+
+	argv_array_push(&pack_objects.args, "--stdout");
 	if (shallow_nr)
-		argv[arg++] = "--shallow";
+		argv_array_push(&pack_objects.args, "--shallow");
 	if (!no_progress)
-		argv[arg++] = "--progress";
+		argv_array_push(&pack_objects.args, "--progress");
 	if (use_ofs_delta)
-		argv[arg++] = "--delta-base-offset";
+		argv_array_push(&pack_objects.args, "--delta-base-offset");
 	if (use_include_tag)
-		argv[arg++] = "--include-tag";
-	argv[arg++] = NULL;
+		argv_array_push(&pack_objects.args, "--include-tag");
 
 	pack_objects.in = -1;
 	pack_objects.out = -1;
 	pack_objects.err = -1;
-	pack_objects.git_cmd = 1;
-	pack_objects.argv = argv;
 
 	if (start_command(&pack_objects))
 		die("git upload-pack: unable to fork git-pack-objects");
@@ -130,14 +140,14 @@ static void create_pack_file(void)
 
 	for (i = 0; i < want_obj.nr; i++)
 		fprintf(pipe_fd, "%s\n",
-			sha1_to_hex(want_obj.objects[i].item->sha1));
+			oid_to_hex(&want_obj.objects[i].item->oid));
 	fprintf(pipe_fd, "--not\n");
 	for (i = 0; i < have_obj.nr; i++)
 		fprintf(pipe_fd, "%s\n",
-			sha1_to_hex(have_obj.objects[i].item->sha1));
+			oid_to_hex(&have_obj.objects[i].item->oid));
 	for (i = 0; i < extra_edge_obj.nr; i++)
 		fprintf(pipe_fd, "%s\n",
-			sha1_to_hex(extra_edge_obj.objects[i].item->sha1));
+			oid_to_hex(&extra_edge_obj.objects[i].item->oid));
 	fprintf(pipe_fd, "\n");
 	fflush(pipe_fd);
 	fclose(pipe_fd);
@@ -177,8 +187,7 @@ static void create_pack_file(void)
 
 		if (ret < 0) {
 			if (errno != EINTR) {
-				error("poll failed, resuming: %s",
-				      strerror(errno));
+				error_errno("poll failed, resuming");
 				sleep(1);
 			}
 			continue;
@@ -233,9 +242,7 @@ static void create_pack_file(void)
 			}
 			else
 				buffered = -1;
-			sz = send_client_data(1, data, sz);
-			if (sz < 0)
-				goto fail;
+			send_client_data(1, data, sz);
 		}
 
 		/*
@@ -262,9 +269,7 @@ static void create_pack_file(void)
 	/* flush the data */
 	if (0 <= buffered) {
 		data[0] = buffered;
-		sz = send_client_data(1, data, 1);
-		if (sz < 0)
-			goto fail;
+		send_client_data(1, data, 1);
 		fprintf(stderr, "flushed.\n");
 	}
 	if (use_sideband)
@@ -316,17 +321,15 @@ static int reachable(struct commit *want)
 
 	commit_list_insert_by_date(want, &work);
 	while (work) {
-		struct commit_list *list = work->next;
-		struct commit *commit = work->item;
-		free(work);
-		work = list;
+		struct commit_list *list;
+		struct commit *commit = pop_commit(&work);
 
 		if (commit->object.flags & THEY_HAVE) {
 			want->object.flags |= COMMON_KNOWN;
 			break;
 		}
 		if (!commit->object.parsed)
-			parse_object(commit->object.sha1);
+			parse_object(commit->object.oid.hash);
 		if (commit->object.flags & REACHABLE)
 			continue;
 		commit->object.flags |= REACHABLE;
@@ -493,7 +496,7 @@ static void check_non_tip(void)
 			continue;
 		if (!is_our_ref(o))
 			continue;
-		memcpy(namebuf + 1, sha1_to_hex(o->sha1), 40);
+		memcpy(namebuf + 1, oid_to_hex(&o->oid), GIT_SHA1_HEXSZ);
 		if (write_in_full(cmd.in, namebuf, 42) < 0)
 			goto error;
 	}
@@ -502,7 +505,7 @@ static void check_non_tip(void)
 		o = want_obj.objects[i].item;
 		if (is_our_ref(o))
 			continue;
-		memcpy(namebuf, sha1_to_hex(o->sha1), 40);
+		memcpy(namebuf, oid_to_hex(&o->oid), GIT_SHA1_HEXSZ);
 		if (write_in_full(cmd.in, namebuf, 41) < 0)
 			goto error;
 	}
@@ -536,7 +539,7 @@ error:
 		o = want_obj.objects[i].item;
 		if (!is_our_ref(o))
 			die("git upload-pack: not our ref %s",
-			    sha1_to_hex(o->sha1));
+			    oid_to_hex(&o->oid));
 	}
 }
 
@@ -648,8 +651,8 @@ static void receive_needs(void)
 			struct object *object = &result->item->object;
 			if (!(object->flags & (CLIENT_SHALLOW|NOT_SHALLOW))) {
 				packet_write(1, "shallow %s",
-						sha1_to_hex(object->sha1));
-				register_shallow(object->sha1);
+						oid_to_hex(&object->oid));
+				register_shallow(object->oid.hash);
 				shallow_nr++;
 			}
 			result = result->next;
@@ -660,10 +663,10 @@ static void receive_needs(void)
 			if (object->flags & NOT_SHALLOW) {
 				struct commit_list *parents;
 				packet_write(1, "unshallow %s",
-					sha1_to_hex(object->sha1));
+					oid_to_hex(&object->oid));
 				object->flags &= ~CLIENT_SHALLOW;
 				/* make sure the real parents are parsed */
-				unregister_shallow(object->sha1);
+				unregister_shallow(object->oid.hash);
 				object->parsed = 0;
 				parse_commit_or_die((struct commit *)object);
 				parents = ((struct commit *)object)->parents;
@@ -675,14 +678,14 @@ static void receive_needs(void)
 				add_object_array(object, NULL, &extra_edge_obj);
 			}
 			/* make sure commit traversal conforms to client */
-			register_shallow(object->sha1);
+			register_shallow(object->oid.hash);
 		}
 		packet_flush(1);
 	} else
 		if (shallows.nr > 0) {
 			int i;
 			for (i = 0; i < shallows.nr; i++)
-				register_shallow(shallows.objects[i].item->sha1);
+				register_shallow(shallows.objects[i].item->oid.hash);
 		}
 
 	shallow_nr += shallows.nr;
@@ -690,11 +693,12 @@ static void receive_needs(void)
 }
 
 /* return non-zero if the ref is hidden, otherwise 0 */
-static int mark_our_ref(const char *refname, const struct object_id *oid)
+static int mark_our_ref(const char *refname, const char *refname_full,
+			const struct object_id *oid)
 {
 	struct object *o = lookup_unknown_object(oid->hash);
 
-	if (ref_is_hidden(refname)) {
+	if (ref_is_hidden(refname, refname_full)) {
 		o->flags |= HIDDEN_REF;
 		return 1;
 	}
@@ -702,10 +706,12 @@ static int mark_our_ref(const char *refname, const struct object_id *oid)
 	return 0;
 }
 
-static int check_ref(const char *refname, const struct object_id *oid,
+static int check_ref(const char *refname_full, const struct object_id *oid,
 		     int flag, void *cb_data)
 {
-	mark_our_ref(refname, oid);
+	const char *refname = strip_namespace(refname_full);
+
+	mark_our_ref(refname, refname_full, oid);
 	return 0;
 }
 
@@ -728,7 +734,7 @@ static int send_ref(const char *refname, const struct object_id *oid,
 	const char *refname_nons = strip_namespace(refname);
 	struct object_id peeled;
 
-	if (mark_our_ref(refname, oid))
+	if (mark_our_ref(refname_nons, refname, oid))
 		return 0;
 
 	if (capabilities) {
@@ -815,15 +821,28 @@ static int upload_pack_config(const char *var, const char *value, void *unused)
 		keepalive = git_config_int(var, value);
 		if (!keepalive)
 			keepalive = -1;
+	} else if (current_config_scope() != CONFIG_SCOPE_REPO) {
+		if (!strcmp("uploadpack.packobjectshook", var))
+			return git_config_string(&pack_objects_hook, var, value);
 	}
 	return parse_hide_refs_config(var, value, "uploadpack");
 }
 
-int main(int argc, char **argv)
+int main(int argc, const char **argv)
 {
-	char *dir;
-	int i;
+	const char *dir;
 	int strict = 0;
+	struct option options[] = {
+		OPT_BOOL(0, "stateless-rpc", &stateless_rpc,
+			 N_("quit after a single request/response exchange")),
+		OPT_BOOL(0, "advertise-refs", &advertise_refs,
+			 N_("exit immediately after intial ref advertisement")),
+		OPT_BOOL(0, "strict", &strict,
+			 N_("do not try <directory>/.git/ if <directory> is no Git directory")),
+		OPT_INTEGER(0, "timeout", &timeout,
+			    N_("interrupt transfer after <n> seconds of inactivity")),
+		OPT_END()
+	};
 
 	git_setup_gettext();
 
@@ -831,40 +850,17 @@ int main(int argc, char **argv)
 	git_extract_argv0_path(argv[0]);
 	check_replace_refs = 0;
 
-	for (i = 1; i < argc; i++) {
-		char *arg = argv[i];
+	argc = parse_options(argc, argv, NULL, options, upload_pack_usage, 0);
 
-		if (arg[0] != '-')
-			break;
-		if (!strcmp(arg, "--advertise-refs")) {
-			advertise_refs = 1;
-			continue;
-		}
-		if (!strcmp(arg, "--stateless-rpc")) {
-			stateless_rpc = 1;
-			continue;
-		}
-		if (!strcmp(arg, "--strict")) {
-			strict = 1;
-			continue;
-		}
-		if (starts_with(arg, "--timeout=")) {
-			timeout = atoi(arg+10);
-			daemon_mode = 1;
-			continue;
-		}
-		if (!strcmp(arg, "--")) {
-			i++;
-			break;
-		}
-	}
+	if (argc != 1)
+		usage_with_options(upload_pack_usage, options);
 
-	if (i != argc-1)
-		usage(upload_pack_usage);
+	if (timeout)
+		daemon_mode = 1;
 
 	setup_path();
 
-	dir = argv[i];
+	dir = argv[0];
 
 	if (!enter_repo(dir, strict))
 		die("'%s' does not appear to be a git repository", dir);

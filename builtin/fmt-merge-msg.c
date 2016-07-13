@@ -378,7 +378,7 @@ static void shortlog(const char *name,
 
 		if (!sb.len)
 			string_list_append(&subjects,
-					   sha1_to_hex(commit->object.sha1));
+					   oid_to_hex(&commit->object.oid));
 		else
 			string_list_append(&subjects, strbuf_detach(&sb, NULL));
 	}
@@ -537,7 +537,7 @@ static void fmt_merge_msg_sigs(struct strbuf *out)
 static void find_merge_parents(struct merge_parents *result,
 			       struct strbuf *in, unsigned char *head)
 {
-	struct commit_list *parents, *next;
+	struct commit_list *parents;
 	struct commit *head_commit;
 	int pos = 0, i, j;
 
@@ -568,7 +568,7 @@ static void find_merge_parents(struct merge_parents *result,
 		if (!parent)
 			continue;
 		commit_list_insert(parent, &parents);
-		add_merge_parent(result, obj->sha1, parent->object.sha1);
+		add_merge_parent(result, obj->oid.hash, parent->object.oid.hash);
 	}
 	head_commit = lookup_commit(head);
 	if (head_commit)
@@ -576,13 +576,10 @@ static void find_merge_parents(struct merge_parents *result,
 	parents = reduce_heads(parents);
 
 	while (parents) {
+		struct commit *cmit = pop_commit(&parents);
 		for (i = 0; i < result->nr; i++)
-			if (!hashcmp(result->item[i].commit,
-				     parents->item->object.sha1))
+			if (!hashcmp(result->item[i].commit, cmit->object.oid.hash))
 				result->item[i].used = 1;
-		next = parents->next;
-		free(parents);
-		parents = next;
 	}
 
 	for (i = j = 0; i < result->nr; i++) {

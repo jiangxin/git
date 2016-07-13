@@ -84,8 +84,8 @@ static int tree_is_complete(const unsigned char *sha1)
 	init_tree_desc(&desc, tree->buffer, tree->size);
 	complete = 1;
 	while (tree_entry(&desc, &entry)) {
-		if (!has_sha1_file(entry.sha1) ||
-		    (S_ISDIR(entry.mode) && !tree_is_complete(entry.sha1))) {
+		if (!has_sha1_file(entry.oid->hash) ||
+		    (S_ISDIR(entry.mode) && !tree_is_complete(entry.oid->hash))) {
 			tree->object.flags |= INCOMPLETE;
 			complete = 0;
 		}
@@ -126,7 +126,7 @@ static int commit_is_complete(struct commit *commit)
 		struct commit_list *parent;
 
 		c = (struct commit *)study.objects[--study.nr].item;
-		if (!c->object.parsed && !parse_object(c->object.sha1))
+		if (!c->object.parsed && !parse_object(c->object.oid.hash))
 			c->object.flags |= INCOMPLETE;
 
 		if (c->object.flags & INCOMPLETE) {
@@ -152,7 +152,7 @@ static int commit_is_complete(struct commit *commit)
 		for (i = 0; i < found.nr; i++) {
 			struct commit *c =
 				(struct commit *)found.objects[i].item;
-			if (!tree_is_complete(c->tree->object.sha1)) {
+			if (!tree_is_complete(c->tree->object.oid.hash)) {
 				is_incomplete = 1;
 				c->object.flags |= INCOMPLETE;
 			}
@@ -218,7 +218,6 @@ static int keep_entry(struct commit **it, unsigned char *sha1)
  */
 static void mark_reachable(struct expire_reflog_policy_cb *cb)
 {
-	struct commit *commit;
 	struct commit_list *pending;
 	unsigned long expire_limit = cb->mark_limit;
 	struct commit_list *leftover = NULL;
@@ -228,11 +227,8 @@ static void mark_reachable(struct expire_reflog_policy_cb *cb)
 
 	pending = cb->mark_list;
 	while (pending) {
-		struct commit_list *entry = pending;
 		struct commit_list *parent;
-		pending = entry->next;
-		commit = entry->item;
-		free(entry);
+		struct commit *commit = pop_commit(&pending);
 		if (commit->object.flags & REACHABLE)
 			continue;
 		if (parse_commit(commit))
@@ -386,11 +382,9 @@ static int collect_reflog(const char *ref, const struct object_id *oid, int unus
 {
 	struct collected_reflog *e;
 	struct collect_reflog_cb *cb = cb_data;
-	size_t namelen = strlen(ref);
 
-	e = xmalloc(sizeof(*e) + namelen + 1);
+	FLEX_ALLOC_STR(e, reflog, ref);
 	hashcpy(e->sha1, oid->hash);
-	memcpy(e->reflog, ref, namelen + 1);
 	ALLOC_GROW(cb->e, cb->nr + 1, cb->alloc);
 	cb->e[cb->nr++] = e;
 	return 0;
@@ -400,7 +394,6 @@ static struct reflog_expire_cfg {
 	struct reflog_expire_cfg *next;
 	unsigned long expire_total;
 	unsigned long expire_unreachable;
-	size_t len;
 	char pattern[FLEX_ARRAY];
 } *reflog_expire_cfg, **reflog_expire_cfg_tail;
 
@@ -412,13 +405,11 @@ static struct reflog_expire_cfg *find_cfg_ent(const char *pattern, size_t len)
 		reflog_expire_cfg_tail = &reflog_expire_cfg;
 
 	for (ent = reflog_expire_cfg; ent; ent = ent->next)
-		if (ent->len == len &&
-		    !memcmp(ent->pattern, pattern, len))
+		if (!strncmp(ent->pattern, pattern, len) &&
+		    ent->pattern[len] == '\0')
 			return ent;
 
-	ent = xcalloc(1, (sizeof(*ent) + len));
-	memcpy(ent->pattern, pattern, len);
-	ent->len = len;
+	FLEX_ALLOC_MEM(ent, pattern, pattern, len);
 	*reflog_expire_cfg_tail = ent;
 	reflog_expire_cfg_tail = &(ent->next);
 	return ent;

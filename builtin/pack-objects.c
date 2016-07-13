@@ -44,6 +44,7 @@ static int non_empty;
 static int reuse_delta = 1, reuse_object = 1;
 static int keep_unreachable, unpack_unreachable, include_tag;
 static unsigned long unpack_unreachable_expiration;
+static int pack_loose_unreachable;
 static int local;
 static int incremental;
 static int ignore_packed_keep;
@@ -624,7 +625,7 @@ static struct object_entry **compute_write_order(void)
 {
 	unsigned int i, wo_end, last_untagged;
 
-	struct object_entry **wo = xmalloc(to_pack.nr_objects * sizeof(*wo));
+	struct object_entry **wo;
 	struct object_entry *objects = to_pack.objects;
 
 	for (i = 0; i < to_pack.nr_objects; i++) {
@@ -657,6 +658,7 @@ static struct object_entry **compute_write_order(void)
 	 * Give the objects in the original recency order until
 	 * we see a tagged tip.
 	 */
+	ALLOC_ARRAY(wo, to_pack.nr_objects);
 	for (i = wo_end = 0; i < to_pack.nr_objects; i++) {
 		if (objects[i].tagged)
 			break;
@@ -758,6 +760,10 @@ static off_t write_reused_pack(struct sha1file *f)
 	return reuse_packfile_offset - sizeof(struct pack_header);
 }
 
+static const char no_split_warning[] = N_(
+"disabling bitmap writing, packs are split due to pack.packSizeLimit"
+);
+
 static void write_pack_file(void)
 {
 	uint32_t i = 0, j;
@@ -769,7 +775,7 @@ static void write_pack_file(void)
 
 	if (progress > pack_to_stdout)
 		progress_state = start_progress(_("Writing objects"), nr_result);
-	written_list = xmalloc(to_pack.nr_objects * sizeof(*written_list));
+	ALLOC_ARRAY(written_list, to_pack.nr_objects);
 	write_order = compute_write_order();
 
 	do {
@@ -812,7 +818,10 @@ static void write_pack_file(void)
 			fixup_pack_header_footer(fd, sha1, pack_tmp_name,
 						 nr_written, sha1, offset);
 			close(fd);
-			write_bitmap_index = 0;
+			if (write_bitmap_index) {
+				warning(_(no_split_warning));
+				write_bitmap_index = 0;
+			}
 		}
 
 		if (!pack_to_stdout) {
@@ -827,8 +836,7 @@ static void write_pack_file(void)
 			 * to preserve this property.
 			 */
 			if (stat(pack_tmp_name, &st) < 0) {
-				warning("failed to stat %s: %s",
-					pack_tmp_name, strerror(errno));
+				warning_errno("failed to stat %s", pack_tmp_name);
 			} else if (!last_mtime) {
 				last_mtime = st.st_mtime;
 			} else {
@@ -836,8 +844,7 @@ static void write_pack_file(void)
 				utb.actime = st.st_atime;
 				utb.modtime = --last_mtime;
 				if (utime(pack_tmp_name, &utb) < 0)
-					warning("failed utime() on %s: %s",
-						pack_tmp_name, strerror(errno));
+					warning_errno("failed utime() on %s", pack_tmp_name);
 			}
 
 			strbuf_addf(&tmpname, "%s-", base_name);
@@ -1185,7 +1192,7 @@ static void add_pbase_object(struct tree_desc *tree,
 		if (cmp < 0)
 			return;
 		if (name[cmplen] != '/') {
-			add_object_entry(entry.sha1,
+			add_object_entry(entry.oid->hash,
 					 object_type(entry.mode),
 					 fullname, 1);
 			return;
@@ -1196,7 +1203,7 @@ static void add_pbase_object(struct tree_desc *tree,
 			const char *down = name+cmplen+1;
 			int downlen = name_cmp_len(down);
 
-			tree = pbase_tree_get(entry.sha1);
+			tree = pbase_tree_get(entry.oid->hash);
 			if (!tree)
 				return;
 			init_tree_desc(&sub, tree->tree_data, tree->tree_size);
@@ -2129,7 +2136,7 @@ static void prepare_pack(int window, int depth)
 	if (!to_pack.nr_objects || !window || !depth)
 		return;
 
-	delta_list = xmalloc(to_pack.nr_objects * sizeof(*delta_list));
+	ALLOC_ARRAY(delta_list, to_pack.nr_objects);
 	nr_deltas = n = 0;
 
 	for (i = 0; i < to_pack.nr_objects; i++) {
@@ -2277,33 +2284,23 @@ static void read_object_list_from_stdin(void)
 
 static void show_commit(struct commit *commit, void *data)
 {
-	add_object_entry(commit->object.sha1, OBJ_COMMIT, NULL, 0);
+	add_object_entry(commit->object.oid.hash, OBJ_COMMIT, NULL, 0);
 	commit->object.flags |= OBJECT_ADDED;
 
 	if (write_bitmap_index)
 		index_commit_for_bitmap(commit);
 }
 
-static void show_object(struct object *obj,
-			const struct name_path *path, const char *last,
-			void *data)
+static void show_object(struct object *obj, const char *name, void *data)
 {
-	char *name = path_name(path, last);
-
 	add_preferred_base_object(name);
-	add_object_entry(obj->sha1, obj->type, name, 0);
+	add_object_entry(obj->oid.hash, obj->type, name, 0);
 	obj->flags |= OBJECT_ADDED;
-
-	/*
-	 * We will have generated the hash from the name,
-	 * but not saved a pointer to it - we can free it
-	 */
-	free((char *)name);
 }
 
 static void show_edge(struct commit *commit)
 {
-	add_preferred_base(commit->object.sha1);
+	add_preferred_base(commit->object.oid.hash);
 }
 
 struct in_pack_object {
@@ -2319,7 +2316,7 @@ struct in_pack {
 
 static void mark_in_pack_object(struct object *object, struct packed_git *p, struct in_pack *in_pack)
 {
-	in_pack->array[in_pack->nr].offset = find_pack_entry_one(object->sha1, p);
+	in_pack->array[in_pack->nr].offset = find_pack_entry_one(object->oid.hash, p);
 	in_pack->array[in_pack->nr].object = object;
 	in_pack->nr++;
 }
@@ -2338,7 +2335,7 @@ static int ofscmp(const void *a_, const void *b_)
 	else if (a->offset > b->offset)
 		return 1;
 	else
-		return hashcmp(a->object->sha1, b->object->sha1);
+		return oidcmp(&a->object->oid, &b->object->oid);
 }
 
 static void add_objects_in_unpacked_packs(struct rev_info *revs)
@@ -2376,10 +2373,36 @@ static void add_objects_in_unpacked_packs(struct rev_info *revs)
 		      ofscmp);
 		for (i = 0; i < in_pack.nr; i++) {
 			struct object *o = in_pack.array[i].object;
-			add_object_entry(o->sha1, o->type, "", 0);
+			add_object_entry(o->oid.hash, o->type, "", 0);
 		}
 	}
 	free(in_pack.array);
+}
+
+static int add_loose_object(const unsigned char *sha1, const char *path,
+			    void *data)
+{
+	enum object_type type = sha1_object_info(sha1, NULL);
+
+	if (type < 0) {
+		warning("loose object at %s could not be examined", path);
+		return 0;
+	}
+
+	add_object_entry(sha1, type, "", 0);
+	return 0;
+}
+
+/*
+ * We actually don't even have to worry about reachability here.
+ * add_object_entry will weed out duplicates, so we just add every
+ * loose object we find.
+ */
+static void add_unreachable_loose_objects(void)
+{
+	for_each_loose_file_in_objdir(get_object_directory(),
+				      add_loose_object,
+				      NULL, NULL, NULL);
 }
 
 static int has_sha1_pack_kept_or_nonlocal(const unsigned char *sha1)
@@ -2480,16 +2503,15 @@ static int get_object_list_from_bitmap(struct rev_info *revs)
 }
 
 static void record_recent_object(struct object *obj,
-				 const struct name_path *path,
-				 const char *last,
+				 const char *name,
 				 void *data)
 {
-	sha1_array_append(&recent_objects, obj->sha1);
+	sha1_array_append(&recent_objects, obj->oid.hash);
 }
 
 static void record_recent_commit(struct commit *commit, void *data)
 {
-	sha1_array_append(&recent_objects, commit->object.sha1);
+	sha1_array_append(&recent_objects, commit->object.oid.hash);
 }
 
 static void get_object_list(int ac, const char **av)
@@ -2552,6 +2574,8 @@ static void get_object_list(int ac, const char **av)
 
 	if (keep_unreachable)
 		add_objects_in_unpacked_packs(&revs);
+	if (pack_loose_unreachable)
+		add_unreachable_loose_objects();
 	if (unpack_unreachable)
 		loosen_unused_packed_objects(&revs);
 
@@ -2652,6 +2676,8 @@ int cmd_pack_objects(int argc, const char **argv, const char *prefix)
 			 N_("include tag objects that refer to objects to be packed")),
 		OPT_BOOL(0, "keep-unreachable", &keep_unreachable,
 			 N_("keep unreachable objects")),
+		OPT_BOOL(0, "pack-loose-unreachable", &pack_loose_unreachable,
+			 N_("pack loose unreachable objects")),
 		{ OPTION_CALLBACK, 0, "unpack-unreachable", NULL, N_("time"),
 		  N_("unpack unreachable objects newer than <time>"),
 		  PARSE_OPT_OPTARG, option_parse_unpack_unreachable },

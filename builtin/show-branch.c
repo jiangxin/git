@@ -3,6 +3,7 @@
 #include "refs.h"
 #include "builtin.h"
 #include "color.h"
+#include "argv-array.h"
 #include "parse-options.h"
 
 static const char* show_branch_usage[] = {
@@ -16,9 +17,7 @@ static const char* show_branch_usage[] = {
 
 static int showbranch_use_color = -1;
 
-static int default_num;
-static int default_alloc;
-static const char **default_arg;
+static struct argv_array default_args = ARGV_ARRAY_INIT;
 
 #define UNINTERESTING	01
 
@@ -51,17 +50,6 @@ static struct commit *interesting(struct commit_list *list)
 		return commit;
 	}
 	return NULL;
-}
-
-static struct commit *pop_one_commit(struct commit_list **list_p)
-{
-	struct commit *commit;
-	struct commit_list *list;
-	list = *list_p;
-	commit = list->item;
-	*list_p = list->next;
-	free(list);
-	return commit;
 }
 
 struct commit_name {
@@ -213,7 +201,7 @@ static void join_revs(struct commit_list **list_p,
 	while (*list_p) {
 		struct commit_list *parents;
 		int still_interesting = !!interesting(*list_p);
-		struct commit *commit = pop_one_commit(list_p);
+		struct commit *commit = pop_commit(list_p);
 		int flags = commit->object.flags & all_mask;
 
 		if (!still_interesting && extra <= 0)
@@ -303,7 +291,7 @@ static void show_one_commit(struct commit *commit, int no_name)
 		}
 		else
 			printf("[%s] ",
-			       find_unique_abbrev(commit->object.sha1,
+			       find_unique_abbrev(commit->object.oid.hash,
 						  DEFAULT_ABBREV));
 	}
 	puts(pretty_str);
@@ -504,11 +492,11 @@ static int show_merge_base(struct commit_list *seen, int num_rev)
 	int exit_status = 1;
 
 	while (seen) {
-		struct commit *commit = pop_one_commit(&seen);
+		struct commit *commit = pop_commit(&seen);
 		int flags = commit->object.flags & all_mask;
 		if (!(flags & UNINTERESTING) &&
 		    ((flags & all_revs) == all_revs)) {
-			puts(sha1_to_hex(commit->object.sha1));
+			puts(oid_to_hex(&commit->object.oid));
 			exit_status = 0;
 			commit->object.flags |= UNINTERESTING;
 		}
@@ -528,7 +516,7 @@ static int show_independent(struct commit **rev,
 		unsigned int flag = rev_mask[i];
 
 		if (commit->object.flags == flag)
-			puts(sha1_to_hex(commit->object.sha1));
+			puts(oid_to_hex(&commit->object.oid));
 		commit->object.flags |= UNINTERESTING;
 	}
 	return 0;
@@ -567,16 +555,9 @@ static int git_show_branch_config(const char *var, const char *value, void *cb)
 		 * default_arg is now passed to parse_options(), so we need to
 		 * mimic the real argv a bit better.
 		 */
-		if (!default_num) {
-			default_alloc = 20;
-			default_arg = xcalloc(default_alloc, sizeof(*default_arg));
-			default_arg[default_num++] = "show-branch";
-		} else if (default_alloc <= default_num + 1) {
-			default_alloc = default_alloc * 3 / 2 + 20;
-			REALLOC_ARRAY(default_arg, default_alloc);
-		}
-		default_arg[default_num++] = xstrdup(value);
-		default_arg[default_num] = NULL;
+		if (!default_args.argc)
+			argv_array_push(&default_args, "show-branch");
+		argv_array_push(&default_args, value);
 		return 0;
 	}
 
@@ -696,9 +677,9 @@ int cmd_show_branch(int ac, const char **av, const char *prefix)
 	git_config(git_show_branch_config, NULL);
 
 	/* If nothing is specified, try the default first */
-	if (ac == 1 && default_num) {
-		ac = default_num;
-		av = default_arg;
+	if (ac == 1 && default_args.argc) {
+		ac = default_args.argc;
+		av = default_args.argv;
 	}
 
 	ac = parse_options(ac, av, prefix, builtin_show_branch_options,
@@ -730,7 +711,6 @@ int cmd_show_branch(int ac, const char **av, const char *prefix)
 
 	if (reflog) {
 		struct object_id oid;
-		char nth_desc[256];
 		char *ref;
 		int base = 0;
 		unsigned int flags = 0;
@@ -744,6 +724,8 @@ int cmd_show_branch(int ac, const char **av, const char *prefix)
 			fake_av[1] = NULL;
 			av = fake_av;
 			ac = 1;
+			if (!*av)
+				die("no branches given, and HEAD is not valid");
 		}
 		if (ac != 1)
 			die("--reflog option needs one branch name");
@@ -769,6 +751,7 @@ int cmd_show_branch(int ac, const char **av, const char *prefix)
 
 		for (i = 0; i < reflog; i++) {
 			char *logmsg;
+			char *nth_desc;
 			const char *msg;
 			unsigned long timestamp;
 			int tz;
@@ -788,8 +771,10 @@ int cmd_show_branch(int ac, const char **av, const char *prefix)
 							  DATE_MODE(RELATIVE)),
 						msg);
 			free(logmsg);
-			sprintf(nth_desc, "%s@{%d}", *av, base+i);
+
+			nth_desc = xstrfmt("%s@{%d}", *av, base+i);
 			append_ref(nth_desc, &oid, 1);
+			free(nth_desc);
 		}
 		free(ref);
 	}
@@ -882,7 +867,7 @@ int cmd_show_branch(int ac, const char **av, const char *prefix)
 						  head_len,
 						  ref_name[i],
 						  head_oid.hash,
-						  rev[i]->object.sha1);
+						  rev[i]->object.oid.hash);
 			if (extra < 0)
 				printf("%c [%s] ",
 				       is_head ? '*' : ' ', ref_name[i]);
@@ -925,7 +910,7 @@ int cmd_show_branch(int ac, const char **av, const char *prefix)
 	all_revs = all_mask & ~((1u << REV_SHIFT) - 1);
 
 	while (seen) {
-		struct commit *commit = pop_one_commit(&seen);
+		struct commit *commit = pop_commit(&seen);
 		int this_flag = commit->object.flags;
 		int is_merge_point = ((this_flag & all_revs) == all_revs);
 

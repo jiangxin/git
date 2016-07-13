@@ -32,6 +32,7 @@
 #include "sequencer.h"
 #include "notes-utils.h"
 #include "mailmap.h"
+#include "sigchain.h"
 
 static const char * const builtin_commit_usage[] = {
 	N_("git commit [<options>] [--] <pathspec>..."),
@@ -91,8 +92,9 @@ N_("If you wish to skip this commit, use:\n"
 "Then \"git cherry-pick --continue\" will resume cherry-picking\n"
 "the remaining commits.\n");
 
+static GIT_PATH_FUNC(git_path_commit_editmsg, "COMMIT_EDITMSG")
+
 static const char *use_message_buffer;
-static const char commit_editmsg[] = "COMMIT_EDITMSG";
 static struct lock_file index_lock; /* real index */
 static struct lock_file false_lock; /* used only for partial commits */
 static enum {
@@ -113,6 +115,7 @@ static char *fixup_message, *squash_message;
 static int all, also, interactive, patch_interactive, only, amend, signoff;
 static int edit_flag = -1; /* unspecified */
 static int quiet, verbose, no_verify, allow_empty, dry_run, renew_authorship;
+static int config_commit_verbose = -1; /* unspecified */
 static int no_post_rewrite, allow_empty_message;
 static char *untracked_files_arg, *force_date, *ignore_submodule_arg;
 static char *sign_commit;
@@ -185,6 +188,7 @@ static void status_init_config(struct wt_status *s, config_fn_t fn)
 	gitmodules_config();
 	git_config(fn, s);
 	determine_whence(s);
+	init_diff_ui_defaults();
 	s->hints = advice_status_hints; /* must come after git_config() */
 }
 
@@ -299,7 +303,7 @@ static void create_base_index(const struct commit *current_head)
 	opts.dst_index = &the_index;
 
 	opts.fn = oneway_merge;
-	tree = parse_tree_indirect(current_head->object.sha1);
+	tree = parse_tree_indirect(current_head->object.oid.hash);
 	if (!tree)
 		die(_("failed to unpack HEAD tree object"));
 	parse_tree(tree);
@@ -383,7 +387,7 @@ static const char *prepare_index(int argc, const char **argv, const char *prefix
 	 */
 	if (all || (also && pathspec.nr)) {
 		hold_locked_index(&index_lock, 1);
-		add_files_to_cache(also ? prefix : NULL, &pathspec, 0);
+		add_files_to_cache(also ? prefix : NULL, &pathspec, 0, 0);
 		refresh_cache_or_die(refresh_flags);
 		update_main_cache_tree(WRITE_TREE_SILENT);
 		if (write_locked_index(&the_index, &index_lock, CLOSE_LOCK))
@@ -693,7 +697,7 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 		}
 	}
 
-	if (message.len) {
+	if (have_option_m) {
 		strbuf_addbuf(&sb, &message);
 		hook_arg1 = "message";
 	} else if (logfile && !strcmp(logfile, "-")) {
@@ -711,7 +715,7 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 		char *buffer;
 		buffer = strstr(use_message_buffer, "\n\n");
 		if (buffer)
-			strbuf_addstr(&sb, buffer + 2);
+			strbuf_addstr(&sb, skip_blank_lines(buffer + 2));
 		hook_arg1 = "commit";
 		hook_arg2 = use_message;
 	} else if (fixup_message) {
@@ -725,9 +729,18 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 				      &sb, &ctx);
 		hook_arg1 = "message";
 	} else if (!stat(git_path_merge_msg(), &statbuf)) {
+		/*
+		 * prepend SQUASH_MSG here if it exists and a
+		 * "merge --squash" was originally performed
+		 */
+		if (!stat(git_path_squash_msg(), &statbuf)) {
+			if (strbuf_read_file(&sb, git_path_squash_msg(), 0) < 0)
+				die_errno(_("could not read SQUASH_MSG"));
+			hook_arg1 = "squash";
+		} else
+			hook_arg1 = "merge";
 		if (strbuf_read_file(&sb, git_path_merge_msg(), 0) < 0)
 			die_errno(_("could not read MERGE_MSG"));
-		hook_arg1 = "merge";
 	} else if (!stat(git_path_squash_msg(), &statbuf)) {
 		if (strbuf_read_file(&sb, git_path_squash_msg(), 0) < 0)
 			die_errno(_("could not read SQUASH_MSG"));
@@ -760,9 +773,9 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 		hook_arg2 = "";
 	}
 
-	s->fp = fopen(git_path(commit_editmsg), "w");
+	s->fp = fopen_for_writing(git_path_commit_editmsg());
 	if (s->fp == NULL)
-		die_errno(_("could not open '%s'"), git_path(commit_editmsg));
+		die_errno(_("could not open '%s'"), git_path_commit_editmsg());
 
 	/* Ignore status.displayCommentPrefix: we do need comments in COMMIT_EDITMSG. */
 	old_display_comment_prefix = s->display_comment_prefix;
@@ -775,7 +788,7 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 	s->hints = 0;
 
 	if (clean_message_contents)
-		stripspace(&sb, 0);
+		strbuf_stripspace(&sb, 0);
 
 	if (signoff)
 		append_signoff(&sb, ignore_non_trailer(&sb), 0);
@@ -939,7 +952,7 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 	}
 
 	if (run_commit_hook(use_editor, index_file, "prepare-commit-msg",
-			    git_path(commit_editmsg), hook_arg1, hook_arg2, NULL))
+			    git_path_commit_editmsg(), hook_arg1, hook_arg2, NULL))
 		return 0;
 
 	if (use_editor) {
@@ -947,7 +960,7 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 		const char *env[2] = { NULL };
 		env[0] =  index;
 		snprintf(index, sizeof(index), "GIT_INDEX_FILE=%s", index_file);
-		if (launch_editor(git_path(commit_editmsg), NULL, env)) {
+		if (launch_editor(git_path_commit_editmsg(), NULL, env)) {
 			fprintf(stderr,
 			_("Please supply the message using either -m or -F option.\n"));
 			exit(1);
@@ -955,7 +968,7 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 	}
 
 	if (!no_verify &&
-	    run_commit_hook(use_editor, index_file, "commit-msg", git_path(commit_editmsg), NULL)) {
+	    run_commit_hook(use_editor, index_file, "commit-msg", git_path_commit_editmsg(), NULL)) {
 		return 0;
 	}
 
@@ -1014,7 +1027,7 @@ static int template_untouched(struct strbuf *sb)
 	if (!template_file || strbuf_read_file(&tmpl, template_file, 0) <= 0)
 		return 0;
 
-	stripspace(&tmpl, cleanup_mode == CLEANUP_ALL);
+	strbuf_stripspace(&tmpl, cleanup_mode == CLEANUP_ALL);
 	if (!skip_prefix(sb->buf, tmpl.buf, &start))
 		start = sb->buf;
 	strbuf_release(&tmpl);
@@ -1161,9 +1174,9 @@ static int parse_and_validate_options(int argc, const char *argv[],
 		f++;
 	if (f > 1)
 		die(_("Only one of -c/-C/-F/--fixup can be used."));
-	if (message.len && f > 0)
+	if (have_option_m && f > 0)
 		die((_("Option -m cannot be combined with -c/-C/-F/--fixup.")));
-	if (f || message.len)
+	if (f || have_option_m)
 		template_file = NULL;
 	if (edit_message)
 		use_message = edit_message;
@@ -1504,6 +1517,11 @@ static int git_commit_config(const char *k, const char *v, void *cb)
 		sign_commit = git_config_bool(k, v) ? "" : NULL;
 		return 0;
 	}
+	if (!strcmp(k, "commit.verbose")) {
+		int is_bool;
+		config_commit_verbose = git_config_bool_or_int(k, v, &is_bool);
+		return 0;
+	}
 
 	status = git_gpg_config(k, v, NULL);
 	if (status)
@@ -1537,8 +1555,10 @@ static int run_rewrite_hook(const unsigned char *oldsha1,
 		return code;
 	n = snprintf(buf, sizeof(buf), "%s %s\n",
 		     sha1_to_hex(oldsha1), sha1_to_hex(newsha1));
+	sigchain_push(SIGPIPE, SIG_IGN);
 	write_in_full(proc.in, buf, n);
 	close(proc.in);
+	sigchain_pop(SIGPIPE);
 	return finish_command(&proc);
 }
 
@@ -1648,9 +1668,13 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 		if (parse_commit(current_head))
 			die(_("could not parse HEAD commit"));
 	}
+	verbose = -1; /* unspecified */
 	argc = parse_and_validate_options(argc, argv, builtin_commit_options,
 					  builtin_commit_usage,
 					  prefix, current_head, &s);
+	if (verbose == -1)
+		verbose = (config_commit_verbose < 0) ? 0 : config_commit_verbose;
+
 	if (dry_run)
 		return dry_run_commit(argc, argv, prefix, current_head, &s);
 	index_file = prepare_index(argc, argv, prefix, current_head, 0);
@@ -1687,7 +1711,7 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 		if (fp == NULL)
 			die_errno(_("could not open '%s' for reading"),
 				  git_path_merge_head());
-		while (strbuf_getline(&m, fp, '\n') != EOF) {
+		while (strbuf_getline_lf(&m, fp) != EOF) {
 			struct commit *parent;
 
 			parent = get_merge_parent(m.buf);
@@ -1715,7 +1739,7 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 
 	/* Finally, get the commit message */
 	strbuf_reset(&sb);
-	if (strbuf_read_file(&sb, git_path(commit_editmsg), 0) < 0) {
+	if (strbuf_read_file(&sb, git_path_commit_editmsg(), 0) < 0) {
 		int saved_errno = errno;
 		rollback_index_files();
 		die(_("could not read commit message: %s"), strerror(saved_errno));
@@ -1726,7 +1750,7 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 		wt_status_truncate_message_at_cut_line(&sb);
 
 	if (cleanup_mode != CLEANUP_NONE)
-		stripspace(&sb, cleanup_mode == CLEANUP_ALL);
+		strbuf_stripspace(&sb, cleanup_mode == CLEANUP_ALL);
 	if (template_untouched(&sb) && !allow_empty_message) {
 		rollback_index_files();
 		fprintf(stderr, _("Aborting commit; you did not edit the message.\n"));
@@ -1766,7 +1790,7 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 	if (!transaction ||
 	    ref_transaction_update(transaction, "HEAD", sha1,
 				   current_head
-				   ? current_head->object.sha1 : null_sha1,
+				   ? current_head->object.oid.hash : null_sha1,
 				   0, sb.buf, &err) ||
 	    ref_transaction_commit(transaction, &err)) {
 		rollback_index_files();
@@ -1793,10 +1817,10 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 		cfg = init_copy_notes_for_rewrite("amend");
 		if (cfg) {
 			/* we are amending, so current_head is not NULL */
-			copy_note_for_rewrite(cfg, current_head->object.sha1, sha1);
+			copy_note_for_rewrite(cfg, current_head->object.oid.hash, sha1);
 			finish_copy_notes_for_rewrite(cfg, "Notes added by 'git commit --amend'");
 		}
-		run_rewrite_hook(current_head->object.sha1, sha1);
+		run_rewrite_hook(current_head->object.oid.hash, sha1);
 	}
 	if (!quiet)
 		print_summary(prefix, sha1, !current_head);

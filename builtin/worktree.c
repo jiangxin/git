@@ -8,9 +8,12 @@
 #include "run-command.h"
 #include "sigchain.h"
 #include "refs.h"
+#include "utf8.h"
+#include "worktree.h"
 
 static const char * const worktree_usage[] = {
-	N_("git worktree add [<options>] <path> <branch>"),
+	N_("git worktree add [<options>] <path> [<branch>]"),
+	N_("git worktree list [<options>]"),
 	N_("git worktree prune [<options>]"),
 	NULL
 };
@@ -18,6 +21,7 @@ static const char * const worktree_usage[] = {
 struct add_opts {
 	int force;
 	int detach;
+	int checkout;
 	const char *new_branch;
 	int force_new_branch;
 };
@@ -49,7 +53,7 @@ static int prune_worktree(const char *id, struct strbuf *reason)
 		return 1;
 	}
 	len = st.st_size;
-	path = xmalloc(len + 1);
+	path = xmallocz(len);
 	read_in_full(fd, path, len);
 	close(fd);
 	while (len && (path[len - 1] == '\n' || path[len - 1] == '\r'))
@@ -91,7 +95,7 @@ static void prune_worktrees(void)
 	if (!dir)
 		return;
 	while ((d = readdir(dir)) != NULL) {
-		if (!strcmp(d->d_name, ".") || !strcmp(d->d_name, ".."))
+		if (is_dot_or_dotdot(d->d_name))
 			continue;
 		strbuf_reset(&reason);
 		if (!prune_worktree(d->d_name, &reason))
@@ -106,7 +110,7 @@ static void prune_worktrees(void)
 		if (ret < 0 && errno == ENOTDIR)
 			ret = unlink(path.buf);
 		if (ret)
-			error(_("failed to remove: %s"), strerror(errno));
+			error_errno(_("failed to remove '%s'"), path.buf);
 	}
 	closedir(dir);
 	if (!show_only)
@@ -198,12 +202,10 @@ static int add_worktree(const char *path, const char *refname,
 		die(_("'%s' already exists"), path);
 
 	/* is 'refname' a branch or commit? */
-	if (opts->force_new_branch) /* definitely a branch */
-		;
-	else if (!opts->detach && !strbuf_check_branch_ref(&symref, refname) &&
+	if (!opts->detach && !strbuf_check_branch_ref(&symref, refname) &&
 		 ref_exists(symref.buf)) { /* it's a branch */
 		if (!opts->force)
-			die_if_checked_out(symref.buf);
+			die_if_checked_out(symref.buf, 0);
 	} else { /* must be a commit */
 		commit = lookup_commit_reference_by_name(refname);
 		if (!commit)
@@ -260,7 +262,7 @@ static int add_worktree(const char *path, const char *refname,
 	 */
 	strbuf_reset(&sb);
 	strbuf_addf(&sb, "%s/HEAD", sb_repo.buf);
-	write_file(sb.buf, "0000000000000000000000000000000000000000");
+	write_file(sb.buf, sha1_to_hex(null_sha1));
 	strbuf_reset(&sb);
 	strbuf_addf(&sb, "%s/commondir", sb_repo.buf);
 	write_file(sb.buf, "../..");
@@ -274,7 +276,7 @@ static int add_worktree(const char *path, const char *refname,
 
 	if (commit)
 		argv_array_pushl(&cp.args, "update-ref", "HEAD",
-				 sha1_to_hex(commit->object.sha1), NULL);
+				 oid_to_hex(&commit->object.oid), NULL);
 	else
 		argv_array_pushl(&cp.args, "symbolic-ref", "HEAD",
 				 symref.buf, NULL);
@@ -283,18 +285,22 @@ static int add_worktree(const char *path, const char *refname,
 	if (ret)
 		goto done;
 
-	cp.argv = NULL;
-	argv_array_clear(&cp.args);
-	argv_array_pushl(&cp.args, "reset", "--hard", NULL);
-	cp.env = child_env.argv;
-	ret = run_command(&cp);
-	if (!ret) {
-		is_junk = 0;
-		free(junk_work_tree);
-		free(junk_git_dir);
-		junk_work_tree = NULL;
-		junk_git_dir = NULL;
+	if (opts->checkout) {
+		cp.argv = NULL;
+		argv_array_clear(&cp.args);
+		argv_array_pushl(&cp.args, "reset", "--hard", NULL);
+		cp.env = child_env.argv;
+		ret = run_command(&cp);
+		if (ret)
+			goto done;
 	}
+
+	is_junk = 0;
+	free(junk_work_tree);
+	free(junk_git_dir);
+	junk_work_tree = NULL;
+	junk_git_dir = NULL;
+
 done:
 	strbuf_reset(&sb);
 	strbuf_addf(&sb, "%s/locked", sb_repo.buf);
@@ -319,22 +325,36 @@ static int add(int ac, const char **av, const char *prefix)
 		OPT_STRING('B', NULL, &new_branch_force, N_("branch"),
 			   N_("create or reset a branch")),
 		OPT_BOOL(0, "detach", &opts.detach, N_("detach HEAD at named commit")),
+		OPT_BOOL(0, "checkout", &opts.checkout, N_("populate the new working tree")),
 		OPT_END()
 	};
 
 	memset(&opts, 0, sizeof(opts));
+	opts.checkout = 1;
 	ac = parse_options(ac, av, prefix, options, worktree_usage, 0);
 	if (!!opts.detach + !!opts.new_branch + !!new_branch_force > 1)
 		die(_("-b, -B, and --detach are mutually exclusive"));
 	if (ac < 1 || ac > 2)
 		usage_with_options(worktree_usage, options);
 
-	path = prefix ? prefix_filename(prefix, strlen(prefix), av[0]) : av[0];
+	path = prefix_filename(prefix, strlen(prefix), av[0]);
 	branch = ac < 2 ? "HEAD" : av[1];
 
+	if (!strcmp(branch, "-"))
+		branch = "@{-1}";
+
 	opts.force_new_branch = !!new_branch_force;
-	if (opts.force_new_branch)
+	if (opts.force_new_branch) {
+		struct strbuf symref = STRBUF_INIT;
+
 		opts.new_branch = new_branch_force;
+
+		if (!opts.force &&
+		    !strbuf_check_branch_ref(&symref, opts.new_branch) &&
+		    ref_exists(symref.buf))
+			die_if_checked_out(symref.buf, 0);
+		strbuf_release(&symref);
+	}
 
 	if (ac < 2 && !opts.new_branch && !opts.detach) {
 		int n;
@@ -359,6 +379,89 @@ static int add(int ac, const char **av, const char *prefix)
 	return add_worktree(path, branch, &opts);
 }
 
+static void show_worktree_porcelain(struct worktree *wt)
+{
+	printf("worktree %s\n", wt->path);
+	if (wt->is_bare)
+		printf("bare\n");
+	else {
+		printf("HEAD %s\n", sha1_to_hex(wt->head_sha1));
+		if (wt->is_detached)
+			printf("detached\n");
+		else
+			printf("branch %s\n", wt->head_ref);
+	}
+	printf("\n");
+}
+
+static void show_worktree(struct worktree *wt, int path_maxlen, int abbrev_len)
+{
+	struct strbuf sb = STRBUF_INIT;
+	int cur_path_len = strlen(wt->path);
+	int path_adj = cur_path_len - utf8_strwidth(wt->path);
+
+	strbuf_addf(&sb, "%-*s ", 1 + path_maxlen + path_adj, wt->path);
+	if (wt->is_bare)
+		strbuf_addstr(&sb, "(bare)");
+	else {
+		strbuf_addf(&sb, "%-*s ", abbrev_len,
+				find_unique_abbrev(wt->head_sha1, DEFAULT_ABBREV));
+		if (!wt->is_detached)
+			strbuf_addf(&sb, "[%s]", shorten_unambiguous_ref(wt->head_ref, 0));
+		else
+			strbuf_addstr(&sb, "(detached HEAD)");
+	}
+	printf("%s\n", sb.buf);
+
+	strbuf_release(&sb);
+}
+
+static void measure_widths(struct worktree **wt, int *abbrev, int *maxlen)
+{
+	int i;
+
+	for (i = 0; wt[i]; i++) {
+		int sha1_len;
+		int path_len = strlen(wt[i]->path);
+
+		if (path_len > *maxlen)
+			*maxlen = path_len;
+		sha1_len = strlen(find_unique_abbrev(wt[i]->head_sha1, *abbrev));
+		if (sha1_len > *abbrev)
+			*abbrev = sha1_len;
+	}
+}
+
+static int list(int ac, const char **av, const char *prefix)
+{
+	int porcelain = 0;
+
+	struct option options[] = {
+		OPT_BOOL(0, "porcelain", &porcelain, N_("machine-readable output")),
+		OPT_END()
+	};
+
+	ac = parse_options(ac, av, prefix, options, worktree_usage, 0);
+	if (ac)
+		usage_with_options(worktree_usage, options);
+	else {
+		struct worktree **worktrees = get_worktrees();
+		int path_maxlen = 0, abbrev = DEFAULT_ABBREV, i;
+
+		if (!porcelain)
+			measure_widths(worktrees, &abbrev, &path_maxlen);
+
+		for (i = 0; worktrees[i]; i++) {
+			if (porcelain)
+				show_worktree_porcelain(worktrees[i]);
+			else
+				show_worktree(worktrees[i], path_maxlen, abbrev);
+		}
+		free_worktrees(worktrees);
+	}
+	return 0;
+}
+
 int cmd_worktree(int ac, const char **av, const char *prefix)
 {
 	struct option options[] = {
@@ -367,9 +470,13 @@ int cmd_worktree(int ac, const char **av, const char *prefix)
 
 	if (ac < 2)
 		usage_with_options(worktree_usage, options);
+	if (!prefix)
+		prefix = "";
 	if (!strcmp(av[1], "add"))
 		return add(ac - 1, av + 1, prefix);
 	if (!strcmp(av[1], "prune"))
 		return prune(ac - 1, av + 1, prefix);
+	if (!strcmp(av[1], "list"))
+		return list(ac - 1, av + 1, prefix);
 	usage_with_options(worktree_usage, options);
 }

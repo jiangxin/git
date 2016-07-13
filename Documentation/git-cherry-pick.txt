@@ -9,7 +9,7 @@ SYNOPSIS
 --------
 [verse]
 'git cherry-pick' [--edit] [-n] [-m parent-number] [-s] [-x] [--ff]
-		  [-S[<key-id>]] <commit>...
+		  [-S[<keyid>]] <commit>...
 'git cherry-pick' --continue
 'git cherry-pick' --quit
 'git cherry-pick' --abort
@@ -100,10 +100,13 @@ effect to your index in a row.
 -s::
 --signoff::
 	Add Signed-off-by line at the end of the commit message.
+	See the signoff option in linkgit:git-commit[1] for more information.
 
--S[<key-id>]::
---gpg-sign[=<key-id>]::
-	GPG-sign commits.
+-S[<keyid>]::
+--gpg-sign[=<keyid>]::
+	GPG-sign commits. The `keyid` argument is optional and
+	defaults to the committer identity; if specified, it must be
+	stuck to the option without a space.
 
 --ff::
 	If the current HEAD is the same as the parent of the
@@ -125,7 +128,7 @@ effect to your index in a row.
 
 --allow-empty-message::
 	By default, cherry-picking a commit with an empty message will fail.
-	This option overrides that behaviour, allowing commits with empty
+	This option overrides that behavior, allowing commits with empty
 	messages to be cherry picked.
 
 --keep-redundant-commits::

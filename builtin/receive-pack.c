@@ -21,7 +21,10 @@
 #include "sigchain.h"
 #include "fsck.h"
 
-static const char receive_pack_usage[] = "git receive-pack <git-dir>";
+static const char * const receive_pack_usage[] = {
+	N_("git receive-pack <git-dir>"),
+	NULL
+};
 
 enum deny_action {
 	DENY_UNCONFIGURED,
@@ -49,7 +52,7 @@ static int quiet;
 static int prefer_ofs_delta = 1;
 static int auto_update_server_info;
 static int auto_gc = 1;
-static int fix_thin = 1;
+static int reject_thin;
 static int stateless_rpc;
 static const char *service_dir;
 static const char *head_name;
@@ -195,9 +198,6 @@ static int receive_pack_config(const char *var, const char *value, void *cb)
 
 static void show_ref(const char *path, const unsigned char *sha1)
 {
-	if (ref_is_hidden(path))
-		return;
-
 	if (sent_capabilities) {
 		packet_write(1, "%s %s\n", sha1_to_hex(sha1), path);
 	} else {
@@ -219,9 +219,14 @@ static void show_ref(const char *path, const unsigned char *sha1)
 	}
 }
 
-static int show_ref_cb(const char *path, const struct object_id *oid, int flag, void *unused)
+static int show_ref_cb(const char *path_full, const struct object_id *oid,
+		       int flag, void *unused)
 {
-	path = strip_namespace(path);
+	const char *path = strip_namespace(path_full);
+
+	if (ref_is_hidden(path, path_full))
+		return 0;
+
 	/*
 	 * Advertise refs outside our current namespace as ".have"
 	 * refs, so that the client can use them to minimize data
@@ -244,7 +249,7 @@ static void show_one_alternate_sha1(const unsigned char sha1[20], void *unused)
 static void collect_one_alternate_ref(const struct ref *ref, void *data)
 {
 	struct sha1_array *sa = data;
-	sha1_array_append(sa, ref->old_sha1);
+	sha1_array_append(sa, ref->old_oid.hash);
 }
 
 static void write_head_info(void)
@@ -280,10 +285,10 @@ static void rp_warning(const char *err, ...) __attribute__((format (printf, 1, 2
 
 static void report_message(const char *prefix, const char *err, va_list params)
 {
-	int sz = strlen(prefix);
+	int sz;
 	char msg[4096];
 
-	strncpy(msg, prefix, sz);
+	sz = xsnprintf(msg, sizeof(msg), "%s", prefix);
 	sz += vsnprintf(msg + sz, sizeof(msg) - sz, err, params);
 	if (sz > (sizeof(msg) - 1))
 		sz = sizeof(msg) - 1;
@@ -1029,7 +1034,6 @@ static void run_update_post_hook(struct command *commands)
 {
 	struct command *cmd;
 	int argc;
-	const char **argv;
 	struct child_process proc = CHILD_PROCESS_INIT;
 	const char *hook;
 
@@ -1042,21 +1046,16 @@ static void run_update_post_hook(struct command *commands)
 	if (!argc || !hook)
 		return;
 
-	argv = xmalloc(sizeof(*argv) * (2 + argc));
-	argv[0] = hook;
-
-	for (argc = 1, cmd = commands; cmd; cmd = cmd->next) {
+	argv_array_push(&proc.args, hook);
+	for (cmd = commands; cmd; cmd = cmd->next) {
 		if (cmd->error_string || cmd->did_not_exist)
 			continue;
-		argv[argc] = xstrdup(cmd->ref_name);
-		argc++;
+		argv_array_push(&proc.args, cmd->ref_name);
 	}
-	argv[argc] = NULL;
 
 	proc.no_stdin = 1;
 	proc.stdout_to_stderr = 1;
 	proc.err = use_sideband ? -1 : 0;
-	proc.argv = argv;
 
 	if (!start_command(&proc)) {
 		if (use_sideband)
@@ -1071,8 +1070,11 @@ static void check_aliased_update(struct command *cmd, struct string_list *list)
 	const char *dst_name;
 	struct string_list_item *item;
 	struct command *dst_cmd;
-	unsigned char sha1[20];
-	char cmd_oldh[41], cmd_newh[41], dst_oldh[41], dst_newh[41];
+	unsigned char sha1[GIT_SHA1_RAWSZ];
+	char cmd_oldh[GIT_SHA1_HEXSZ + 1],
+	     cmd_newh[GIT_SHA1_HEXSZ + 1],
+	     dst_oldh[GIT_SHA1_HEXSZ + 1],
+	     dst_newh[GIT_SHA1_HEXSZ + 1];
 	int flag;
 
 	strbuf_addf(&buf, "%s%s", get_git_namespace(), cmd->ref_name);
@@ -1082,13 +1084,13 @@ static void check_aliased_update(struct command *cmd, struct string_list *list)
 	if (!(flag & REF_ISSYMREF))
 		return;
 
-	dst_name = strip_namespace(dst_name);
 	if (!dst_name) {
 		rp_error("refusing update to broken symref '%s'", cmd->ref_name);
 		cmd->skip_update = 1;
 		cmd->error_string = "broken symref";
 		return;
 	}
+	dst_name = strip_namespace(dst_name);
 
 	if ((item = string_list_lookup(list, dst_name)) == NULL)
 		return;
@@ -1103,10 +1105,10 @@ static void check_aliased_update(struct command *cmd, struct string_list *list)
 
 	dst_cmd->skip_update = 1;
 
-	strcpy(cmd_oldh, find_unique_abbrev(cmd->old_sha1, DEFAULT_ABBREV));
-	strcpy(cmd_newh, find_unique_abbrev(cmd->new_sha1, DEFAULT_ABBREV));
-	strcpy(dst_oldh, find_unique_abbrev(dst_cmd->old_sha1, DEFAULT_ABBREV));
-	strcpy(dst_newh, find_unique_abbrev(dst_cmd->new_sha1, DEFAULT_ABBREV));
+	find_unique_abbrev_r(cmd_oldh, cmd->old_sha1, DEFAULT_ABBREV);
+	find_unique_abbrev_r(cmd_newh, cmd->new_sha1, DEFAULT_ABBREV);
+	find_unique_abbrev_r(dst_oldh, dst_cmd->old_sha1, DEFAULT_ABBREV);
+	find_unique_abbrev_r(dst_newh, dst_cmd->new_sha1, DEFAULT_ABBREV);
 	rp_error("refusing inconsistent update between symref '%s' (%s..%s) and"
 		 " its target '%s' (%s..%s)",
 		 cmd->ref_name, cmd_oldh, cmd_newh,
@@ -1192,16 +1194,29 @@ static int iterate_receive_command_list(void *cb_data, unsigned char sha1[20])
 
 static void reject_updates_to_hidden(struct command *commands)
 {
+	struct strbuf refname_full = STRBUF_INIT;
+	size_t prefix_len;
 	struct command *cmd;
 
+	strbuf_addstr(&refname_full, get_git_namespace());
+	prefix_len = refname_full.len;
+
 	for (cmd = commands; cmd; cmd = cmd->next) {
-		if (cmd->error_string || !ref_is_hidden(cmd->ref_name))
+		if (cmd->error_string)
+			continue;
+
+		strbuf_setlen(&refname_full, prefix_len);
+		strbuf_addstr(&refname_full, cmd->ref_name);
+
+		if (!ref_is_hidden(cmd->ref_name, refname_full.buf))
 			continue;
 		if (is_null_sha1(cmd->new_sha1))
 			cmd->error_string = "deny deleting a hidden ref";
 		else
 			cmd->error_string = "deny updating a hidden ref";
 	}
+
+	strbuf_release(&refname_full);
 }
 
 static int should_process_cmd(struct command *cmd)
@@ -1360,7 +1375,7 @@ static struct command **queue_command(struct command **tail,
 
 	refname = line + 82;
 	reflen = linelen - 82;
-	cmd = xcalloc(1, sizeof(struct command) + reflen + 1);
+	cmd = xcalloc(1, st_add3(sizeof(struct command), reflen, 1));
 	hashcpy(cmd->old_sha1, old_sha1);
 	hashcpy(cmd->new_sha1, new_sha1);
 	memcpy(cmd->ref_name, refname, reflen);
@@ -1521,19 +1536,22 @@ static const char *unpack(int err_fd, struct shallow_info *si)
 		if (status)
 			return "unpack-objects abnormal exit";
 	} else {
-		int s;
-		char keep_arg[256];
-
-		s = sprintf(keep_arg, "--keep=receive-pack %"PRIuMAX" on ", (uintmax_t) getpid());
-		if (gethostname(keep_arg + s, sizeof(keep_arg) - s))
-			strcpy(keep_arg + s, "localhost");
+		char hostname[256];
 
 		argv_array_pushl(&child.args, "index-pack",
-				 "--stdin", hdr_arg, keep_arg, NULL);
+				 "--stdin", hdr_arg, NULL);
+
+		if (gethostname(hostname, sizeof(hostname)))
+			xsnprintf(hostname, sizeof(hostname), "localhost");
+		argv_array_pushf(&child.args,
+				 "--keep=receive-pack %"PRIuMAX" on %s",
+				 (uintmax_t)getpid(),
+				 hostname);
+
 		if (fsck_objects)
 			argv_array_pushf(&child.args, "--strict%s",
 				fsck_msg_types.buf);
-		if (fix_thin)
+		if (!reject_thin)
 			argv_array_push(&child.args, "--fix-thin");
 		child.out = -1;
 		child.err = err_fd;
@@ -1576,8 +1594,7 @@ static void prepare_shallow_update(struct command *commands,
 {
 	int i, j, k, bitmap_size = (si->ref->nr + 31) / 32;
 
-	si->used_shallow = xmalloc(sizeof(*si->used_shallow) *
-				   si->shallow->nr);
+	ALLOC_ARRAY(si->used_shallow, si->shallow->nr);
 	assign_shallow_commits_to_refs(si, si->used_shallow, NULL);
 
 	si->need_reachability_test =
@@ -1597,7 +1614,7 @@ static void prepare_shallow_update(struct command *commands,
 				continue;
 			si->need_reachability_test[i]++;
 			for (k = 0; k < 32; k++)
-				if (si->used_shallow[i][j] & (1 << k))
+				if (si->used_shallow[i][j] & (1U << k))
 					si->shallow_ref[j * 32 + k]++;
 		}
 
@@ -1643,7 +1660,7 @@ static void update_shallow_info(struct command *commands,
 		return;
 	}
 
-	ref_status = xmalloc(sizeof(*ref_status) * ref->nr);
+	ALLOC_ARRAY(ref_status, ref->nr);
 	assign_shallow_commits_to_refs(si, NULL, ref_status);
 	for (cmd = commands; cmd; cmd = cmd->next) {
 		if (is_null_sha1(cmd->new_sha1))
@@ -1693,45 +1710,29 @@ static int delete_only(struct command *commands)
 int cmd_receive_pack(int argc, const char **argv, const char *prefix)
 {
 	int advertise_refs = 0;
-	int i;
 	struct command *commands;
 	struct sha1_array shallow = SHA1_ARRAY_INIT;
 	struct sha1_array ref = SHA1_ARRAY_INIT;
 	struct shallow_info si;
 
+	struct option options[] = {
+		OPT__QUIET(&quiet, N_("quiet")),
+		OPT_HIDDEN_BOOL(0, "stateless-rpc", &stateless_rpc, NULL),
+		OPT_HIDDEN_BOOL(0, "advertise-refs", &advertise_refs, NULL),
+		OPT_HIDDEN_BOOL(0, "reject-thin-pack-for-testing", &reject_thin, NULL),
+		OPT_END()
+	};
+
 	packet_trace_identity("receive-pack");
 
-	argv++;
-	for (i = 1; i < argc; i++) {
-		const char *arg = *argv++;
+	argc = parse_options(argc, argv, prefix, options, receive_pack_usage, 0);
 
-		if (*arg == '-') {
-			if (!strcmp(arg, "--quiet")) {
-				quiet = 1;
-				continue;
-			}
+	if (argc > 1)
+		usage_msg_opt(_("Too many arguments."), receive_pack_usage, options);
+	if (argc == 0)
+		usage_msg_opt(_("You must specify a directory."), receive_pack_usage, options);
 
-			if (!strcmp(arg, "--advertise-refs")) {
-				advertise_refs = 1;
-				continue;
-			}
-			if (!strcmp(arg, "--stateless-rpc")) {
-				stateless_rpc = 1;
-				continue;
-			}
-			if (!strcmp(arg, "--reject-thin-pack-for-testing")) {
-				fix_thin = 0;
-				continue;
-			}
-
-			usage(receive_pack_usage);
-		}
-		if (service_dir)
-			usage(receive_pack_usage);
-		service_dir = arg;
-	}
-	if (!service_dir)
-		usage(receive_pack_usage);
+	service_dir = argv[0];
 
 	setup_path();
 
@@ -1774,8 +1775,20 @@ int cmd_receive_pack(int argc, const char **argv, const char *prefix)
 			const char *argv_gc_auto[] = {
 				"gc", "--auto", "--quiet", NULL,
 			};
-			int opt = RUN_GIT_CMD | RUN_COMMAND_STDOUT_TO_STDERR;
-			run_command_v_opt(argv_gc_auto, opt);
+			struct child_process proc = CHILD_PROCESS_INIT;
+
+			proc.no_stdin = 1;
+			proc.stdout_to_stderr = 1;
+			proc.err = use_sideband ? -1 : 0;
+			proc.git_cmd = 1;
+			proc.argv = argv_gc_auto;
+
+			close_all_packs();
+			if (!start_command(&proc)) {
+				if (use_sideband)
+					copy_to_sideband(proc.err, -1, NULL);
+				finish_command(&proc);
+			}
 		}
 		if (auto_update_server_info)
 			update_server_info(0);

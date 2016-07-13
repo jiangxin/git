@@ -31,14 +31,14 @@ void init_grep_defaults(void)
 	opt->max_depth = -1;
 	opt->pattern_type_option = GREP_PATTERN_TYPE_UNSPECIFIED;
 	opt->extended_regexp_option = 0;
-	strcpy(opt->color_context, "");
-	strcpy(opt->color_filename, "");
-	strcpy(opt->color_function, "");
-	strcpy(opt->color_lineno, "");
-	strcpy(opt->color_match_context, GIT_COLOR_BOLD_RED);
-	strcpy(opt->color_match_selected, GIT_COLOR_BOLD_RED);
-	strcpy(opt->color_selected, "");
-	strcpy(opt->color_sep, GIT_COLOR_CYAN);
+	color_set(opt->color_context, "");
+	color_set(opt->color_filename, "");
+	color_set(opt->color_function, "");
+	color_set(opt->color_lineno, "");
+	color_set(opt->color_match_context, GIT_COLOR_BOLD_RED);
+	color_set(opt->color_match_selected, GIT_COLOR_BOLD_RED);
+	color_set(opt->color_selected, "");
+	color_set(opt->color_sep, GIT_COLOR_CYAN);
 	opt->color = -1;
 }
 
@@ -151,14 +151,14 @@ void grep_init(struct grep_opt *opt, const char *prefix)
 	opt->regflags = def->regflags;
 	opt->relative = def->relative;
 
-	strcpy(opt->color_context, def->color_context);
-	strcpy(opt->color_filename, def->color_filename);
-	strcpy(opt->color_function, def->color_function);
-	strcpy(opt->color_lineno, def->color_lineno);
-	strcpy(opt->color_match_context, def->color_match_context);
-	strcpy(opt->color_match_selected, def->color_match_selected);
-	strcpy(opt->color_selected, def->color_selected);
-	strcpy(opt->color_sep, def->color_sep);
+	color_set(opt->color_context, def->color_context);
+	color_set(opt->color_filename, def->color_filename);
+	color_set(opt->color_function, def->color_function);
+	color_set(opt->color_lineno, def->color_lineno);
+	color_set(opt->color_match_context, def->color_match_context);
+	color_set(opt->color_match_selected, def->color_match_selected);
+	color_set(opt->color_selected, def->color_selected);
+	color_set(opt->color_sep, def->color_sep);
 }
 
 void grep_commit_pattern_type(enum grep_pattern_type pattern_type, struct grep_opt *opt)
@@ -306,9 +306,9 @@ static NORETURN void compile_regexp_failed(const struct grep_pat *p,
 	char where[1024];
 
 	if (p->no)
-		sprintf(where, "In '%s' at %d, ", p->origin, p->no);
+		xsnprintf(where, sizeof(where), "In '%s' at %d, ", p->origin, p->no);
 	else if (p->origin)
-		sprintf(where, "%s, ", p->origin);
+		xsnprintf(where, sizeof(where), "%s, ", p->origin);
 	else
 		where[0] = 0;
 
@@ -1396,9 +1396,17 @@ static int fill_textconv_grep(struct userdiff_driver *driver,
 	return 0;
 }
 
+static int is_empty_line(const char *bol, const char *eol)
+{
+	while (bol < eol && isspace(*bol))
+		bol++;
+	return bol == eol;
+}
+
 static int grep_source_1(struct grep_opt *opt, struct grep_source *gs, int collect_hits)
 {
 	char *bol;
+	char *peek_bol = NULL;
 	unsigned long left;
 	unsigned lno = 1;
 	unsigned last_hit = 0;
@@ -1543,8 +1551,24 @@ static int grep_source_1(struct grep_opt *opt, struct grep_source *gs, int colle
 				show_function = 1;
 			goto next_line;
 		}
-		if (show_function && match_funcname(opt, gs, bol, eol))
-			show_function = 0;
+		if (show_function && (!peek_bol || peek_bol < bol)) {
+			unsigned long peek_left = left;
+			char *peek_eol = eol;
+
+			/*
+			 * Trailing empty lines are not interesting.
+			 * Peek past them to see if they belong to the
+			 * body of the current function.
+			 */
+			peek_bol = bol;
+			while (is_empty_line(peek_bol, peek_eol)) {
+				peek_bol = peek_eol + 1;
+				peek_eol = end_of_line(peek_bol, &peek_left);
+			}
+
+			if (match_funcname(opt, gs, peek_bol, peek_eol))
+				show_function = 0;
+		}
 		if (show_function ||
 		    (last_hit && lno <= last_hit + opt->post_context)) {
 			/* If the last hit is within the post context,
@@ -1732,7 +1756,7 @@ static int grep_source_load_file(struct grep_source *gs)
 	if (lstat(filename, &st) < 0) {
 	err_ret:
 		if (errno != ENOENT)
-			error(_("'%s': %s"), filename, strerror(errno));
+			error_errno(_("failed to stat '%s'"), filename);
 		return -1;
 	}
 	if (!S_ISREG(st.st_mode))
@@ -1741,15 +1765,14 @@ static int grep_source_load_file(struct grep_source *gs)
 	i = open(filename, O_RDONLY);
 	if (i < 0)
 		goto err_ret;
-	data = xmalloc(size + 1);
+	data = xmallocz(size);
 	if (st.st_size != read_in_full(i, data, size)) {
-		error(_("'%s': short read %s"), filename, strerror(errno));
+		error_errno(_("'%s': short read"), filename);
 		close(i);
 		free(data);
 		return -1;
 	}
 	close(i);
-	data[size] = 0;
 
 	gs->buf = data;
 	gs->size = size;

@@ -245,8 +245,8 @@ void strbuf_add_commented_lines(struct strbuf *out, const char *buf, size_t size
 	static char prefix2[2];
 
 	if (prefix1[0] != comment_line_char) {
-		sprintf(prefix1, "%c ", comment_line_char);
-		sprintf(prefix2, "%c", comment_line_char);
+		xsnprintf(prefix1, sizeof(prefix1), "%c ", comment_line_char);
+		xsnprintf(prefix2, sizeof(prefix2), "%c", comment_line_char);
 	}
 	add_lines(out, prefix1, prefix2, buf, size);
 }
@@ -384,6 +384,23 @@ ssize_t strbuf_read(struct strbuf *sb, int fd, size_t hint)
 	return sb->len - oldlen;
 }
 
+ssize_t strbuf_read_once(struct strbuf *sb, int fd, size_t hint)
+{
+	ssize_t cnt;
+
+	strbuf_grow(sb, hint ? hint : 8192);
+	cnt = xread(fd, sb->buf + sb->len, sb->alloc - sb->len - 1);
+	if (cnt > 0)
+		strbuf_setlen(sb, sb->len + cnt);
+	return cnt;
+}
+
+ssize_t strbuf_write(struct strbuf *sb, FILE *f)
+{
+	return sb->len ? fwrite(sb->buf, 1, sb->len, f) : 0;
+}
+
+
 #define STRBUF_MAXLINK (2*PATH_MAX)
 
 int strbuf_readlink(struct strbuf *sb, const char *path, size_t hint)
@@ -470,9 +487,15 @@ int strbuf_getwholeline(struct strbuf *sb, FILE *fp, int term)
 	if (errno == ENOMEM)
 		die("Out of memory, getdelim failed");
 
-	/* Restore slopbuf that we moved out of the way before */
+	/*
+	 * Restore strbuf invariants; if getdelim left us with a NULL pointer,
+	 * we can just re-init, but otherwise we should make sure that our
+	 * length is empty, and that the result is NUL-terminated.
+	 */
 	if (!sb->buf)
 		strbuf_init(sb, 0);
+	else
+		strbuf_reset(sb);
 	return EOF;
 }
 #else
@@ -501,13 +524,35 @@ int strbuf_getwholeline(struct strbuf *sb, FILE *fp, int term)
 }
 #endif
 
-int strbuf_getline(struct strbuf *sb, FILE *fp, int term)
+static int strbuf_getdelim(struct strbuf *sb, FILE *fp, int term)
 {
 	if (strbuf_getwholeline(sb, fp, term))
 		return EOF;
-	if (sb->buf[sb->len-1] == term)
-		strbuf_setlen(sb, sb->len-1);
+	if (sb->buf[sb->len - 1] == term)
+		strbuf_setlen(sb, sb->len - 1);
 	return 0;
+}
+
+int strbuf_getline(struct strbuf *sb, FILE *fp)
+{
+	if (strbuf_getwholeline(sb, fp, '\n'))
+		return EOF;
+	if (sb->buf[sb->len - 1] == '\n') {
+		strbuf_setlen(sb, sb->len - 1);
+		if (sb->len && sb->buf[sb->len - 1] == '\r')
+			strbuf_setlen(sb, sb->len - 1);
+	}
+	return 0;
+}
+
+int strbuf_getline_lf(struct strbuf *sb, FILE *fp)
+{
+	return strbuf_getdelim(sb, fp, '\n');
+}
+
+int strbuf_getline_nul(struct strbuf *sb, FILE *fp)
+{
+	return strbuf_getdelim(sb, fp, '\0');
 }
 
 int strbuf_getwholeline_fd(struct strbuf *sb, int fd, int term)
@@ -685,7 +730,7 @@ char *xstrdup_tolower(const char *string)
 	size_t len, i;
 
 	len = strlen(string);
-	result = xmalloc(len + 1);
+	result = xmallocz(len);
 	for (i = 0; i < len; i++)
 		result[i] = tolower(string[i]);
 	result[i] = '\0';
@@ -742,4 +787,79 @@ void strbuf_addftime(struct strbuf *sb, const char *fmt, const struct tm *tm)
 		len--; /* drop munged space */
 	}
 	strbuf_setlen(sb, sb->len + len);
+}
+
+void strbuf_add_unique_abbrev(struct strbuf *sb, const unsigned char *sha1,
+			      int abbrev_len)
+{
+	int r;
+	strbuf_grow(sb, GIT_SHA1_HEXSZ + 1);
+	r = find_unique_abbrev_r(sb->buf + sb->len, sha1, abbrev_len);
+	strbuf_setlen(sb, sb->len + r);
+}
+
+/*
+ * Returns the length of a line, without trailing spaces.
+ *
+ * If the line ends with newline, it will be removed too.
+ */
+static size_t cleanup(char *line, size_t len)
+{
+	while (len) {
+		unsigned char c = line[len - 1];
+		if (!isspace(c))
+			break;
+		len--;
+	}
+
+	return len;
+}
+
+/*
+ * Remove empty lines from the beginning and end
+ * and also trailing spaces from every line.
+ *
+ * Turn multiple consecutive empty lines between paragraphs
+ * into just one empty line.
+ *
+ * If the input has only empty lines and spaces,
+ * no output will be produced.
+ *
+ * If last line does not have a newline at the end, one is added.
+ *
+ * Enable skip_comments to skip every line starting with comment
+ * character.
+ */
+void strbuf_stripspace(struct strbuf *sb, int skip_comments)
+{
+	int empties = 0;
+	size_t i, j, len, newlen;
+	char *eol;
+
+	/* We may have to add a newline. */
+	strbuf_grow(sb, 1);
+
+	for (i = j = 0; i < sb->len; i += len, j += newlen) {
+		eol = memchr(sb->buf + i, '\n', sb->len - i);
+		len = eol ? eol - (sb->buf + i) + 1 : sb->len - i;
+
+		if (skip_comments && len && sb->buf[i] == comment_line_char) {
+			newlen = 0;
+			continue;
+		}
+		newlen = cleanup(sb->buf + i, len);
+
+		/* Not just an empty line? */
+		if (newlen) {
+			if (empties > 0 && j > 0)
+				sb->buf[j++] = '\n';
+			empties = 0;
+			memmove(sb->buf + j, sb->buf + i, newlen);
+			sb->buf[newlen + j++] = '\n';
+		} else {
+			empties++;
+		}
+	}
+
+	strbuf_setlen(sb, j);
 }

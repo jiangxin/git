@@ -79,11 +79,9 @@ static struct cache_tree_sub *find_subtree(struct cache_tree *it,
 	ALLOC_GROW(it->down, it->subtree_nr + 1, it->subtree_alloc);
 	it->subtree_nr++;
 
-	down = xmalloc(sizeof(*down) + pathlen + 1);
+	FLEX_ALLOC_MEM(down, name, path, pathlen);
 	down->cache_tree = NULL;
 	down->namelen = pathlen;
-	memcpy(down->name, path, pathlen);
-	down->name[pathlen] = 0;
 
 	if (pos < it->subtree_nr)
 		memmove(it->down + pos + 1,
@@ -377,7 +375,7 @@ static int update_one(struct cache_tree *it,
 		 * they are not part of generated trees. Invalidate up
 		 * to root to force cache-tree users to read elsewhere.
 		 */
-		if (ce->ce_flags & CE_INTENT_TO_ADD) {
+		if (ce_intent_to_add(ce)) {
 			to_invalidate = 1;
 			continue;
 		}
@@ -657,7 +655,7 @@ static void prime_cache_tree_rec(struct cache_tree *it, struct tree *tree)
 	struct name_entry entry;
 	int cnt;
 
-	hashcpy(it->sha1, tree->object.sha1);
+	hashcpy(it->sha1, tree->object.oid.hash);
 	init_tree_desc(&desc, tree->buffer, tree->size);
 	cnt = 0;
 	while (tree_entry(&desc, &entry)) {
@@ -665,7 +663,7 @@ static void prime_cache_tree_rec(struct cache_tree *it, struct tree *tree)
 			cnt++;
 		else {
 			struct cache_tree_sub *sub;
-			struct tree *subtree = lookup_tree(entry.sha1);
+			struct tree *subtree = lookup_tree(entry.oid->hash);
 			if (!subtree->object.parsed)
 				parse_tree(subtree);
 			sub = cache_tree_sub(it, entry.path);
@@ -712,7 +710,7 @@ int cache_tree_matches_traversal(struct cache_tree *root,
 
 	it = find_cache_tree_from_traversal(root, info);
 	it = cache_tree_find(it, ent->path);
-	if (it && it->entry_count > 0 && !hashcmp(ent->sha1, it->sha1))
+	if (it && it->entry_count > 0 && !hashcmp(ent->oid->hash, it->sha1))
 		return it->entry_count;
 	return 0;
 }

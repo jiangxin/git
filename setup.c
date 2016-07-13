@@ -6,6 +6,9 @@ static int inside_git_dir = -1;
 static int inside_work_tree = -1;
 static int work_tree_config_is_bogus;
 
+static struct startup_info the_startup_info;
+struct startup_info *startup_info = &the_startup_info;
+
 /*
  * The input parameter must contain an absolute path, and it must already be
  * normalized.
@@ -87,7 +90,7 @@ char *prefix_path_gently(const char *prefix, int len,
 	const char *orig = path;
 	char *sanitized;
 	if (is_absolute_path(orig)) {
-		sanitized = xmalloc(strlen(path) + 1);
+		sanitized = xmallocz(strlen(path));
 		if (remaining_prefix)
 			*remaining_prefix = 0;
 		if (normalize_path_copy_len(sanitized, path, remaining_prefix)) {
@@ -99,10 +102,7 @@ char *prefix_path_gently(const char *prefix, int len,
 			return NULL;
 		}
 	} else {
-		sanitized = xmalloc(len + strlen(path) + 1);
-		if (len)
-			memcpy(sanitized, prefix, len);
-		strcpy(sanitized + len, path);
+		sanitized = xstrfmt("%.*s%s", len, len ? prefix : "", path);
 		if (remaining_prefix)
 			*remaining_prefix = len;
 		if (normalize_path_copy_len(sanitized, sanitized, remaining_prefix)) {
@@ -141,9 +141,7 @@ int check_filename(const char *prefix, const char *arg)
 		if (arg[2] == '\0') /* ":/" is root dir, always exists */
 			return 1;
 		name = arg + 2;
-	} else if (!no_wildcard(arg))
-		return 1;
-	else if (prefix)
+	} else if (prefix)
 		name = prefix_filename(prefix, strlen(prefix), arg);
 	else
 		name = arg;
@@ -204,7 +202,7 @@ void verify_filename(const char *prefix,
 {
 	if (*arg == '-')
 		die("bad flag '%s' used after filename", arg);
-	if (check_filename(prefix, arg))
+	if (check_filename(prefix, arg) || !no_wildcard(arg))
 		return;
 	die_verify_filename(prefix, arg, diagnose_misspelt_rev);
 }
@@ -229,14 +227,21 @@ void verify_non_filename(const char *prefix, const char *arg)
 
 int get_common_dir(struct strbuf *sb, const char *gitdir)
 {
+	const char *git_env_common_dir = getenv(GIT_COMMON_DIR_ENVIRONMENT);
+	if (git_env_common_dir) {
+		strbuf_addstr(sb, git_env_common_dir);
+		return 1;
+	} else {
+		return get_common_dir_noenv(sb, gitdir);
+	}
+}
+
+int get_common_dir_noenv(struct strbuf *sb, const char *gitdir)
+{
 	struct strbuf data = STRBUF_INIT;
 	struct strbuf path = STRBUF_INIT;
-	const char *git_common_dir = getenv(GIT_COMMON_DIR_ENVIRONMENT);
 	int ret = 0;
-	if (git_common_dir) {
-		strbuf_addstr(sb, git_common_dir);
-		return 1;
-	}
+
 	strbuf_addf(&path, "%s/commondir", gitdir);
 	if (file_exists(path.buf)) {
 		if (strbuf_read_file(&data, path.buf, 0) <= 0)
@@ -307,6 +312,23 @@ done:
 	return ret;
 }
 
+int is_nonbare_repository_dir(struct strbuf *path)
+{
+	int ret = 0;
+	int gitfile_error;
+	size_t orig_path_len = path->len;
+	assert(orig_path_len != 0);
+	strbuf_complete(path, '/');
+	strbuf_addstr(path, ".git");
+	if (read_gitfile_gently(path->buf, &gitfile_error) || is_git_directory(path->buf))
+		ret = 1;
+	if (gitfile_error == READ_GITFILE_ERR_OPEN_FAILED ||
+	    gitfile_error == READ_GITFILE_ERR_READ_FAILED)
+		ret = 1;
+	strbuf_setlen(path, orig_path_len);
+	return ret;
+}
+
 int is_inside_git_dir(void)
 {
 	if (inside_git_dir < 0)
@@ -350,62 +372,116 @@ void setup_work_tree(void)
 	initialized = 1;
 }
 
-static int check_repo_format(const char *var, const char *value, void *cb)
+static int check_repo_format(const char *var, const char *value, void *vdata)
 {
+	struct repository_format *data = vdata;
+	const char *ext;
+
 	if (strcmp(var, "core.repositoryformatversion") == 0)
-		repository_format_version = git_config_int(var, value);
-	else if (strcmp(var, "core.sharedrepository") == 0)
-		shared_repository = git_config_perm(var, value);
+		data->version = git_config_int(var, value);
+	else if (skip_prefix(var, "extensions.", &ext)) {
+		/*
+		 * record any known extensions here; otherwise,
+		 * we fall through to recording it as unknown, and
+		 * check_repository_format will complain
+		 */
+		if (!strcmp(ext, "noop"))
+			;
+		else if (!strcmp(ext, "preciousobjects"))
+			data->precious_objects = git_config_bool(var, value);
+		else
+			string_list_append(&data->unknown_extensions, ext);
+	} else if (strcmp(var, "core.bare") == 0) {
+		data->is_bare = git_config_bool(var, value);
+	} else if (strcmp(var, "core.worktree") == 0) {
+		if (!value)
+			return config_error_nonbool(var);
+		data->work_tree = xstrdup(value);
+	}
 	return 0;
 }
 
 static int check_repository_format_gently(const char *gitdir, int *nongit_ok)
 {
 	struct strbuf sb = STRBUF_INIT;
-	const char *repo_config;
-	config_fn_t fn;
-	int ret = 0;
+	struct strbuf err = STRBUF_INIT;
+	struct repository_format candidate;
+	int has_common;
 
-	if (get_common_dir(&sb, gitdir))
-		fn = check_repo_format;
-	else
-		fn = check_repository_format_version;
+	has_common = get_common_dir(&sb, gitdir);
 	strbuf_addstr(&sb, "/config");
-	repo_config = sb.buf;
+	read_repository_format(&candidate, sb.buf);
+	strbuf_release(&sb);
 
 	/*
-	 * git_config() can't be used here because it calls git_pathdup()
-	 * to get $GIT_CONFIG/config. That call will make setup_git_env()
-	 * set git_dir to ".git".
-	 *
-	 * We are in gitdir setup, no git dir has been found useable yet.
-	 * Use a gentler version of git_config() to check if this repo
-	 * is a good one.
+	 * For historical use of check_repository_format() in git-init,
+	 * we treat a missing config as a silent "ok", even when nongit_ok
+	 * is unset.
 	 */
-	git_config_early(fn, NULL, repo_config);
-	if (GIT_REPO_VERSION < repository_format_version) {
-		if (!nongit_ok)
-			die ("Expected git repo version <= %d, found %d",
-			     GIT_REPO_VERSION, repository_format_version);
-		warning("Expected git repo version <= %d, found %d",
-			GIT_REPO_VERSION, repository_format_version);
-		warning("Please upgrade Git");
-		*nongit_ok = -1;
-		ret = -1;
+	if (candidate.version < 0)
+		return 0;
+
+	if (verify_repository_format(&candidate, &err) < 0) {
+		if (nongit_ok) {
+			warning("%s", err.buf);
+			strbuf_release(&err);
+			*nongit_ok = -1;
+			return -1;
+		}
+		die("%s", err.buf);
 	}
-	strbuf_release(&sb);
-	return ret;
+
+	repository_format_precious_objects = candidate.precious_objects;
+	string_list_clear(&candidate.unknown_extensions, 0);
+	if (!has_common) {
+		if (candidate.is_bare != -1) {
+			is_bare_repository_cfg = candidate.is_bare;
+			if (is_bare_repository_cfg == 1)
+				inside_work_tree = -1;
+		}
+		if (candidate.work_tree) {
+			free(git_work_tree_cfg);
+			git_work_tree_cfg = candidate.work_tree;
+			inside_work_tree = -1;
+		}
+	} else {
+		free(candidate.work_tree);
+	}
+
+	return 0;
 }
 
-static void update_linked_gitdir(const char *gitfile, const char *gitdir)
+int read_repository_format(struct repository_format *format, const char *path)
 {
-	struct strbuf path = STRBUF_INIT;
-	struct stat st;
+	memset(format, 0, sizeof(*format));
+	format->version = -1;
+	format->is_bare = -1;
+	string_list_init(&format->unknown_extensions, 1);
+	git_config_from_file(check_repo_format, path, format);
+	return format->version;
+}
 
-	strbuf_addf(&path, "%s/gitdir", gitdir);
-	if (stat(path.buf, &st) || st.st_mtime + 24 * 3600 < time(NULL))
-		write_file(path.buf, "%s", gitfile);
-	strbuf_release(&path);
+int verify_repository_format(const struct repository_format *format,
+			     struct strbuf *err)
+{
+	if (GIT_REPO_VERSION_READ < format->version) {
+		strbuf_addf(err, _("Expected git repo version <= %d, found %d"),
+			    GIT_REPO_VERSION_READ, format->version);
+		return -1;
+	}
+
+	if (format->version >= 1 && format->unknown_extensions.nr) {
+		int i;
+
+		strbuf_addstr(err, _("unknown repository extensions found:"));
+
+		for (i = 0; i < format->unknown_extensions.nr; i++)
+			strbuf_addf(err, "\n\t%s",
+				    format->unknown_extensions.items[i].string);
+		return -1;
+	}
+
+	return 0;
 }
 
 /*
@@ -445,14 +521,13 @@ const char *read_gitfile_gently(const char *path, int *return_error_code)
 		error_code = READ_GITFILE_ERR_OPEN_FAILED;
 		goto cleanup_return;
 	}
-	buf = xmalloc(st.st_size + 1);
+	buf = xmallocz(st.st_size);
 	len = read_in_full(fd, buf, st.st_size);
 	close(fd);
 	if (len != st.st_size) {
 		error_code = READ_GITFILE_ERR_READ_FAILED;
 		goto cleanup_return;
 	}
-	buf[len] = '\0';
 	if (!starts_with(buf, "gitdir: ")) {
 		error_code = READ_GITFILE_ERR_INVALID_FORMAT;
 		goto cleanup_return;
@@ -468,11 +543,8 @@ const char *read_gitfile_gently(const char *path, int *return_error_code)
 
 	if (!is_absolute_path(dir) && (slash = strrchr(path, '/'))) {
 		size_t pathlen = slash+1 - path;
-		size_t dirlen = pathlen + len - 8;
-		dir = xmalloc(dirlen + 1);
-		strncpy(dir, path, pathlen);
-		strncpy(dir + pathlen, buf + 8, len - 8);
-		dir[dirlen] = '\0';
+		dir = xstrfmt("%.*s%.*s", (int)pathlen, path,
+			      (int)(len - 8), buf + 8);
 		free(buf);
 		buf = dir;
 	}
@@ -480,7 +552,6 @@ const char *read_gitfile_gently(const char *path, int *return_error_code)
 		error_code = READ_GITFILE_ERR_NOT_A_REPO;
 		goto cleanup_return;
 	}
-	update_linked_gitdir(path, dir);
 	path = real_path(dir);
 
 cleanup_return:
@@ -869,10 +940,9 @@ const char *setup_git_directory_gently(int *nongit_ok)
 	else
 		setenv(GIT_PREFIX_ENVIRONMENT, "", 1);
 
-	if (startup_info) {
-		startup_info->have_repository = !nongit_ok || !*nongit_ok;
-		startup_info->prefix = prefix;
-	}
+	startup_info->have_repository = !nongit_ok || !*nongit_ok;
+	startup_info->prefix = prefix;
+
 	return prefix;
 }
 
@@ -927,28 +997,10 @@ int git_config_perm(const char *var, const char *value)
 	return -(i & 0666);
 }
 
-int check_repository_format_version(const char *var, const char *value, void *cb)
+void check_repository_format(void)
 {
-	int ret = check_repo_format(var, value, cb);
-	if (ret)
-		return ret;
-	if (strcmp(var, "core.bare") == 0) {
-		is_bare_repository_cfg = git_config_bool(var, value);
-		if (is_bare_repository_cfg == 1)
-			inside_work_tree = -1;
-	} else if (strcmp(var, "core.worktree") == 0) {
-		if (!value)
-			return config_error_nonbool(var);
-		free(git_work_tree_cfg);
-		git_work_tree_cfg = xstrdup(value);
-		inside_work_tree = -1;
-	}
-	return 0;
-}
-
-int check_repository_format(void)
-{
-	return check_repository_format_gently(get_git_dir(), NULL);
+	check_repository_format_gently(get_git_dir(), NULL);
+	startup_info->have_repository = 1;
 }
 
 /*

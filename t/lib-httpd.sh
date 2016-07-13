@@ -98,8 +98,8 @@ then
 	test_skip_or_die $GIT_TEST_HTTPD "no web server found at '$LIB_HTTPD_PATH'"
 fi
 
-HTTPD_VERSION=`$LIB_HTTPD_PATH -v | \
-	sed -n 's/^Server version: Apache\/\([0-9]*\)\..*$/\1/p; q'`
+HTTPD_VERSION=$($LIB_HTTPD_PATH -v | \
+	sed -n 's/^Server version: Apache\/\([0-9]*\)\..*$/\1/p; q')
 
 if test -n "$HTTPD_VERSION"
 then
@@ -180,6 +180,7 @@ start_httpd() {
 	if test $? -ne 0
 	then
 		trap 'die' EXIT
+		cat "$HTTPD_ROOT_PATH"/error.log >&4 2>/dev/null
 		test_skip_or_die $GIT_TEST_HTTPD "web server setup failed"
 	fi
 }

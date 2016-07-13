@@ -65,8 +65,7 @@ static int populate_from_stdin(struct diff_filespec *s)
 	size_t size = 0;
 
 	if (strbuf_read(&buf, 0, 0) < 0)
-		return error("error while reading from stdin %s",
-				     strerror(errno));
+		return error_errno("error while reading from stdin");
 
 	s->should_munmap = 0;
 	s->data = strbuf_detach(&buf, &size);
@@ -136,15 +135,13 @@ static int queue_diff(struct diff_options *o,
 
 		if (name1) {
 			strbuf_addstr(&buffer1, name1);
-			if (buffer1.len && buffer1.buf[buffer1.len - 1] != '/')
-				strbuf_addch(&buffer1, '/');
+			strbuf_complete(&buffer1, '/');
 			len1 = buffer1.len;
 		}
 
 		if (name2) {
 			strbuf_addstr(&buffer2, name2);
-			if (buffer2.len && buffer2.buf[buffer2.len - 1] != '/')
-				strbuf_addch(&buffer2, '/');
+			strbuf_complete(&buffer2, '/');
 			len2 = buffer2.len;
 		}
 
@@ -239,12 +236,12 @@ static void fixup_paths(const char **path, struct strbuf *replacement)
 }
 
 void diff_no_index(struct rev_info *revs,
-		   int argc, const char **argv,
-		   const char *prefix)
+		   int argc, const char **argv)
 {
 	int i, prefixlen;
 	const char *paths[2];
 	struct strbuf replacement = STRBUF_INIT;
+	const char *prefix = revs->prefix;
 
 	diff_setup(&revs->diffopt);
 	for (i = 1; i < argc - 2; ) {
@@ -254,7 +251,8 @@ void diff_no_index(struct rev_info *revs,
 		else if (!strcmp(argv[i], "--"))
 			i++;
 		else {
-			j = diff_opt_parse(&revs->diffopt, argv + i, argc - i);
+			j = diff_opt_parse(&revs->diffopt, argv + i, argc - i,
+					   revs->prefix);
 			if (j <= 0)
 				die("invalid diff option/value: %s", argv[i]);
 			i += j;

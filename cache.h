@@ -9,13 +9,32 @@
 #include "convert.h"
 #include "trace.h"
 #include "string-list.h"
+#include "pack-revindex.h"
 
 #include SHA1_HEADER
-#ifndef git_SHA_CTX
-#define git_SHA_CTX	SHA_CTX
-#define git_SHA1_Init	SHA1_Init
-#define git_SHA1_Update	SHA1_Update
-#define git_SHA1_Final	SHA1_Final
+#ifndef platform_SHA_CTX
+/*
+ * platform's underlying implementation of SHA-1; could be OpenSSL,
+ * blk_SHA, Apple CommonCrypto, etc...  Note that including
+ * SHA1_HEADER may have already defined platform_SHA_CTX for our
+ * own implementations like block-sha1 and ppc-sha1, so we list
+ * the default for OpenSSL compatible SHA-1 implementations here.
+ */
+#define platform_SHA_CTX	SHA_CTX
+#define platform_SHA1_Init	SHA1_Init
+#define platform_SHA1_Update	SHA1_Update
+#define platform_SHA1_Final    	SHA1_Final
+#endif
+
+#define git_SHA_CTX		platform_SHA_CTX
+#define git_SHA1_Init		platform_SHA1_Init
+#define git_SHA1_Update		platform_SHA1_Update
+#define git_SHA1_Final		platform_SHA1_Final
+
+#ifdef SHA1_MAX_BLOCK_SIZE
+#include "compat/sha1-chunked.h"
+#undef git_SHA1_Update
+#define git_SHA1_Update		git_SHA1_Update_Chunked
 #endif
 
 #include <zlib.h>
@@ -196,7 +215,7 @@ struct cache_entry {
 #define CE_INTENT_TO_ADD     (1 << 29)
 #define CE_SKIP_WORKTREE     (1 << 30)
 /* CE_EXTENDED2 is for future extension */
-#define CE_EXTENDED2         (1 << 31)
+#define CE_EXTENDED2         (1U << 31)
 
 #define CE_EXTENDED_FLAGS (CE_INTENT_TO_ADD | CE_SKIP_WORKTREE)
 
@@ -210,7 +229,9 @@ struct cache_entry {
 #error "CE_EXTENDED_FLAGS out of range"
 #endif
 
+/* Forward structure decls */
 struct pathspec;
+struct child_process;
 
 /*
  * Copy the sha1 and stat state of a cache entry from one to
@@ -241,6 +262,7 @@ static inline unsigned create_ce_flags(unsigned stage)
 #define ce_uptodate(ce) ((ce)->ce_flags & CE_UPTODATE)
 #define ce_skip_worktree(ce) ((ce)->ce_flags & CE_SKIP_WORKTREE)
 #define ce_mark_uptodate(ce) ((ce)->ce_flags |= CE_UPTODATE)
+#define ce_intent_to_add(ce) ((ce)->ce_flags & CE_INTENT_TO_ADD)
 
 #define ce_permissions(mode) (((mode) & 0100) ? 0755 : 0644)
 static inline unsigned int create_ce_mode(unsigned int mode)
@@ -345,8 +367,8 @@ extern void free_name_hash(struct index_state *istate);
 #define rename_cache_entry_at(pos, new_name) rename_index_entry_at(&the_index, (pos), (new_name))
 #define remove_cache_entry_at(pos) remove_index_entry_at(&the_index, (pos))
 #define remove_file_from_cache(path) remove_file_from_index(&the_index, (path))
-#define add_to_cache(path, st, flags) add_to_index(&the_index, (path), (st), (flags))
-#define add_file_to_cache(path, flags) add_file_to_index(&the_index, (path), (flags))
+#define add_to_cache(path, st, flags) add_to_index(&the_index, (path), (st), (flags), 0)
+#define add_file_to_cache(path, flags) add_file_to_index(&the_index, (path), (flags), 0)
 #define refresh_cache(flags) refresh_index(&the_index, (flags), NULL, NULL, NULL)
 #define ce_match_stat(ce, st, options) ie_match_stat(&the_index, (ce), (st), (options))
 #define ce_modified(ce, st, options) ie_modified(&the_index, (ce), (st), (options))
@@ -438,15 +460,34 @@ extern char *git_work_tree_cfg;
 extern int is_inside_work_tree(void);
 extern const char *get_git_dir(void);
 extern const char *get_git_common_dir(void);
-extern int is_git_directory(const char *path);
 extern char *get_object_directory(void);
 extern char *get_index_file(void);
 extern char *get_graft_file(void);
 extern int set_git_dir(const char *path);
+extern int get_common_dir_noenv(struct strbuf *sb, const char *gitdir);
 extern int get_common_dir(struct strbuf *sb, const char *gitdir);
 extern const char *get_git_namespace(void);
 extern const char *strip_namespace(const char *namespaced_ref);
 extern const char *get_git_work_tree(void);
+
+/*
+ * Return true if the given path is a git directory; note that this _just_
+ * looks at the directory itself. If you want to know whether "foo/.git"
+ * is a repository, you must feed that path, not just "foo".
+ */
+extern int is_git_directory(const char *path);
+
+/*
+ * Return 1 if the given path is the root of a git repository or
+ * submodule, else 0. Will not return 1 for bare repositories with the
+ * exception of creating a bare repository in "foo/.git" and calling
+ * is_git_repository("foo").
+ *
+ * If we run into read errors, we err on the side of saying "yes, it is",
+ * as we usually consider sub-repos precious, and would prefer to err on the
+ * side of not disrupting or deleting them.
+ */
+extern int is_nonbare_repository_dir(struct strbuf *path);
 
 #define READ_GITFILE_ERR_STAT_FAILED 1
 #define READ_GITFILE_ERR_NOT_A_FILE 2
@@ -520,7 +561,8 @@ extern int write_locked_index(struct index_state *, struct lock_file *lock, unsi
 extern int discard_index(struct index_state *);
 extern int unmerged_index(const struct index_state *);
 extern int verify_path(const char *path);
-extern struct cache_entry *index_dir_exists(struct index_state *istate, const char *name, int namelen);
+extern int index_dir_exists(struct index_state *istate, const char *name, int namelen);
+extern void adjust_dirname_case(struct index_state *istate, char *name);
 extern struct cache_entry *index_file_exists(struct index_state *istate, const char *name, int namelen, int igncase);
 extern int index_name_pos(const struct index_state *, const char *name, int namelen);
 #define ADD_CACHE_OK_TO_ADD 1		/* Ok to add */
@@ -539,8 +581,8 @@ extern int remove_file_from_index(struct index_state *, const char *path);
 #define ADD_CACHE_IGNORE_ERRORS	4
 #define ADD_CACHE_IGNORE_REMOVAL 8
 #define ADD_CACHE_INTENT 16
-extern int add_to_index(struct index_state *, const char *path, struct stat *, int flags);
-extern int add_file_to_index(struct index_state *, const char *path, int flags);
+extern int add_to_index(struct index_state *, const char *path, struct stat *, int flags, int force_mode);
+extern int add_file_to_index(struct index_state *, const char *path, int flags, int force_mode);
 extern struct cache_entry *make_cache_entry(unsigned int mode, const unsigned char *sha1, const char *path, int stage, unsigned int refresh_options);
 extern int ce_same_name(const struct cache_entry *a, const struct cache_entry *b);
 extern void set_object_name_for_intent_to_add_entry(struct cache_entry *ce);
@@ -609,10 +651,10 @@ extern int prefer_symlink_refs;
 extern int log_all_ref_updates;
 extern int warn_ambiguous_refs;
 extern int warn_on_object_refname_ambiguity;
-extern int shared_repository;
 extern const char *apply_default_whitespace;
 extern const char *apply_default_ignorewhitespace;
 extern const char *git_attributes_file;
+extern const char *git_hooks_path;
 extern int zlib_compression_level;
 extern int core_compression_level;
 extern int core_compression_seen;
@@ -621,6 +663,9 @@ extern size_t packed_git_limit;
 extern size_t delta_base_cache_limit;
 extern unsigned long big_file_threshold;
 extern unsigned long pack_size_limit_cfg;
+
+void set_shared_repository(int value);
+int get_shared_repository(void);
 
 /*
  * Do replace refs need to be checked this run?  This variable is
@@ -655,6 +700,14 @@ extern int ref_paranoia;
  */
 extern char comment_line_char;
 extern int auto_comment_line_char;
+
+/* Windows only */
+enum hide_dotfiles_type {
+	HIDE_DOTFILES_FALSE = 0,
+	HIDE_DOTFILES_TRUE,
+	HIDE_DOTFILES_DOTGITONLY
+};
+extern enum hide_dotfiles_type hide_dotfiles;
 
 enum branch_track {
 	BRANCH_TRACK_UNSPECIFIED = -1,
@@ -696,9 +749,46 @@ extern char *notes_ref_name;
 
 extern int grafts_replace_parents;
 
+/*
+ * GIT_REPO_VERSION is the version we write by default. The
+ * _READ variant is the highest number we know how to
+ * handle.
+ */
 #define GIT_REPO_VERSION 0
-extern int repository_format_version;
-extern int check_repository_format(void);
+#define GIT_REPO_VERSION_READ 1
+extern int repository_format_precious_objects;
+
+struct repository_format {
+	int version;
+	int precious_objects;
+	int is_bare;
+	char *work_tree;
+	struct string_list unknown_extensions;
+};
+
+/*
+ * Read the repository format characteristics from the config file "path" into
+ * "format" struct. Returns the numeric version. On error, -1 is returned,
+ * format->version is set to -1, and all other fields in the struct are
+ * undefined.
+ */
+int read_repository_format(struct repository_format *format, const char *path);
+
+/*
+ * Verify that the repository described by repository_format is something we
+ * can read. If it is, return 0. Otherwise, return -1, and "err" will describe
+ * any errors encountered.
+ */
+int verify_repository_format(const struct repository_format *format,
+			     struct strbuf *err);
+
+/*
+ * Check the repository format version in the path found in get_git_dir(),
+ * and die if it is a version we don't understand. Generally one would
+ * set_git_dir() before calling this, and use it only for "are we in a valid
+ * repo?".
+ */
+extern void check_repository_format(void);
 
 #define MTIME_CHANGED	0x0001
 #define CTIME_CHANGED	0x0002
@@ -718,10 +808,15 @@ extern int check_repository_format(void);
  */
 extern const char *mkpath(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
 extern const char *git_path(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
+extern const char *git_common_path(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
 
 extern char *mksnpath(char *buf, size_t n, const char *fmt, ...)
 	__attribute__((format (printf, 3, 4)));
 extern void strbuf_git_path(struct strbuf *sb, const char *fmt, ...)
+	__attribute__((format (printf, 2, 3)));
+extern void strbuf_git_common_path(struct strbuf *sb, const char *fmt, ...)
+	__attribute__((format (printf, 2, 3)));
+extern char *git_path_buf(struct strbuf *buf, const char *fmt, ...)
 	__attribute__((format (printf, 2, 3)));
 extern void strbuf_git_path_submodule(struct strbuf *sb, const char *path,
 				      const char *fmt, ...)
@@ -783,8 +878,26 @@ extern char *sha1_pack_name(const unsigned char *sha1);
  */
 extern char *sha1_pack_index_name(const unsigned char *sha1);
 
-extern const char *find_unique_abbrev(const unsigned char *sha1, int);
+/*
+ * Return an abbreviated sha1 unique within this repository's object database.
+ * The result will be at least `len` characters long, and will be NUL
+ * terminated.
+ *
+ * The non-`_r` version returns a static buffer which will be overwritten by
+ * subsequent calls.
+ *
+ * The `_r` variant writes to a buffer supplied by the caller, which must be at
+ * least `GIT_SHA1_HEXSZ + 1` bytes. The return value is the number of bytes
+ * written (excluding the NUL terminator).
+ *
+ * Note that while this version avoids the static buffer, it is not fully
+ * reentrant, as it calls into other non-reentrant git code.
+ */
+extern const char *find_unique_abbrev(const unsigned char *sha1, int len);
+extern int find_unique_abbrev_r(char *hex, const unsigned char *sha1, int len);
+
 extern const unsigned char null_sha1[GIT_SHA1_RAWSZ];
+extern const struct object_id null_oid;
 
 static inline int hashcmp(const unsigned char *sha1, const unsigned char *sha2)
 {
@@ -856,8 +969,6 @@ static inline int is_empty_blob_sha1(const unsigned char *sha1)
 }
 
 int git_mkstemp(char *path, size_t n, const char *template);
-
-int git_mkstemps(char *path, size_t n, const char *template, int suffix_len);
 
 /* set default permissions by passing mode arguments to open(2) */
 int git_mkstemps_mode(char *pattern, int suffix_len, int mode);
@@ -1002,6 +1113,9 @@ static inline int has_sha1_file(const unsigned char *sha1)
 	return has_sha1_file_with_flags(sha1, 0);
 }
 
+/* Same as the above, except for struct object_id. */
+extern int has_object_file(const struct object_id *oid);
+
 /*
  * Return true iff an alternate object database has a loose object
  * with the specified name.  This function does not respect replace
@@ -1052,6 +1166,8 @@ extern int get_sha1_blob(const char *str, unsigned char *sha1);
 extern void maybe_die_on_misspelt_object_name(const char *name, const char *prefix);
 extern int get_sha1_with_context(const char *str, unsigned flags, unsigned char *sha1, struct object_context *orc);
 
+extern int get_oid(const char *str, struct object_id *oid);
+
 typedef int each_abbrev_fn(const unsigned char *sha1, void *);
 extern int for_each_abbrev(const char *prefix, each_abbrev_fn, void *);
 
@@ -1065,6 +1181,18 @@ extern int for_each_abbrev(const char *prefix, each_abbrev_fn, void *);
 extern int get_sha1_hex(const char *hex, unsigned char *sha1);
 extern int get_oid_hex(const char *hex, struct object_id *sha1);
 
+/*
+ * Convert a binary sha1 to its hex equivalent. The `_r` variant is reentrant,
+ * and writes the NUL-terminated output to the buffer `out`, which must be at
+ * least `GIT_SHA1_HEXSZ + 1` bytes, and returns a pointer to out for
+ * convenience.
+ *
+ * The non-`_r` variant returns a static buffer, but uses a ring of 4
+ * buffers, making it safe to make multiple calls for a single statement, like:
+ *
+ *   printf("%s -> %s", sha1_to_hex(one), sha1_to_hex(two));
+ */
+extern char *sha1_to_hex_r(char *out, const unsigned char *sha1);
 extern char *sha1_to_hex(const unsigned char *sha1);	/* static buffer result! */
 extern char *oid_to_hex(const struct object_id *oid);	/* same static buffer as sha1_to_hex */
 
@@ -1091,7 +1219,6 @@ struct date_mode {
 		DATE_NORMAL = 0,
 		DATE_RELATIVE,
 		DATE_SHORT,
-		DATE_LOCAL,
 		DATE_ISO8601,
 		DATE_ISO8601_STRICT,
 		DATE_RFC2822,
@@ -1099,6 +1226,7 @@ struct date_mode {
 		DATE_RAW
 	} type;
 	const char *strftime_fmt;
+	int local;
 };
 
 /*
@@ -1237,6 +1365,7 @@ extern struct packed_git {
 		 freshened:1,
 		 do_not_close:1;
 	unsigned char sha1[20];
+	struct revindex_entry *revindex;
 	/* something like ".git/objects/pack/xxxxx.pack" */
 	char pack_name[FLEX_ARRAY]; /* more */
 } *packed_git;
@@ -1249,8 +1378,11 @@ struct pack_entry {
 
 extern struct packed_git *parse_pack_index(unsigned char *sha1, const char *idx_path);
 
-/* A hook for count-objects to report invalid files in pack directory */
-extern void (*report_garbage)(const char *desc, const char *path);
+/* A hook to report invalid files in pack directory */
+#define PACKDIR_FILE_PACK 1
+#define PACKDIR_FILE_IDX 2
+#define PACKDIR_FILE_GARBAGE 4
+extern void (*report_garbage)(unsigned seen_bits, const char *path);
 
 extern void prepare_packed_git(void);
 extern void reprepare_packed_git(void);
@@ -1275,10 +1407,21 @@ extern void close_pack_index(struct packed_git *);
 
 extern unsigned char *use_pack(struct packed_git *, struct pack_window **, off_t, unsigned long *);
 extern void close_pack_windows(struct packed_git *);
+extern void close_all_packs(void);
 extern void unuse_pack(struct pack_window **);
 extern void free_pack_by_name(const char *);
 extern void clear_delta_base_cache(void);
-extern struct packed_git *add_packed_git(const char *, int, int);
+extern struct packed_git *add_packed_git(const char *path, size_t path_len, int local);
+
+/*
+ * Make sure that a pointer access into an mmap'd index file is within bounds,
+ * and can provide at least 8 bytes of data.
+ *
+ * Note that this is only necessary for variable-length segments of the file
+ * (like the 64-bit extended offset table), as we compare the size to the
+ * fixed-length parts when we open the file.
+ */
+extern void check_pack_index_ptr(const struct packed_git *p, const void *ptr);
 
 /*
  * Return the SHA-1 of the nth object within the specified packfile.
@@ -1400,7 +1543,7 @@ extern int update_server_info(int);
 /* git_config_parse_key() returns these negated: */
 #define CONFIG_INVALID_KEY 1
 #define CONFIG_NO_SECTION_OR_NAME 2
-/* git_config_set(), git_config_set_multivar() return the above or these: */
+/* git_config_set_gently(), git_config_set_multivar_gently() return the above or these: */
 #define CONFIG_NO_LOCK -1
 #define CONFIG_INVALID_FILE 3
 #define CONFIG_NO_WRITE 4
@@ -1419,15 +1562,14 @@ struct git_config_source {
 typedef int (*config_fn_t)(const char *, const char *, void *);
 extern int git_default_config(const char *, const char *, void *);
 extern int git_config_from_file(config_fn_t fn, const char *, void *);
-extern int git_config_from_buf(config_fn_t fn, const char *name,
-			       const char *buf, size_t len, void *data);
+extern int git_config_from_mem(config_fn_t fn, const char *origin_type,
+					const char *name, const char *buf, size_t len, void *data);
 extern void git_config_push_parameter(const char *text);
 extern int git_config_from_parameters(config_fn_t fn, void *data);
 extern void git_config(config_fn_t fn, void *);
 extern int git_config_with_options(config_fn_t fn, void *,
 				   struct git_config_source *config_source,
 				   int respect_includes);
-extern int git_config_early(config_fn_t fn, void *, const char *repo_config);
 extern int git_parse_ulong(const char *, unsigned long *);
 extern int git_parse_maybe_bool(const char *);
 extern int git_config_int(const char *, const char *);
@@ -1438,16 +1580,19 @@ extern int git_config_bool(const char *, const char *);
 extern int git_config_maybe_bool(const char *, const char *);
 extern int git_config_string(const char **, const char *, const char *);
 extern int git_config_pathname(const char **, const char *, const char *);
-extern int git_config_set_in_file(const char *, const char *, const char *);
-extern int git_config_set(const char *, const char *);
+extern int git_config_set_in_file_gently(const char *, const char *, const char *);
+extern void git_config_set_in_file(const char *, const char *, const char *);
+extern int git_config_set_gently(const char *, const char *);
+extern void git_config_set(const char *, const char *);
 extern int git_config_parse_key(const char *, char **, int *);
 extern int git_config_key_is_valid(const char *key);
-extern int git_config_set_multivar(const char *, const char *, const char *, int);
-extern int git_config_set_multivar_in_file(const char *, const char *, const char *, const char *, int);
+extern int git_config_set_multivar_gently(const char *, const char *, const char *, int);
+extern void git_config_set_multivar(const char *, const char *, const char *, int);
+extern int git_config_set_multivar_in_file_gently(const char *, const char *, const char *, const char *, int);
+extern void git_config_set_multivar_in_file(const char *, const char *, const char *, const char *, int);
 extern int git_config_rename_section(const char *, const char *);
 extern int git_config_rename_section_in_file(const char *, const char *, const char *);
 extern const char *git_etc_gitconfig(void);
-extern int check_repository_format_version(const char *var, const char *value, void *cb);
 extern int git_env_bool(const char *, int);
 extern unsigned long git_env_ulong(const char *, unsigned long);
 extern int git_config_system(void);
@@ -1459,6 +1604,18 @@ extern const char *get_log_output_encoding(void);
 extern const char *get_commit_output_encoding(void);
 
 extern int git_config_parse_parameter(const char *, config_fn_t fn, void *data);
+
+enum config_scope {
+	CONFIG_SCOPE_UNKNOWN = 0,
+	CONFIG_SCOPE_SYSTEM,
+	CONFIG_SCOPE_GLOBAL,
+	CONFIG_SCOPE_REPO,
+	CONFIG_SCOPE_CMDLINE,
+};
+
+extern enum config_scope current_config_scope(void);
+extern const char *current_config_origin_type(void);
+extern const char *current_config_name(void);
 
 struct config_include_data {
 	int depth;
@@ -1537,10 +1694,20 @@ extern int git_config_get_bool(const char *key, int *dest);
 extern int git_config_get_bool_or_int(const char *key, int *is_bool, int *dest);
 extern int git_config_get_maybe_bool(const char *key, int *dest);
 extern int git_config_get_pathname(const char *key, const char **dest);
+extern int git_config_get_untracked_cache(void);
+
+/*
+ * This is a hack for test programs like test-dump-untracked-cache to
+ * ensure that they do not modify the untracked cache when reading it.
+ * Do not use it otherwise!
+ */
+extern int ignore_untracked_cache_config;
 
 struct key_value_info {
 	const char *filename;
 	int linenr;
+	const char *origin_type;
+	enum config_scope scope;
 };
 
 extern NORETURN void git_die_config(const char *key, const char *err, ...) __attribute__((format(printf, 2, 3)));
@@ -1566,7 +1733,6 @@ extern int copy_file(const char *dst, const char *src, int mode);
 extern int copy_file_with_time(const char *dst, const char *src, int mode);
 
 extern void write_or_die(int fd, const void *buf, size_t count);
-extern int write_or_whine(int fd, const void *buf, size_t count, const char *msg);
 extern int write_or_whine_pipe(int fd, const void *buf, size_t count, const char *msg);
 extern void fsync_or_die(int fd, const char *);
 
@@ -1590,6 +1756,7 @@ extern int pager_use_color;
 extern int term_columns(void);
 extern int decimal_width(uintmax_t);
 extern int check_pager_config(const char *cmd);
+extern void prepare_pager_args(struct child_process *, const char *pager);
 
 extern const char *editor_program;
 extern const char *askpass_program;
@@ -1616,14 +1783,14 @@ void packet_trace_identity(const char *prog);
  * return 0 if success, 1 - if addition of a file failed and
  * ADD_FILES_IGNORE_ERRORS was specified in flags
  */
-int add_files_to_cache(const char *prefix, const struct pathspec *pathspec, int flags);
+int add_files_to_cache(const char *prefix, const struct pathspec *pathspec, int flags, int force_mode);
 
 /* diff.c */
 extern int diff_auto_refresh_index;
 
 /* match-trees.c */
-void shift_tree(const unsigned char *, const unsigned char *, unsigned char *, int);
-void shift_tree_by(const unsigned char *, const unsigned char *, unsigned char *, const char *);
+void shift_tree(const struct object_id *, const struct object_id *, struct object_id *, int);
+void shift_tree_by(const struct object_id *, const struct object_id *, struct object_id *, const char *);
 
 /*
  * whitespace rules.
@@ -1657,7 +1824,7 @@ int split_cmdline(char *cmdline, const char ***argv);
 /* Takes a negative value returned by split_cmdline */
 const char *split_cmdline_strerror(int cmdline_errno);
 
-/* git.c */
+/* setup.c */
 struct startup_info {
 	int have_repository;
 	const char *prefix;
@@ -1705,5 +1872,13 @@ void stat_validity_update(struct stat_validity *sv, int fd);
 
 int versioncmp(const char *s1, const char *s2);
 void sleep_millisec(int millisec);
+
+/*
+ * Create a directory and (if share is nonzero) adjust its permissions
+ * according to the shared_repository setting. Only use this for
+ * directories under $GIT_DIR.  Don't use it for working tree
+ * directories.
+ */
+void safe_create_dir(const char *dir, int share);
 
 #endif /* CACHE_H */

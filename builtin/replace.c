@@ -358,10 +358,10 @@ static void check_one_mergetag(struct commit *commit,
 
 	/* iterate over new parents */
 	for (i = 1; i < mergetag_data->argc; i++) {
-		unsigned char sha1[20];
-		if (get_sha1(mergetag_data->argv[i], sha1) < 0)
+		struct object_id oid;
+		if (get_sha1(mergetag_data->argv[i], oid.hash) < 0)
 			die(_("Not a valid object name: '%s'"), mergetag_data->argv[i]);
-		if (!hashcmp(tag->tagged->sha1, sha1))
+		if (!oidcmp(&tag->tagged->oid, &oid))
 			return; /* found */
 	}
 
@@ -440,6 +440,7 @@ int cmd_replace(int argc, const char **argv, const char *prefix)
 	};
 
 	check_replace_refs = 0;
+	git_config(git_default_config, NULL);
 
 	argc = parse_options(argc, argv, prefix, options, git_replace_usage, 0);
 

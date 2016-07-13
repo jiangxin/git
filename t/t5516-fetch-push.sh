@@ -16,7 +16,7 @@ This test checks the following functionality:
 
 . ./test-lib.sh
 
-D=`pwd`
+D=$(pwd)
 
 mk_empty () {
 	repo_name="$1"
@@ -422,7 +422,7 @@ test_expect_success 'push tag with non-existent, incomplete dest' '
 test_expect_success 'push sha1 with non-existent, incomplete dest' '
 
 	mk_test testrepo &&
-	test_must_fail git push testrepo `git rev-parse master`:foo
+	test_must_fail git push testrepo $(git rev-parse master):foo
 
 '
 
@@ -1162,15 +1162,15 @@ do
 		mk_empty shallow &&
 		(
 			cd shallow &&
-			test_must_fail git fetch ../testrepo/.git $SHA1_3 &&
-			test_must_fail git fetch ../testrepo/.git $SHA1_1 &&
+			test_must_fail ok=sigpipe git fetch ../testrepo/.git $SHA1_3 &&
+			test_must_fail ok=sigpipe git fetch ../testrepo/.git $SHA1_1 &&
 			git --git-dir=../testrepo/.git config uploadpack.allowreachablesha1inwant true &&
 			git fetch ../testrepo/.git $SHA1_1 &&
 			git cat-file commit $SHA1_1 &&
 			test_must_fail git cat-file commit $SHA1_2 &&
 			git fetch ../testrepo/.git $SHA1_2 &&
 			git cat-file commit $SHA1_2 &&
-			test_must_fail git fetch ../testrepo/.git $SHA1_3
+			test_must_fail ok=sigpipe git fetch ../testrepo/.git $SHA1_3
 		)
 	'
 done

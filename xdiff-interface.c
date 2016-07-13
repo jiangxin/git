@@ -100,18 +100,15 @@ static int xdiff_outf(void *priv_, mmbuffer_t *mb, int nbuf)
 
 /*
  * Trim down common substring at the end of the buffers,
- * but leave at least ctx lines at the end.
+ * but end on a complete line.
  */
-static void trim_common_tail(mmfile_t *a, mmfile_t *b, long ctx)
+static void trim_common_tail(mmfile_t *a, mmfile_t *b)
 {
 	const int blk = 1024;
 	long trimmed = 0, recovered = 0;
 	char *ap = a->ptr + a->size;
 	char *bp = b->ptr + b->size;
 	long smaller = (a->size < b->size) ? a->size : b->size;
-
-	if (ctx)
-		return;
 
 	while (blk + trimmed <= smaller && !memcmp(ap - blk, bp - blk, blk)) {
 		trimmed += blk;
@@ -131,7 +128,11 @@ int xdi_diff(mmfile_t *mf1, mmfile_t *mf2, xpparam_t const *xpp, xdemitconf_t co
 	mmfile_t a = *mf1;
 	mmfile_t b = *mf2;
 
-	trim_common_tail(&a, &b, xecfg->ctxlen);
+	if (mf1->size > MAX_XDIFF_SIZE || mf2->size > MAX_XDIFF_SIZE)
+		return -1;
+
+	if (!xecfg->ctxlen && !(xecfg->flags & XDL_EMIT_FUNCCONTEXT))
+		trim_common_tail(&a, &b);
 
 	return xdl_diff(&a, &b, xpp, xecfg, xecb);
 }
@@ -262,7 +263,7 @@ void xdiff_set_find_func(xdemitconf_t *xecfg, const char *value, int cflags)
 	for (i = 0, regs->nr = 1; value[i]; i++)
 		if (value[i] == '\n')
 			regs->nr++;
-	regs->array = xmalloc(regs->nr * sizeof(struct ff_reg));
+	ALLOC_ARRAY(regs->array, regs->nr);
 	for (i = 0; i < regs->nr; i++) {
 		struct ff_reg *reg = regs->array + i;
 		const char *ep = strchr(value, '\n'), *expression;

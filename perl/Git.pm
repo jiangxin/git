@@ -188,7 +188,8 @@ sub repository {
 		};
 
 		if ($dir) {
-			$dir =~ m#^/# or $dir = $opts{Directory} . '/' . $dir;
+			_verify_require();
+			File::Spec->file_name_is_absolute($dir) or $dir = $opts{Directory} . '/' . $dir;
 			$opts{Repository} = abs_path($dir);
 
 			# If --git-dir went ok, this shouldn't die either.
@@ -392,7 +393,7 @@ sub command_close_pipe {
 Execute the given C<COMMAND> in the same way as command_output_pipe()
 does but return both an input pipe filehandle and an output pipe filehandle.
 
-The function will return return C<($pid, $pipe_in, $pipe_out, $ctx)>.
+The function will return C<($pid, $pipe_in, $pipe_out, $ctx)>.
 See C<command_close_bidi_pipe()> for details.
 
 =cut

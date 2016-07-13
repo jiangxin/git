@@ -27,6 +27,7 @@
 #include "notes-utils.h"
 #include "rerere.h"
 #include "prompt.h"
+#include "mailinfo.h"
 
 /**
  * Returns 1 if the file is empty or does not exist, 0 otherwise.
@@ -42,21 +43,6 @@ static int is_empty_file(const char *filename)
 	}
 
 	return !st.st_size;
-}
-
-/**
- * Like strbuf_getline(), but treats both '\n' and "\r\n" as line terminators.
- */
-static int strbuf_getline_crlf(struct strbuf *sb, FILE *fp)
-{
-	if (strbuf_getwholeline(sb, fp, '\n'))
-		return EOF;
-	if (sb->buf[sb->len - 1] == '\n') {
-		strbuf_setlen(sb, sb->len - 1);
-		if (sb->len > 0 && sb->buf[sb->len - 1] == '\r')
-			strbuf_setlen(sb, sb->len - 1);
-	}
-	return 0;
 }
 
 /**
@@ -84,7 +70,8 @@ enum patch_format {
 	PATCH_FORMAT_MBOX,
 	PATCH_FORMAT_STGIT,
 	PATCH_FORMAT_STGIT_SERIES,
-	PATCH_FORMAT_HG
+	PATCH_FORMAT_HG,
+	PATCH_FORMAT_MBOXRD
 };
 
 enum keep_type {
@@ -283,7 +270,7 @@ static char *read_shell_var(FILE *fp, const char *key)
 	struct strbuf sb = STRBUF_INIT;
 	const char *str;
 
-	if (strbuf_getline(&sb, fp, '\n'))
+	if (strbuf_getline_lf(&sb, fp))
 		goto fail;
 
 	if (!skip_prefix(sb.buf, key, &str))
@@ -572,7 +559,7 @@ static int copy_notes_for_rebase(const struct am_state *state)
 
 	fp = xfopen(am_path(state, "rewritten"), "r");
 
-	while (!strbuf_getline(&sb, fp, '\n')) {
+	while (!strbuf_getline_lf(&sb, fp)) {
 		unsigned char from_obj[GIT_SHA1_RAWSZ], to_obj[GIT_SHA1_RAWSZ];
 
 		if (sb.len != GIT_SHA1_HEXSZ * 2 + 1) {
@@ -627,7 +614,7 @@ static int is_mail(FILE *fp)
 	if (regcomp(&regex, header_regex, REG_NOSUB | REG_EXTENDED))
 		die("invalid pattern: %s", header_regex);
 
-	while (!strbuf_getline_crlf(&sb, fp)) {
+	while (!strbuf_getline(&sb, fp)) {
 		if (!sb.len)
 			break; /* End of header */
 
@@ -674,7 +661,7 @@ static int detect_patch_format(const char **paths)
 
 	fp = xfopen(*paths, "r");
 
-	while (!strbuf_getline_crlf(&l1, fp)) {
+	while (!strbuf_getline(&l1, fp)) {
 		if (l1.len)
 			break;
 	}
@@ -695,9 +682,9 @@ static int detect_patch_format(const char **paths)
 	}
 
 	strbuf_reset(&l2);
-	strbuf_getline_crlf(&l2, fp);
+	strbuf_getline(&l2, fp);
 	strbuf_reset(&l3);
-	strbuf_getline_crlf(&l3, fp);
+	strbuf_getline(&l3, fp);
 
 	/*
 	 * If the second line is empty and the third is a From, Author or Date
@@ -726,7 +713,8 @@ done:
  * Splits out individual email patches from `paths`, where each path is either
  * a mbox file or a Maildir. Returns 0 on success, -1 on failure.
  */
-static int split_mail_mbox(struct am_state *state, const char **paths, int keep_cr)
+static int split_mail_mbox(struct am_state *state, const char **paths,
+				int keep_cr, int mboxrd)
 {
 	struct child_process cp = CHILD_PROCESS_INIT;
 	struct strbuf last = STRBUF_INIT;
@@ -738,6 +726,8 @@ static int split_mail_mbox(struct am_state *state, const char **paths, int keep_
 	argv_array_push(&cp.args, "-b");
 	if (keep_cr)
 		argv_array_push(&cp.args, "--keep-cr");
+	if (mboxrd)
+		argv_array_push(&cp.args, "--mboxrd");
 	argv_array_push(&cp.args, "--");
 	argv_array_pushv(&cp.args, paths);
 
@@ -783,15 +773,15 @@ static int split_mail_conv(mail_conv_fn fn, struct am_state *state,
 			in = fopen(*paths, "r");
 
 		if (!in)
-			return error(_("could not open '%s' for reading: %s"),
-					*paths, strerror(errno));
+			return error_errno(_("could not open '%s' for reading"),
+					   *paths);
 
 		mail = mkpath("%s/%0*d", state->dir, state->prec, i + 1);
 
 		out = fopen(mail, "w");
 		if (!out)
-			return error(_("could not open '%s' for writing: %s"),
-					mail, strerror(errno));
+			return error_errno(_("could not open '%s' for writing"),
+					   mail);
 
 		ret = fn(out, in, keep_cr);
 
@@ -816,7 +806,7 @@ static int stgit_patch_to_mail(FILE *out, FILE *in, int keep_cr)
 	struct strbuf sb = STRBUF_INIT;
 	int subject_printed = 0;
 
-	while (!strbuf_getline(&sb, in, '\n')) {
+	while (!strbuf_getline_lf(&sb, in)) {
 		const char *str;
 
 		if (str_isspace(sb.buf))
@@ -871,10 +861,9 @@ static int split_mail_stgit_series(struct am_state *state, const char **paths,
 
 	fp = fopen(*paths, "r");
 	if (!fp)
-		return error(_("could not open '%s' for reading: %s"), *paths,
-				strerror(errno));
+		return error_errno(_("could not open '%s' for reading"), *paths);
 
-	while (!strbuf_getline(&sb, fp, '\n')) {
+	while (!strbuf_getline_lf(&sb, fp)) {
 		if (*sb.buf == '#')
 			continue; /* skip comment lines */
 
@@ -899,7 +888,7 @@ static int hg_patch_to_mail(FILE *out, FILE *in, int keep_cr)
 {
 	struct strbuf sb = STRBUF_INIT;
 
-	while (!strbuf_getline(&sb, in, '\n')) {
+	while (!strbuf_getline_lf(&sb, in)) {
 		const char *str;
 
 		if (skip_prefix(sb.buf, "# User ", &str))
@@ -980,13 +969,15 @@ static int split_mail(struct am_state *state, enum patch_format patch_format,
 
 	switch (patch_format) {
 	case PATCH_FORMAT_MBOX:
-		return split_mail_mbox(state, paths, keep_cr);
+		return split_mail_mbox(state, paths, keep_cr, 0);
 	case PATCH_FORMAT_STGIT:
 		return split_mail_conv(stgit_patch_to_mail, state, paths, keep_cr);
 	case PATCH_FORMAT_STGIT_SERIES:
 		return split_mail_stgit_series(state, paths, keep_cr);
 	case PATCH_FORMAT_HG:
 		return split_mail_conv(hg_patch_to_mail, state, paths, keep_cr);
+	case PATCH_FORMAT_MBOXRD:
+		return split_mail_mbox(state, paths, keep_cr, 1);
 	default:
 		die("BUG: invalid patch_format");
 	}
@@ -1207,6 +1198,33 @@ static void NORETURN die_user_resolve(const struct am_state *state)
 	exit(128);
 }
 
+static void am_signoff(struct strbuf *sb)
+{
+	char *cp;
+	struct strbuf mine = STRBUF_INIT;
+
+	/* Does it end with our own sign-off? */
+	strbuf_addf(&mine, "\n%s%s\n",
+		    sign_off_header,
+		    fmt_name(getenv("GIT_COMMITTER_NAME"),
+			     getenv("GIT_COMMITTER_EMAIL")));
+	if (mine.len < sb->len &&
+	    !strcmp(mine.buf, sb->buf + sb->len - mine.len))
+		goto exit; /* no need to duplicate */
+
+	/* Does it have any Signed-off-by: in the text */
+	for (cp = sb->buf;
+	     cp && *cp && (cp = strstr(cp, sign_off_header)) != NULL;
+	     cp = strchr(cp, '\n')) {
+		if (sb->buf == cp || cp[-1] == '\n')
+			break;
+	}
+
+	strbuf_addstr(sb, mine.buf + !!cp);
+exit:
+	strbuf_release(&mine);
+}
+
 /**
  * Appends signoff to the "msg" field of the am_state.
  */
@@ -1215,7 +1233,7 @@ static void am_append_signoff(struct am_state *state)
 	struct strbuf sb = STRBUF_INIT;
 
 	strbuf_attach(&sb, state->msg, state->msg_len, state->msg_len);
-	append_signoff(&sb, 0, 0);
+	am_signoff(&sb);
 	state->msg = strbuf_detach(&sb, &state->msg_len);
 }
 
@@ -1231,62 +1249,65 @@ static void am_append_signoff(struct am_state *state)
 static int parse_mail(struct am_state *state, const char *mail)
 {
 	FILE *fp;
-	struct child_process cp = CHILD_PROCESS_INIT;
 	struct strbuf sb = STRBUF_INIT;
 	struct strbuf msg = STRBUF_INIT;
 	struct strbuf author_name = STRBUF_INIT;
 	struct strbuf author_date = STRBUF_INIT;
 	struct strbuf author_email = STRBUF_INIT;
 	int ret = 0;
+	struct mailinfo mi;
 
-	cp.git_cmd = 1;
-	cp.in = xopen(mail, O_RDONLY, 0);
-	cp.out = xopen(am_path(state, "info"), O_WRONLY | O_CREAT, 0777);
+	setup_mailinfo(&mi);
 
-	argv_array_push(&cp.args, "mailinfo");
-	argv_array_push(&cp.args, state->utf8 ? "-u" : "-n");
+	if (state->utf8)
+		mi.metainfo_charset = get_commit_output_encoding();
+	else
+		mi.metainfo_charset = NULL;
 
 	switch (state->keep) {
 	case KEEP_FALSE:
 		break;
 	case KEEP_TRUE:
-		argv_array_push(&cp.args, "-k");
+		mi.keep_subject = 1;
 		break;
 	case KEEP_NON_PATCH:
-		argv_array_push(&cp.args, "-b");
+		mi.keep_non_patch_brackets_in_subject = 1;
 		break;
 	default:
 		die("BUG: invalid value for state->keep");
 	}
 
 	if (state->message_id)
-		argv_array_push(&cp.args, "-m");
+		mi.add_message_id = 1;
 
 	switch (state->scissors) {
 	case SCISSORS_UNSET:
 		break;
 	case SCISSORS_FALSE:
-		argv_array_push(&cp.args, "--no-scissors");
+		mi.use_scissors = 0;
 		break;
 	case SCISSORS_TRUE:
-		argv_array_push(&cp.args, "--scissors");
+		mi.use_scissors = 1;
 		break;
 	default:
 		die("BUG: invalid value for state->scissors");
 	}
 
-	argv_array_push(&cp.args, am_path(state, "msg"));
-	argv_array_push(&cp.args, am_path(state, "patch"));
-
-	if (run_command(&cp) < 0)
+	mi.input = fopen(mail, "r");
+	if (!mi.input)
+		die("could not open input");
+	mi.output = fopen(am_path(state, "info"), "w");
+	if (!mi.output)
+		die("could not open output 'info'");
+	if (mailinfo(&mi, am_path(state, "msg"), am_path(state, "patch")))
 		die("could not parse patch");
 
-	close(cp.in);
-	close(cp.out);
+	fclose(mi.input);
+	fclose(mi.output);
 
 	/* Extract message and author information */
 	fp = xfopen(am_path(state, "info"), "r");
-	while (!strbuf_getline(&sb, fp, '\n')) {
+	while (!strbuf_getline_lf(&sb, fp)) {
 		const char *x;
 
 		if (skip_prefix(sb.buf, "Subject: ", &x)) {
@@ -1314,12 +1335,11 @@ static int parse_mail(struct am_state *state, const char *mail)
 	}
 
 	strbuf_addstr(&msg, "\n\n");
-	if (strbuf_read_file(&msg, am_path(state, "msg"), 0) < 0)
-		die_errno(_("could not read '%s'"), am_path(state, "msg"));
-	stripspace(&msg, 0);
+	strbuf_addbuf(&msg, &mi.log_message);
+	strbuf_stripspace(&msg, 0);
 
 	if (state->signoff)
-		append_signoff(&msg, 0, 0);
+		am_signoff(&msg);
 
 	assert(!state->author_name);
 	state->author_name = strbuf_detach(&author_name, NULL);
@@ -1339,6 +1359,7 @@ finish:
 	strbuf_release(&author_email);
 	strbuf_release(&author_name);
 	strbuf_release(&sb);
+	clear_mailinfo(&mi);
 	return ret;
 }
 
@@ -1352,7 +1373,7 @@ static int get_mail_commit_sha1(unsigned char *commit_id, const char *mail)
 	FILE *fp = xfopen(mail, "r");
 	const char *x;
 
-	if (strbuf_getline(&sb, fp, '\n'))
+	if (strbuf_getline_lf(&sb, fp))
 		return -1;
 
 	if (!skip_prefix(sb.buf, "From ", &x))
@@ -1410,7 +1431,7 @@ static void get_commit_info(struct am_state *state, struct commit *commit)
 	assert(!state->msg);
 	msg = strstr(buffer, "\n\n");
 	if (!msg)
-		die(_("unable to parse commit %s"), sha1_to_hex(commit->object.sha1));
+		die(_("unable to parse commit %s"), oid_to_hex(&commit->object.oid));
 	state->msg = xstrdup(msg + 2);
 	state->msg_len = strlen(state->msg);
 }
@@ -1563,16 +1584,44 @@ static int build_fake_ancestor(const struct am_state *state, const char *index_f
 }
 
 /**
+ * Do the three-way merge using fake ancestor, his tree constructed
+ * from the fake ancestor and the postimage of the patch, and our
+ * state.
+ */
+static int run_fallback_merge_recursive(const struct am_state *state,
+					unsigned char *orig_tree,
+					unsigned char *our_tree,
+					unsigned char *his_tree)
+{
+	struct child_process cp = CHILD_PROCESS_INIT;
+	int status;
+
+	cp.git_cmd = 1;
+
+	argv_array_pushf(&cp.env_array, "GITHEAD_%s=%.*s",
+			 sha1_to_hex(his_tree), linelen(state->msg), state->msg);
+	if (state->quiet)
+		argv_array_push(&cp.env_array, "GIT_MERGE_VERBOSITY=0");
+
+	argv_array_push(&cp.args, "merge-recursive");
+	argv_array_push(&cp.args, sha1_to_hex(orig_tree));
+	argv_array_push(&cp.args, "--");
+	argv_array_push(&cp.args, sha1_to_hex(our_tree));
+	argv_array_push(&cp.args, sha1_to_hex(his_tree));
+
+	status = run_command(&cp) ? (-1) : 0;
+	discard_cache();
+	read_cache();
+	return status;
+}
+
+/**
  * Attempt a threeway merge, using index_path as the temporary index.
  */
 static int fall_back_threeway(const struct am_state *state, const char *index_path)
 {
 	unsigned char orig_tree[GIT_SHA1_RAWSZ], his_tree[GIT_SHA1_RAWSZ],
 		      our_tree[GIT_SHA1_RAWSZ];
-	const unsigned char *bases[1] = {orig_tree};
-	struct merge_options o;
-	struct commit *result;
-	char *his_tree_name;
 
 	if (get_sha1("HEAD", our_tree) < 0)
 		hashcpy(our_tree, EMPTY_TREE_SHA1_BIN);
@@ -1598,7 +1647,7 @@ static int fall_back_threeway(const struct am_state *state, const char *index_pa
 
 		init_revisions(&rev_info, NULL);
 		rev_info.diffopt.output_format = DIFF_FORMAT_NAME_STATUS;
-		diff_opt_parse(&rev_info.diffopt, &diff_filter_str, 1);
+		diff_opt_parse(&rev_info.diffopt, &diff_filter_str, 1, rev_info.prefix);
 		add_pending_sha1(&rev_info, "HEAD", our_tree, 0);
 		diff_setup_done(&rev_info.diffopt);
 		run_diff_index(&rev_info, 1);
@@ -1624,22 +1673,11 @@ static int fall_back_threeway(const struct am_state *state, const char *index_pa
 	 * changes.
 	 */
 
-	init_merge_options(&o);
-
-	o.branch1 = "HEAD";
-	his_tree_name = xstrfmt("%.*s", linelen(state->msg), state->msg);
-	o.branch2 = his_tree_name;
-
-	if (state->quiet)
-		o.verbosity = 0;
-
-	if (merge_recursive_generic(&o, our_tree, his_tree, 1, bases, &result)) {
+	if (run_fallback_merge_recursive(state, orig_tree, our_tree, his_tree)) {
 		rerere(state->allow_rerere_autoupdate);
-		free(his_tree_name);
 		return error(_("Failed to merge in the changes."));
 	}
 
-	free(his_tree_name);
 	return 0;
 }
 
@@ -1773,7 +1811,7 @@ static int do_interactive(struct am_state *state)
 
 			if (!pager)
 				pager = "cat";
-			argv_array_push(&cp.args, pager);
+			prepare_pager_args(&cp, pager);
 			argv_array_push(&cp.args, am_path(state, "patch"));
 			run_command(&cp);
 		}
@@ -1891,6 +1929,7 @@ next:
 	 */
 	if (!state->rebasing) {
 		am_destroy(state);
+		close_all_packs();
 		run_command_v_opt(argv_gc_auto, RUN_GIT_CMD);
 	}
 }
@@ -2168,6 +2207,8 @@ static int parse_opt_patchformat(const struct option *opt, const char *arg, int 
 		*opt_value = PATCH_FORMAT_STGIT_SERIES;
 	else if (!strcmp(arg, "hg"))
 		*opt_value = PATCH_FORMAT_HG;
+	else if (!strcmp(arg, "mboxrd"))
+		*opt_value = PATCH_FORMAT_MBOXRD;
 	else
 		return error(_("Invalid value for --patch-format: %s"), arg);
 	return 0;
@@ -2181,6 +2222,17 @@ enum resume_mode {
 	RESUME_ABORT
 };
 
+static int git_am_config(const char *k, const char *v, void *cb)
+{
+	int status;
+
+	status = git_gpg_config(k, v, NULL);
+	if (status)
+		return status;
+
+	return git_default_config(k, v, NULL);
+}
+
 int cmd_am(int argc, const char **argv, const char *prefix)
 {
 	struct am_state state;
@@ -2191,8 +2243,8 @@ int cmd_am(int argc, const char **argv, const char *prefix)
 	int in_progress;
 
 	const char * const usage[] = {
-		N_("git am [options] [(<mbox>|<Maildir>)...]"),
-		N_("git am [options] (--continue | --skip | --abort)"),
+		N_("git am [<options>] [(<mbox>|<Maildir>)...]"),
+		N_("git am [<options>] (--continue | --skip | --abort)"),
 		NULL
 	};
 
@@ -2281,7 +2333,7 @@ int cmd_am(int argc, const char **argv, const char *prefix)
 		OPT_END()
 	};
 
-	git_config(git_default_config, NULL);
+	git_config(git_am_config, NULL);
 
 	am_state_init(&state, git_path("rebase-apply"));
 

@@ -59,6 +59,7 @@
 	FUNC(HAS_DOTGIT, WARN) \
 	FUNC(NULL_SHA1, WARN) \
 	FUNC(ZERO_PADDED_FILEMODE, WARN) \
+	FUNC(NUL_IN_COMMIT, WARN) \
 	/* infos (reported as warnings, but ignored by default) */ \
 	FUNC(BAD_TAG_NAME, INFO) \
 	FUNC(MISSING_TAGGER_ENTRY, INFO)
@@ -199,7 +200,8 @@ void fsck_set_msg_type(struct fsck_options *options,
 
 	if (!options->msg_type) {
 		int i;
-		int *msg_type = xmalloc(sizeof(int) * FSCK_MSG_MAX);
+		int *msg_type;
+		ALLOC_ARRAY(msg_type, FSCK_MSG_MAX);
 		for (i = 0; i < FSCK_MSG_MAX; i++)
 			msg_type[i] = fsck_msg_type(i, options);
 		options->msg_type = msg_type;
@@ -276,7 +278,7 @@ static int report(struct fsck_options *options, struct object *object,
 		return 0;
 
 	if (options->skiplist && object &&
-			sha1_array_lookup(options->skiplist, object->sha1) >= 0)
+			sha1_array_lookup(options->skiplist, object->oid.hash) >= 0)
 		return 0;
 
 	if (msg_type == FSCK_FATAL)
@@ -311,12 +313,12 @@ static int fsck_walk_tree(struct tree *tree, void *data, struct fsck_options *op
 		if (S_ISGITLINK(entry.mode))
 			continue;
 		if (S_ISDIR(entry.mode))
-			result = options->walk(&lookup_tree(entry.sha1)->object, OBJ_TREE, data, options);
+			result = options->walk(&lookup_tree(entry.oid->hash)->object, OBJ_TREE, data, options);
 		else if (S_ISREG(entry.mode) || S_ISLNK(entry.mode))
-			result = options->walk(&lookup_blob(entry.sha1)->object, OBJ_BLOB, data, options);
+			result = options->walk(&lookup_blob(entry.oid->hash)->object, OBJ_BLOB, data, options);
 		else {
 			result = error("in tree %s: entry %s has bad mode %.6o",
-					sha1_to_hex(tree->object.sha1), entry.path, entry.mode);
+					oid_to_hex(&tree->object.oid), entry.path, entry.mode);
 		}
 		if (result < 0)
 			return result;
@@ -373,7 +375,7 @@ int fsck_walk(struct object *obj, void *data, struct fsck_options *options)
 	case OBJ_TAG:
 		return fsck_walk_tag((struct tag *)obj, data, options);
 	default:
-		error("Unknown object type for %s", sha1_to_hex(obj->sha1));
+		error("Unknown object type for %s", oid_to_hex(&obj->oid));
 		return -1;
 	}
 }
@@ -449,11 +451,11 @@ static int fsck_tree(struct tree *item, struct fsck_options *options)
 	while (desc.size) {
 		unsigned mode;
 		const char *name;
-		const unsigned char *sha1;
+		const struct object_id *oid;
 
-		sha1 = tree_entry_extract(&desc, &name, &mode);
+		oid = tree_entry_extract(&desc, &name, &mode);
 
-		has_null_sha1 |= is_null_sha1(sha1);
+		has_null_sha1 |= is_null_oid(oid);
 		has_full_path |= !!strchr(name, '/');
 		has_empty_name |= !*name;
 		has_dot |= !strcmp(name, ".");
@@ -609,6 +611,7 @@ static int fsck_commit_buffer(struct commit *commit, const char *buffer,
 	struct commit_graft *graft;
 	unsigned parent_count, parent_line_count = 0, author_count;
 	int err;
+	const char *buffer_begin = buffer;
 
 	if (verify_headers(buffer, size, &commit->object, options))
 		return -1;
@@ -630,7 +633,7 @@ static int fsck_commit_buffer(struct commit *commit, const char *buffer,
 		buffer += 41;
 		parent_line_count++;
 	}
-	graft = lookup_commit_graft(commit->object.sha1);
+	graft = lookup_commit_graft(commit->object.oid.hash);
 	parent_count = commit_list_count(commit->parents);
 	if (graft) {
 		if (graft->nr_parent == -1 && !parent_count)
@@ -665,9 +668,17 @@ static int fsck_commit_buffer(struct commit *commit, const char *buffer,
 	err = fsck_ident(&buffer, &commit->object, options);
 	if (err)
 		return err;
-	if (!commit->tree)
-		return report(options, &commit->object, FSCK_MSG_BAD_TREE, "could not load commit's tree %s", sha1_to_hex(tree_sha1));
-
+	if (!commit->tree) {
+		err = report(options, &commit->object, FSCK_MSG_BAD_TREE, "could not load commit's tree %s", sha1_to_hex(tree_sha1));
+		if (err)
+			return err;
+	}
+	if (memchr(buffer_begin, '\0', size)) {
+		err = report(options, &commit->object, FSCK_MSG_NUL_IN_COMMIT,
+			     "NUL byte in the commit object body");
+		if (err)
+			return err;
+	}
 	return 0;
 }
 
@@ -696,7 +707,7 @@ static int fsck_tag_buffer(struct tag *tag, const char *data,
 		enum object_type type;
 
 		buffer = to_free =
-			read_sha1_file(tag->object.sha1, &type, &size);
+			read_sha1_file(tag->object.oid.hash, &type, &size);
 		if (!buffer)
 			return report(options, &tag->object,
 				FSCK_MSG_MISSING_TAG_OBJECT,
@@ -711,7 +722,8 @@ static int fsck_tag_buffer(struct tag *tag, const char *data,
 		}
 	}
 
-	if (verify_headers(buffer, size, &tag->object, options))
+	ret = verify_headers(buffer, size, &tag->object, options);
+	if (ret)
 		goto done;
 
 	if (!skip_prefix(buffer, "object ", &buffer)) {
@@ -809,9 +821,9 @@ int fsck_object(struct object *obj, void *data, unsigned long size,
 int fsck_error_function(struct object *obj, int msg_type, const char *message)
 {
 	if (msg_type == FSCK_WARN) {
-		warning("object %s: %s", sha1_to_hex(obj->sha1), message);
+		warning("object %s: %s", oid_to_hex(&obj->oid), message);
 		return 0;
 	}
-	error("object %s: %s", sha1_to_hex(obj->sha1), message);
+	error("object %s: %s", oid_to_hex(&obj->oid), message);
 	return 1;
 }

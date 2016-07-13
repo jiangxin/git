@@ -202,13 +202,13 @@ do
 		}
 		run_list=$1; shift ;;
 	--run=*)
-		run_list=$(expr "z$1" : 'z[^=]*=\(.*\)'); shift ;;
+		run_list=${1#--*=}; shift ;;
 	-h|--h|--he|--hel|--help)
 		help=t; shift ;;
 	-v|--v|--ve|--ver|--verb|--verbo|--verbos|--verbose)
 		verbose=t; shift ;;
 	--verbose-only=*)
-		verbose_only=$(expr "z$1" : 'z[^=]*=\(.*\)')
+		verbose_only=${1#--*=}
 		shift ;;
 	-q|--q|--qu|--qui|--quie|--quiet)
 		# Ignore --quiet under a TAP::Harness. Saying how many tests
@@ -222,15 +222,15 @@ do
 		valgrind=memcheck
 		shift ;;
 	--valgrind=*)
-		valgrind=$(expr "z$1" : 'z[^=]*=\(.*\)')
+		valgrind=${1#--*=}
 		shift ;;
 	--valgrind-only=*)
-		valgrind_only=$(expr "z$1" : 'z[^=]*=\(.*\)')
+		valgrind_only=${1#--*=}
 		shift ;;
 	--tee)
 		shift ;; # was handled already
 	--root=*)
-		root=$(expr "z$1" : 'z[^=]*=\(.*\)')
+		root=${1#--*=}
 		shift ;;
 	--chain-lint)
 		GIT_TEST_CHAIN_LINT=1
@@ -321,6 +321,19 @@ then
 else
 	exec 4>/dev/null 3>/dev/null
 fi
+
+# Send any "-x" output directly to stderr to avoid polluting tests
+# which capture stderr. We can do this unconditionally since it
+# has no effect if tracing isn't turned on.
+#
+# Note that this sets up the trace fd as soon as we assign the variable, so it
+# must come after the creation of descriptor 4 above. Likewise, we must never
+# unset this, as it has the side effect of closing descriptor 4, which we
+# use to show verbose tests to the user.
+#
+# Note also that we don't need or want to export it. The tracing is local to
+# this shell, and we would not want to influence any shells we exec.
+BASH_XTRACEFD=4
 
 test_failure=0
 test_count=0
@@ -854,10 +867,10 @@ test -d "$GIT_BUILD_DIR"/templates/blt || {
 	error "You haven't built things yet, have you?"
 }
 
-if ! test -x "$GIT_BUILD_DIR"/test-chmtime
+if ! test -x "$GIT_BUILD_DIR"/t/helper/test-chmtime
 then
 	echo >&2 'You need to build test-chmtime:'
-	echo >&2 'Run "make test-chmtime" in the source (toplevel) directory'
+	echo >&2 'Run "make t/helper/test-chmtime" in the source (toplevel) directory'
 	exit 1
 fi
 
@@ -907,9 +920,11 @@ yes () {
 		y="$*"
 	fi
 
-	while echo "$y"
+	i=0
+	while test $i -lt 99
 	do
-		:
+		echo "$y"
+		i=$(($i+1))
 	done
 }
 
@@ -998,7 +1013,7 @@ test_i18ngrep () {
 test_lazy_prereq PIPE '
 	# test whether the filesystem supports FIFOs
 	case $(uname -s) in
-	CYGWIN*)
+	CYGWIN*|MINGW*)
 		false
 		;;
 	*)
@@ -1054,20 +1069,28 @@ test_lazy_prereq NOT_ROOT '
 	test "$uid" != 0
 '
 
-# On a filesystem that lacks SANITY, a file can be deleted even if
-# the containing directory doesn't have write permissions, or a file
-# can be accessed even if the containing directory doesn't have read
-# or execute permissions, causing our tests that validate that Git
-# works sensibly in such situations.
+# SANITY is about "can you correctly predict what the filesystem would
+# do by only looking at the permission bits of the files and
+# directories?"  A typical example of !SANITY is running the test
+# suite as root, where a test may expect "chmod -r file && cat file"
+# to fail because file is supposed to be unreadable after a successful
+# chmod.  In an environment (i.e. combination of what filesystem is
+# being used and who is running the tests) that lacks SANITY, you may
+# be able to delete or create a file when the containing directory
+# doesn't have write permissions, or access a file even if the
+# containing directory doesn't have read or execute permissions.
+
 test_lazy_prereq SANITY '
 	mkdir SANETESTD.1 SANETESTD.2 &&
 
 	chmod +w SANETESTD.1 SANETESTD.2 &&
 	>SANETESTD.1/x 2>SANETESTD.2/x &&
 	chmod -w SANETESTD.1 &&
+	chmod -r SANETESTD.1/x &&
 	chmod -rx SANETESTD.2 ||
 	error "bug in test sript: cannot prepare SANETESTD"
 
+	! test -r SANETESTD.1/x &&
 	! rm SANETESTD.1/x && ! test -f SANETESTD.2/x
 	status=$?
 

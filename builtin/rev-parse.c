@@ -281,11 +281,8 @@ static int try_difference(const char *arg)
 			b = lookup_commit_reference(end);
 			exclude = get_merge_bases(a, b);
 			while (exclude) {
-				struct commit_list *n = exclude->next;
-				show_rev(REVERSED,
-					 exclude->item->object.sha1,NULL);
-				free(exclude);
-				exclude = n;
+				struct commit *commit = pop_commit(&exclude);
+				show_rev(REVERSED, commit->object.oid.hash, NULL);
 			}
 		}
 		*dotdot = '.';
@@ -322,7 +319,7 @@ static int try_parent_shorthands(const char *arg)
 	commit = lookup_commit_reference(sha1);
 	for (parents = commit->parents; parents; parents = parents->next)
 		show_rev(parents_only ? NORMAL : REVERSED,
-				parents->item->object.sha1, arg);
+				parents->item->object.oid.hash, arg);
 
 	*dotdot = '^';
 	return 1;
@@ -386,7 +383,7 @@ static int cmd_parseopt(int argc, const char **argv, const char *prefix)
 
 	/* get the usage up to the first line with a -- on it */
 	for (;;) {
-		if (strbuf_getline(&sb, stdin, '\n') == EOF)
+		if (strbuf_getline(&sb, stdin) == EOF)
 			die("premature end of input");
 		ALLOC_GROW(usage, unb + 1, usz);
 		if (!strcmp("--", sb.buf)) {
@@ -399,7 +396,7 @@ static int cmd_parseopt(int argc, const char **argv, const char *prefix)
 	}
 
 	/* parse: (<short>|<short>,<long>|<long>)[*=?!]*<arghint>? SP+ <help> */
-	while (strbuf_getline(&sb, stdin, '\n') != EOF) {
+	while (strbuf_getline(&sb, stdin) != EOF) {
 		const char *s;
 		const char *help;
 		struct option *o;
@@ -508,6 +505,7 @@ N_("git rev-parse --parseopt [<options>] -- [<args>...]\n"
 int cmd_rev_parse(int argc, const char **argv, const char *prefix)
 {
 	int i, as_is = 0, verify = 0, quiet = 0, revs_count = 0, type = 0;
+	int did_repo_setup = 0;
 	int has_dashdash = 0;
 	int output_prefix = 0;
 	unsigned char sha1[20];
@@ -531,10 +529,39 @@ int cmd_rev_parse(int argc, const char **argv, const char *prefix)
 		}
 	}
 
-	prefix = setup_git_directory();
-	git_config(git_default_config, NULL);
+	/* No options; just report on whether we're in a git repo or not. */
+	if (argc == 1) {
+		setup_git_directory();
+		git_config(git_default_config, NULL);
+		return 0;
+	}
+
 	for (i = 1; i < argc; i++) {
 		const char *arg = argv[i];
+
+		if (!strcmp(arg, "--local-env-vars")) {
+			int i;
+			for (i = 0; local_repo_env[i]; i++)
+				printf("%s\n", local_repo_env[i]);
+			continue;
+		}
+		if (!strcmp(arg, "--resolve-git-dir")) {
+			const char *gitdir = argv[++i];
+			if (!gitdir)
+				die("--resolve-git-dir requires an argument");
+			gitdir = resolve_gitdir(gitdir);
+			if (!gitdir)
+				die("not a gitdir '%s'", argv[i]);
+			puts(gitdir);
+			continue;
+		}
+
+		/* The rest of the options require a git repository. */
+		if (!did_repo_setup) {
+			prefix = setup_git_directory();
+			git_config(git_default_config, NULL);
+			did_repo_setup = 1;
+		}
 
 		if (!strcmp(arg, "--git-path")) {
 			if (!argv[i + 1])
@@ -709,12 +736,6 @@ int cmd_rev_parse(int argc, const char **argv, const char *prefix)
 				add_ref_exclusion(&ref_excludes, arg + 10);
 				continue;
 			}
-			if (!strcmp(arg, "--local-env-vars")) {
-				int i;
-				for (i = 0; local_repo_env[i]; i++)
-					printf("%s\n", local_repo_env[i]);
-				continue;
-			}
 			if (!strcmp(arg, "--show-toplevel")) {
 				const char *work_tree = get_git_work_tree();
 				if (work_tree)
@@ -766,17 +787,8 @@ int cmd_rev_parse(int argc, const char **argv, const char *prefix)
 				continue;
 			}
 			if (!strcmp(arg, "--git-common-dir")) {
-				puts(get_git_common_dir());
-				continue;
-			}
-			if (!strcmp(arg, "--resolve-git-dir")) {
-				const char *gitdir = argv[++i];
-				if (!gitdir)
-					die("--resolve-git-dir requires an argument");
-				gitdir = resolve_gitdir(gitdir);
-				if (!gitdir)
-					die("not a gitdir '%s'", argv[i]);
-				puts(gitdir);
+				const char *pfx = prefix ? prefix : "";
+				puts(prefix_filename(pfx, strlen(pfx), get_git_common_dir()));
 				continue;
 			}
 			if (!strcmp(arg, "--is-inside-git-dir")) {

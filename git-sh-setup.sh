@@ -160,19 +160,19 @@ git_pager() {
 	else
 		GIT_PAGER=cat
 	fi
-	: ${LESS=-FRX}
-	: ${LV=-c}
+	: "${LESS=-FRX}"
+	: "${LV=-c}"
 	export LESS LV
 
 	eval "$GIT_PAGER" '"$@"'
 }
 
 sane_grep () {
-	GREP_OPTIONS= LC_ALL=C grep "$@"
+	GREP_OPTIONS= LC_ALL=C grep @@SANE_TEXT_GREP@@ "$@"
 }
 
 sane_egrep () {
-	GREP_OPTIONS= LC_ALL=C egrep "$@"
+	GREP_OPTIONS= LC_ALL=C egrep @@SANE_TEXT_GREP@@ "$@"
 }
 
 is_bare_repository () {
@@ -344,7 +344,7 @@ git_dir_init () {
 		echo >&2 "Unable to determine absolute path of git directory"
 		exit 1
 	}
-	: ${GIT_OBJECT_DIRECTORY="$(git rev-parse --git-path objects)"}
+	: "${GIT_OBJECT_DIRECTORY="$(git rev-parse --git-path objects)"}"
 }
 
 if test -z "$NONGIT_OK"

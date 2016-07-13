@@ -96,6 +96,14 @@
 #define unsigned_add_overflows(a, b) \
     ((b) > maximum_unsigned_value_of_type(a) - (a))
 
+/*
+ * Returns true if the multiplication of "a" and "b" will
+ * overflow. The types of "a" and "b" must match and must be unsigned.
+ * Note that this macro evaluates "a" twice!
+ */
+#define unsigned_mult_overflows(a, b) \
+    ((a) && (b) > maximum_unsigned_value_of_type(a) / (a))
+
 #ifdef __GNUC__
 #define TYPEOF(x) (__typeof__(x))
 #else
@@ -229,7 +237,7 @@ typedef unsigned long uintptr_t;
 #else
 #define precompose_str(in,i_nfd2nfc)
 #define precompose_argv(c,v)
-#define probe_utf8_pathname_composition(a,b)
+#define probe_utf8_pathname_composition()
 #endif
 
 #ifdef MKDIR_WO_TRAILING_SLASH
@@ -253,6 +261,8 @@ struct itimerval {
 #else
 #define basename gitbasename
 extern char *gitbasename(char *);
+#define dirname gitdirname
+extern char *gitdirname(char *);
 #endif
 
 #ifndef NO_ICONV
@@ -269,9 +279,6 @@ extern char *gitbasename(char *);
 #endif
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#ifdef NO_HMAC_CTX_CLEANUP
-#define HMAC_CTX_cleanup HMAC_cleanup
-#endif
 #endif
 
 /* On most systems <netdb.h> would have given us this, but
@@ -294,6 +301,10 @@ extern char *gitbasename(char *);
 
 #ifndef PRIuMAX
 #define PRIuMAX "llu"
+#endif
+
+#ifndef SCNuMAX
+#define SCNuMAX PRIuMAX
 #endif
 
 #ifndef PRIu32
@@ -319,16 +330,20 @@ extern char *gitbasename(char *);
 #define _PATH_DEFPATH "/usr/local/bin:/usr/bin:/bin"
 #endif
 
-#ifndef STRIP_EXTENSION
-#define STRIP_EXTENSION ""
-#endif
-
 #ifndef has_dos_drive_prefix
 static inline int git_has_dos_drive_prefix(const char *path)
 {
 	return 0;
 }
 #define has_dos_drive_prefix git_has_dos_drive_prefix
+#endif
+
+#ifndef skip_dos_drive_prefix
+static inline int git_skip_dos_drive_prefix(char **path)
+{
+	return 0;
+}
+#define skip_dos_drive_prefix git_skip_dos_drive_prefix
 #endif
 
 #ifndef is_dir_sep
@@ -394,7 +409,9 @@ extern NORETURN void usagef(const char *err, ...) __attribute__((format (printf,
 extern NORETURN void die(const char *err, ...) __attribute__((format (printf, 1, 2)));
 extern NORETURN void die_errno(const char *err, ...) __attribute__((format (printf, 1, 2)));
 extern int error(const char *err, ...) __attribute__((format (printf, 1, 2)));
+extern int error_errno(const char *err, ...) __attribute__((format (printf, 1, 2)));
 extern void warning(const char *err, ...) __attribute__((format (printf, 1, 2)));
+extern void warning_errno(const char *err, ...) __attribute__((format (printf, 1, 2)));
 
 #ifndef NO_OPENSSL
 #ifdef APPLE_COMMON_CRYPTO
@@ -453,6 +470,23 @@ static inline int skip_prefix(const char *str, const char *prefix,
 			return 1;
 		}
 	} while (*str++ == *prefix++);
+	return 0;
+}
+
+/*
+ * Like skip_prefix, but promises never to read past "len" bytes of the input
+ * buffer, and returns the remaining number of bytes in "out" via "outlen".
+ */
+static inline int skip_prefix_mem(const char *buf, size_t len,
+				  const char *prefix,
+				  const char **out, size_t *outlen)
+{
+	size_t prefix_len = strlen(prefix);
+	if (prefix_len <= len && !memcmp(buf, prefix, prefix_len)) {
+		*out = buf + prefix_len;
+		*outlen = len - prefix_len;
+		return 1;
+	}
 	return 0;
 }
 
@@ -568,7 +602,7 @@ extern int git_lstat(const char *, struct stat *);
 #endif
 
 #define DEFAULT_PACKED_GIT_LIMIT \
-	((1024L * 1024L) * (sizeof(void*) >= 8 ? 8192 : 256))
+	((1024L * 1024L) * (size_t)(sizeof(void*) >= 8 ? 8192 : 256))
 
 #ifdef NO_PREAD
 #define pread git_pread
@@ -659,7 +693,6 @@ extern int git_vsnprintf(char *str, size_t maxsize,
 #ifdef __GLIBC_PREREQ
 #if __GLIBC_PREREQ(2, 1)
 #define HAVE_STRCHRNUL
-#define HAVE_MEMPCPY
 #endif
 #endif
 
@@ -670,14 +703,6 @@ static inline char *gitstrchrnul(const char *s, int c)
 	while (*s && *s != c)
 		s++;
 	return (char *)s;
-}
-#endif
-
-#ifndef HAVE_MEMPCPY
-#define mempcpy gitmempcpy
-static inline void *gitmempcpy(void *dest, const void *src, size_t n)
-{
-	return (char *)memcpy(dest, src, n) + n;
 }
 #endif
 
@@ -698,6 +723,32 @@ extern void release_pack_memory(size_t);
 
 typedef void (*try_to_free_t)(size_t);
 extern try_to_free_t set_try_to_free_routine(try_to_free_t);
+
+static inline size_t st_add(size_t a, size_t b)
+{
+	if (unsigned_add_overflows(a, b))
+		die("size_t overflow: %"PRIuMAX" + %"PRIuMAX,
+		    (uintmax_t)a, (uintmax_t)b);
+	return a + b;
+}
+#define st_add3(a,b,c)   st_add(st_add((a),(b)),(c))
+#define st_add4(a,b,c,d) st_add(st_add3((a),(b),(c)),(d))
+
+static inline size_t st_mult(size_t a, size_t b)
+{
+	if (unsigned_mult_overflows(a, b))
+		die("size_t overflow: %"PRIuMAX" * %"PRIuMAX,
+		    (uintmax_t)a, (uintmax_t)b);
+	return a * b;
+}
+
+static inline size_t st_sub(size_t a, size_t b)
+{
+	if (a < b)
+		die("size_t underflow: %"PRIuMAX" - %"PRIuMAX,
+		    (uintmax_t)a, (uintmax_t)b);
+	return a - b;
+}
 
 #ifdef HAVE_ALLOCA_H
 # include <alloca.h>
@@ -729,8 +780,72 @@ extern int xmkstemp_mode(char *template, int mode);
 extern int odb_mkstemp(char *template, size_t limit, const char *pattern);
 extern int odb_pack_keep(char *name, size_t namesz, const unsigned char *sha1);
 extern char *xgetcwd(void);
+extern FILE *fopen_for_writing(const char *path);
 
-#define REALLOC_ARRAY(x, alloc) (x) = xrealloc((x), (alloc) * sizeof(*(x)))
+#define ALLOC_ARRAY(x, alloc) (x) = xmalloc(st_mult(sizeof(*(x)), (alloc)))
+#define REALLOC_ARRAY(x, alloc) (x) = xrealloc((x), st_mult(sizeof(*(x)), (alloc)))
+
+/*
+ * These functions help you allocate structs with flex arrays, and copy
+ * the data directly into the array. For example, if you had:
+ *
+ *   struct foo {
+ *     int bar;
+ *     char name[FLEX_ARRAY];
+ *   };
+ *
+ * you can do:
+ *
+ *   struct foo *f;
+ *   FLEX_ALLOC_MEM(f, name, src, len);
+ *
+ * to allocate a "foo" with the contents of "src" in the "name" field.
+ * The resulting struct is automatically zero'd, and the flex-array field
+ * is NUL-terminated (whether the incoming src buffer was or not).
+ *
+ * The FLEXPTR_* variants operate on structs that don't use flex-arrays,
+ * but do want to store a pointer to some extra data in the same allocated
+ * block. For example, if you have:
+ *
+ *   struct foo {
+ *     char *name;
+ *     int bar;
+ *   };
+ *
+ * you can do:
+ *
+ *   struct foo *f;
+ *   FLEX_ALLOC_STR(f, name, src);
+ *
+ * and "name" will point to a block of memory after the struct, which will be
+ * freed along with the struct (but the pointer can be repointed anywhere).
+ *
+ * The *_STR variants accept a string parameter rather than a ptr/len
+ * combination.
+ *
+ * Note that these macros will evaluate the first parameter multiple
+ * times, and it must be assignable as an lvalue.
+ */
+#define FLEX_ALLOC_MEM(x, flexname, buf, len) do { \
+	(x) = NULL; /* silence -Wuninitialized for offset calculation */ \
+	(x) = xalloc_flex(sizeof(*(x)), (char *)(&((x)->flexname)) - (char *)(x), (buf), (len)); \
+} while (0)
+#define FLEXPTR_ALLOC_MEM(x, ptrname, buf, len) do { \
+	(x) = xalloc_flex(sizeof(*(x)), sizeof(*(x)), (buf), (len)); \
+	(x)->ptrname = (void *)((x)+1); \
+} while(0)
+#define FLEX_ALLOC_STR(x, flexname, str) \
+	FLEX_ALLOC_MEM((x), flexname, (str), strlen(str))
+#define FLEXPTR_ALLOC_STR(x, ptrname, str) \
+	FLEXPTR_ALLOC_MEM((x), ptrname, (str), strlen(str))
+
+static inline void *xalloc_flex(size_t base_len, size_t offset,
+				const void *src, size_t src_len)
+{
+	unsigned char *ret = xcalloc(1, st_add3(base_len, src_len, 1));
+	memcpy(ret + offset, src, src_len);
+	return ret;
+}
 
 static inline char *xstrdup_or_null(const char *str)
 {
@@ -743,6 +858,9 @@ static inline size_t xsize_t(off_t len)
 		die("Cannot handle files this big");
 	return (size_t)len;
 }
+
+__attribute__((format (printf, 3, 4)))
+extern int xsnprintf(char *dst, size_t max, const char *fmt, ...);
 
 /* in ctype.c, for kwset users */
 extern const unsigned char tolower_trans_tbl[256];
@@ -814,6 +932,9 @@ static inline int strtoul_ui(char const *s, int base, unsigned int *result)
 	char *p;
 
 	errno = 0;
+	/* negative values would be accepted by strtoul */
+	if (strchr(s, '-'))
+		return -1;
 	ul = strtoul(s, &p, base);
 	if (errno || *p || p == s || (unsigned int) ul != ul)
 		return -1;
@@ -918,9 +1039,6 @@ int access_or_die(const char *path, int mode, unsigned flag);
 
 /* Warn on an inaccessible file that ought to be accessible */
 void warn_on_inaccessible(const char *path);
-
-/* Get the passwd entry for the UID of the current process. */
-struct passwd *xgetpwuid_self(void);
 
 #ifdef GMTIME_UNRELIABLE_ERRORS
 struct tm *git_gmtime(const time_t *);

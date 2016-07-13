@@ -11,22 +11,31 @@
  * something different on Windows.
  */
 
-static const char *pager_argv[] = { NULL, NULL };
 static struct child_process pager_process = CHILD_PROCESS_INIT;
 
-static void wait_for_pager(void)
+static void wait_for_pager(int in_signal)
 {
-	fflush(stdout);
-	fflush(stderr);
+	if (!in_signal) {
+		fflush(stdout);
+		fflush(stderr);
+	}
 	/* signal EOF to pager */
 	close(1);
 	close(2);
-	finish_command(&pager_process);
+	if (in_signal)
+		finish_command_in_signal(&pager_process);
+	else
+		finish_command(&pager_process);
+}
+
+static void wait_for_pager_atexit(void)
+{
+	wait_for_pager(0);
 }
 
 static void wait_for_pager_signal(int signo)
 {
-	wait_for_pager();
+	wait_for_pager(1);
 	sigchain_pop(signo);
 	raise(signo);
 }
@@ -54,6 +63,16 @@ const char *git_pager(int stdout_is_tty)
 	return pager;
 }
 
+void prepare_pager_args(struct child_process *pager_process, const char *pager)
+{
+	argv_array_push(&pager_process->args, pager);
+	pager_process->use_shell = 1;
+	if (!getenv("LESS"))
+		argv_array_push(&pager_process->env_array, "LESS=FRX");
+	if (!getenv("LV"))
+		argv_array_push(&pager_process->env_array, "LV=-c");
+}
+
 void setup_pager(void)
 {
 	const char *pager = git_pager(isatty(1));
@@ -70,14 +89,8 @@ void setup_pager(void)
 	setenv("GIT_PAGER_IN_USE", "true", 1);
 
 	/* spawn the pager */
-	pager_argv[0] = pager;
-	pager_process.use_shell = 1;
-	pager_process.argv = pager_argv;
+	prepare_pager_args(&pager_process, pager);
 	pager_process.in = -1;
-	if (!getenv("LESS"))
-		argv_array_push(&pager_process.env_array, "LESS=FRX");
-	if (!getenv("LV"))
-		argv_array_push(&pager_process.env_array, "LV=-c");
 	argv_array_push(&pager_process.env_array, "GIT_PAGER_IN_USE");
 	if (start_command(&pager_process))
 		return;
@@ -90,7 +103,7 @@ void setup_pager(void)
 
 	/* this makes sure that the parent terminates after the pager */
 	sigchain_push_common(wait_for_pager_signal);
-	atexit(wait_for_pager);
+	atexit(wait_for_pager_atexit);
 }
 
 int pager_in_use(void)

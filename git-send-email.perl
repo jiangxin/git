@@ -19,10 +19,10 @@
 use 5.008;
 use strict;
 use warnings;
+use POSIX qw/strftime/;
 use Term::ReadLine;
 use Getopt::Long;
 use Text::ParseWords;
-use Data::Dumper;
 use Term::ANSIColor;
 use File::Temp qw/ tempdir tempfile /;
 use File::Spec::Functions qw(catfile);
@@ -46,6 +46,7 @@ package main;
 sub usage {
 	print <<EOT;
 git send-email [options] <file | directory | rev-list options >
+git send-email --dump-aliases
 
   Composing:
     --from                  <str>  * Email From:
@@ -100,6 +101,9 @@ git send-email [options] <file | directory | rev-list options >
     --[no-]format-patch            * understand any non optional arguments as
                                      `git format-patch` ones.
     --force                        * Send even if safety checks would prevent it.
+
+  Information:
+    --dump-aliases                 * Dump configured aliases and exit.
 
 EOT
 	exit(1);
@@ -180,6 +184,7 @@ my ($quiet, $dry_run) = (0, 0);
 my $format_patch;
 my $compose_filename;
 my $force = 0;
+my $dump_aliases = 0;
 
 # Handle interactive edition of files.
 my $multiedit;
@@ -239,7 +244,6 @@ my %config_settings = (
     "smtpserveroption" => \@smtp_server_options,
     "smtpuser" => \$smtp_authuser,
     "smtppass" => \$smtp_authpass,
-    "smtpsslcertpath" => \$smtp_ssl_cert_path,
     "smtpdomain" => \$smtp_domain,
     "smtpauth" => \$smtp_auth,
     "to" => \@initial_to,
@@ -259,6 +263,7 @@ my %config_settings = (
 
 my %config_path_settings = (
     "aliasesfile" => \@alias_files,
+    "smtpsslcertpath" => \$smtp_ssl_cert_path,
 );
 
 # Handle Uncouth Termination
@@ -291,6 +296,11 @@ $SIG{INT}  = \&signal_handler;
 
 my $help;
 my $rc = GetOptions("h" => \$help,
+                    "dump-aliases" => \$dump_aliases);
+usage() unless $rc;
+die "--dump-aliases incompatible with other options\n"
+    if !$help and $dump_aliases and @ARGV;
+$rc = GetOptions(
 		    "sender|from=s" => \$sender,
                     "in-reply-to=s" => \$initial_reply_to,
 		    "subject=s" => \$initial_subject,
@@ -514,11 +524,16 @@ my %parse_alias = (
 		if (/^\s*alias\s+(?:-group\s+\S+\s+)*(\S+)\s+(.*)$/) {
 			my ($alias, $addr) = ($1, $2);
 			$addr =~ s/#.*$//; # mutt allows # comments
-			 # commas delimit multiple addresses
-			$aliases{$alias} = [ split_addrs($addr) ];
+			# commas delimit multiple addresses
+			my @addr = split_addrs($addr);
+
+			# quotes may be escaped in the file,
+			# unescape them so we do not double-escape them later.
+			s/\\"/"/g foreach @addr;
+			$aliases{$alias} = \@addr
 		}}},
 	mailrc => sub { my $fh = shift; while (<$fh>) {
-		if (/^alias\s+(\S+)\s+(.*)$/) {
+		if (/^alias\s+(\S+)\s+(.*?)\s*$/) {
 			# spaces delimit multiple addresses
 			$aliases{$1} = [ quotewords('\s+', 0, $2) ];
 		}}},
@@ -549,6 +564,11 @@ if (@alias_files and $aliasfiletype and defined $parse_alias{$aliasfiletype}) {
 		$parse_alias{$aliasfiletype}->($fh);
 		close $fh;
 	}
+}
+
+if ($dump_aliases) {
+    print "$_\n" for (sort keys %aliases);
+    exit(0);
 }
 
 # is_format_patch_arg($f) returns 0 if $f names a patch, or 1 if
@@ -600,6 +620,8 @@ if (@rev_list_opts) {
 		unless $repo;
 	push @files, $repo->command('format-patch', '-o', tempdir(CLEANUP => 1), @rev_list_opts);
 }
+
+@files = handle_backup_files(@files);
 
 if ($validate) {
 	foreach my $f (@files) {
@@ -807,9 +829,10 @@ if (defined $sender) {
 # But it's a no-op to run sanitize_address on an already sanitized address.
 $sender = sanitize_address($sender);
 
+my $to_whom = "To whom should the emails be sent (if anyone)?";
 my $prompting = 0;
 if (!@initial_to && !defined $to_cmd) {
-	my $to = ask("Who should the emails be sent to (if any)? ",
+	my $to = ask("$to_whom ",
 		     default => "",
 		     valid_re => qr/\@.*\./, confirm_only => 1);
 	push @initial_to, parse_address_line($to) if defined $to; # sanitized/validated later
@@ -904,7 +927,7 @@ sub validate_address {
 			cleanup_compose_files();
 			exit(0);
 		}
-		$address = ask("Who should the email be sent to (if any)? ",
+		$address = ask("$to_whom ",
 			default => "",
 			valid_re => qr/\@.*\./, confirm_only => 1);
 	}
@@ -929,7 +952,7 @@ my ($message_id_stamp, $message_id_serial);
 sub make_message_id {
 	my $uniq;
 	if (!defined $message_id_stamp) {
-		$message_id_stamp = sprintf("%s-%s", time, $$);
+		$message_id_stamp = strftime("%Y%m%d%H%M%S.$$", gmtime(time));
 		$message_id_serial = 0;
 	}
 	$message_id_serial++;
@@ -944,7 +967,7 @@ sub make_message_id {
 		require Sys::Hostname;
 		$du_part = 'user@' . Sys::Hostname::hostname();
 	}
-	my $message_id_template = "<%s-git-send-email-%s>";
+	my $message_id_template = "<%s-%s>";
 	$message_id = sprintf($message_id_template, $uniq, $du_part);
 	#print "new message id = $message_id\n"; # Was useful for debugging
 }
@@ -1136,7 +1159,7 @@ sub smtp_auth_maybe {
 
 	# Check mechanism naming as defined in:
 	# https://tools.ietf.org/html/rfc4422#page-8
-	if ($smtp_auth !~ /^(\b[A-Z0-9-_]{1,20}\s*)*$/) {
+	if ($smtp_auth && $smtp_auth !~ /^(\b[A-Z0-9-_]{1,20}\s*)*$/) {
 		die "invalid smtp auth: '${smtp_auth}'";
 	}
 
@@ -1196,8 +1219,7 @@ sub ssl_verify_params {
 		return (SSL_verify_mode => SSL_VERIFY_PEER(),
 			SSL_ca_file => $smtp_ssl_cert_path);
 	} else {
-		print STDERR "Not using SSL_VERIFY_PEER because the CA path does not exist.\n";
-		return (SSL_verify_mode => SSL_VERIFY_NONE());
+		die "CA path \"$smtp_ssl_cert_path\" does not exist";
 	}
 }
 
@@ -1318,6 +1340,13 @@ Message-Id: $message_id
 			require Net::SMTP::SSL;
 			$smtp_domain ||= maildomain();
 			require IO::Socket::SSL;
+
+			# Suppress "variable accessed once" warning.
+			{
+				no warnings 'once';
+				$IO::Socket::SSL::DEBUG = 1;
+			}
+
 			# Net::SMTP::SSL->new() does not forward any SSL options
 			IO::Socket::SSL::set_client_defaults(
 				ssl_verify_params());
@@ -1365,7 +1394,11 @@ Message-Id: $message_id
 		$smtp->mail( $raw_from ) or die $smtp->message;
 		$smtp->to( @recipients ) or die $smtp->message;
 		$smtp->data or die $smtp->message;
-		$smtp->datasend("$header\n$message") or die $smtp->message;
+		$smtp->datasend("$header\n") or die $smtp->message;
+		my @lines = split /^/, $message;
+		foreach my $line (@lines) {
+			$smtp->datasend("$line") or die $smtp->message;
+		}
 		$smtp->dataend() or die $smtp->message;
 		$smtp->code =~ /250|200/ or die "Failed to send $subject\n".$smtp->message;
 	}
@@ -1694,6 +1727,44 @@ sub validate_patch {
 		}
 	}
 	return;
+}
+
+sub handle_backup {
+	my ($last, $lastlen, $file, $known_suffix) = @_;
+	my ($suffix, $skip);
+
+	$skip = 0;
+	if (defined $last &&
+	    ($lastlen < length($file)) &&
+	    (substr($file, 0, $lastlen) eq $last) &&
+	    ($suffix = substr($file, $lastlen)) !~ /^[a-z0-9]/i) {
+		if (defined $known_suffix && $suffix eq $known_suffix) {
+			print "Skipping $file with backup suffix '$known_suffix'.\n";
+			$skip = 1;
+		} else {
+			my $answer = ask("Do you really want to send $file? (y|N): ",
+					 valid_re => qr/^(?:y|n)/i,
+					 default => 'n');
+			$skip = ($answer ne 'y');
+			if ($skip) {
+				$known_suffix = $suffix;
+			}
+		}
+	}
+	return ($skip, $known_suffix);
+}
+
+sub handle_backup_files {
+	my @file = @_;
+	my ($last, $lastlen, $known_suffix, $skip, @result);
+	for my $file (@file) {
+		($skip, $known_suffix) = handle_backup($last, $lastlen,
+						       $file, $known_suffix);
+		push @result, $file unless $skip;
+		$last = $file;
+		$lastlen = length($file);
+	}
+	return @result;
 }
 
 sub file_has_nonascii {

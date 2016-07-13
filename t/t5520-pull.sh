@@ -9,6 +9,24 @@ modify () {
 	mv "$2.x" "$2"
 }
 
+test_pull_autostash () {
+	git reset --hard before-rebase &&
+	echo dirty >new_file &&
+	git add new_file &&
+	git pull "$@" . copy &&
+	test_cmp_rev HEAD^ copy &&
+	test "$(cat new_file)" = dirty &&
+	test "$(cat file)" = "modified again"
+}
+
+test_pull_autostash_fail () {
+	git reset --hard before-rebase &&
+	echo dirty >new_file &&
+	git add new_file &&
+	test_must_fail git pull "$@" . copy 2>err &&
+	test_i18ngrep "uncommitted changes." err
+}
+
 test_expect_success setup '
 	echo file >file &&
 	git add file &&
@@ -247,14 +265,46 @@ test_expect_success '--rebase fails with multiple branches' '
 
 test_expect_success 'pull --rebase succeeds with dirty working directory and rebase.autostash set' '
 	test_config rebase.autostash true &&
-	git reset --hard before-rebase &&
-	echo dirty >new_file &&
-	git add new_file &&
-	git pull --rebase . copy &&
-	test_cmp_rev HEAD^ copy &&
-	test "$(cat new_file)" = dirty &&
-	test "$(cat file)" = "modified again"
+	test_pull_autostash --rebase
 '
+
+test_expect_success 'pull --rebase --autostash & rebase.autostash=true' '
+	test_config rebase.autostash true &&
+	test_pull_autostash --rebase --autostash
+'
+
+test_expect_success 'pull --rebase --autostash & rebase.autostash=false' '
+	test_config rebase.autostash false &&
+	test_pull_autostash --rebase --autostash
+'
+
+test_expect_success 'pull --rebase --autostash & rebase.autostash unset' '
+	test_unconfig rebase.autostash &&
+	test_pull_autostash --rebase --autostash
+'
+
+test_expect_success 'pull --rebase --no-autostash & rebase.autostash=true' '
+	test_config rebase.autostash true &&
+	test_pull_autostash_fail --rebase --no-autostash
+'
+
+test_expect_success 'pull --rebase --no-autostash & rebase.autostash=false' '
+	test_config rebase.autostash false &&
+	test_pull_autostash_fail --rebase --no-autostash
+'
+
+test_expect_success 'pull --rebase --no-autostash & rebase.autostash unset' '
+	test_unconfig rebase.autostash &&
+	test_pull_autostash_fail --rebase --no-autostash
+'
+
+for i in --autostash --no-autostash
+do
+	test_expect_success "pull $i (without --rebase) is illegal" '
+		test_must_fail git pull $i . copy 2>err &&
+		test_i18ngrep "only valid with --rebase" err
+	'
+done
 
 test_expect_success 'pull.rebase' '
 	git reset --hard before-rebase &&
@@ -262,6 +312,16 @@ test_expect_success 'pull.rebase' '
 	git pull . copy &&
 	test "$(git rev-parse HEAD^)" = "$(git rev-parse copy)" &&
 	test new = "$(git show HEAD:file2)"
+'
+
+test_expect_success 'pull --autostash & pull.rebase=true' '
+	test_config pull.rebase true &&
+	test_pull_autostash --autostash
+'
+
+test_expect_success 'pull --no-autostash & pull.rebase=true' '
+	test_config pull.rebase true &&
+	test_pull_autostash_fail --no-autostash
 '
 
 test_expect_success 'branch.to-rebase.rebase' '
@@ -279,6 +339,22 @@ test_expect_success 'branch.to-rebase.rebase should override pull.rebase' '
 	git pull . copy &&
 	test "$(git rev-parse HEAD^)" != "$(git rev-parse copy)" &&
 	test new = "$(git show HEAD:file2)"
+'
+
+test_expect_success "pull --rebase warns on --verify-signatures" '
+	git reset --hard before-rebase &&
+	git pull --rebase --verify-signatures . copy 2>err &&
+	test "$(git rev-parse HEAD^)" = "$(git rev-parse copy)" &&
+	test new = "$(git show HEAD:file2)" &&
+	test_i18ngrep "ignoring --verify-signatures for rebase" err
+'
+
+test_expect_success "pull --rebase does not warn on --no-verify-signatures" '
+	git reset --hard before-rebase &&
+	git pull --rebase --no-verify-signatures . copy 2>err &&
+	test "$(git rev-parse HEAD^)" = "$(git rev-parse copy)" &&
+	test new = "$(git show HEAD:file2)" &&
+	test_i18ngrep ! "verify-signatures" err
 '
 
 # add a feature branch, keep-merge, that is merged into master, so the
@@ -324,6 +400,16 @@ test_expect_success 'pull.rebase=preserve rebases and merges keep-merge' '
 	git pull . copy &&
 	test "$(git rev-parse HEAD^^)" = "$(git rev-parse copy)" &&
 	test "$(git rev-parse HEAD^2)" = "$(git rev-parse keep-merge)"
+'
+
+test_expect_success 'pull.rebase=interactive' '
+	write_script "$TRASH_DIRECTORY/fake-editor" <<-\EOF &&
+	echo I was here >fake.out &&
+	false
+	EOF
+	test_set_editor "$TRASH_DIRECTORY/fake-editor" &&
+	test_must_fail git pull --rebase=interactive . copy &&
+	test "I was here" = "$(cat fake.out)"
 '
 
 test_expect_success 'pull.rebase=invalid fails' '

@@ -77,17 +77,18 @@ amend="$state_dir"/amend
 rewritten_list="$state_dir"/rewritten-list
 rewritten_pending="$state_dir"/rewritten-pending
 
-strategy_args=
-if test -n "$do_merge"
-then
-	strategy_args=${strategy:+--strategy=$strategy}
-	eval '
-		for strategy_opt in '"$strategy_opts"'
-		do
-			strategy_args="$strategy_args -X$(git rev-parse --sq-quote "${strategy_opt#--}")"
-		done
-	'
-fi
+# Work around Git for Windows' Bash whose "read" does not strip CRLF
+# and leaves CR at the end instead.
+cr=$(printf "\015")
+
+strategy_args=${strategy:+--strategy=$strategy}
+test -n "$strategy_opts" &&
+eval '
+	for strategy_opt in '"$strategy_opts"'
+	do
+		strategy_args="$strategy_args -X$(git rev-parse --sq-quote "${strategy_opt#--}")"
+	done
+'
 
 GIT_CHERRY_PICK_HELP="$resolvemsg"
 export GIT_CHERRY_PICK_HELP
@@ -191,7 +192,6 @@ make_patch () {
 die_with_patch () {
 	echo "$1" > "$state_dir"/stopped-sha
 	make_patch "$1"
-	git rerere
 	die "$2"
 }
 
@@ -518,6 +518,10 @@ do_next () {
 	"$comment_char"*|''|noop|drop|d)
 		mark_action_done
 		;;
+	"$cr")
+		# Work around CR left by "read" (e.g. with Git for Windows' Bash).
+		mark_action_done
+		;;
 	pick|p)
 		comment_for_reflog pick
 
@@ -544,7 +548,8 @@ do_next () {
 
 		mark_action_done
 		do_pick $sha1 "$rest"
-		warn "Stopped at $sha1... $rest"
+		sha1_abbrev=$(git rev-parse --short $sha1)
+		warn "Stopped at $sha1_abbrev... $rest"
 		exit_with_patch $sha1 0
 		;;
 	squash|s|fixup|f)
@@ -602,7 +607,7 @@ do_next () {
 		read -r command rest < "$todo"
 		mark_action_done
 		printf 'Executing: %s\n' "$rest"
-		${SHELL:-@SHELL_PATH@} -c "$rest" # Actual execution
+		"${SHELL:-@SHELL_PATH@}" -c "$rest" # Actual execution
 		status=$?
 		# Run in subshell because require_clean_work_tree can die.
 		dirty=f
@@ -729,8 +734,8 @@ transform_todo_ids () {
 			# that do not have a SHA-1 at the beginning of $rest.
 			;;
 		*)
-			sha1=$(git rev-parse --verify --quiet "$@" ${rest%% *}) &&
-			rest="$sha1 ${rest#* }"
+			sha1=$(git rev-parse --verify --quiet "$@" ${rest%%[	 ]*}) &&
+			rest="$sha1 ${rest#*[	 ]}"
 			;;
 		esac
 		printf '%s\n' "$command${rest:+ }$rest"
@@ -857,15 +862,16 @@ add_exec_commands () {
 # Check if the SHA-1 passed as an argument is a
 # correct one, if not then print $2 in "$todo".badsha
 # $1: the SHA-1 to test
-# $2: the line to display if incorrect SHA-1
+# $2: the line number of the input
+# $3: the input filename
 check_commit_sha () {
 	badsha=0
-	if test -z $1
+	if test -z "$1"
 	then
 		badsha=1
 	else
 		sha1_verif="$(git rev-parse --verify --quiet $1^{commit})"
-		if test -z $sha1_verif
+		if test -z "$sha1_verif"
 		then
 			badsha=1
 		fi
@@ -873,9 +879,10 @@ check_commit_sha () {
 
 	if test $badsha -ne 0
 	then
+		line="$(sed -n -e "${2}p" "$3")"
 		warn "Warning: the SHA-1 is missing or isn't" \
 			"a commit in the following line:"
-		warn " - $2"
+		warn " - $line"
 		warn
 	fi
 
@@ -886,37 +893,35 @@ check_commit_sha () {
 # from the todolist in stdin
 check_bad_cmd_and_sha () {
 	retval=0
-	git stripspace --strip-comments |
-	(
-		while read -r line
-		do
-			IFS=' '
-			set -- $line
-			command=$1
-			sha1=$2
-
-			case $command in
-			''|noop|x|"exec")
-				# Doesn't expect a SHA-1
-				;;
-			pick|p|drop|d|reword|r|edit|e|squash|s|fixup|f)
-				if ! check_commit_sha $sha1 "$line"
-				then
-					retval=1
-				fi
-				;;
-			*)
-				warn "Warning: the command isn't recognized" \
-					"in the following line:"
-				warn " - $line"
-				warn
+	lineno=0
+	while read -r command rest
+	do
+		lineno=$(( $lineno + 1 ))
+		case $command in
+		"$comment_char"*|''|noop|x|exec)
+			# Doesn't expect a SHA-1
+			;;
+		"$cr")
+			# Work around CR left by "read" (e.g. with Git for
+			# Windows' Bash).
+			;;
+		pick|p|drop|d|reword|r|edit|e|squash|s|fixup|f)
+			if ! check_commit_sha "${rest%%[ 	]*}" "$lineno" "$1"
+			then
 				retval=1
-				;;
-			esac
-		done
-
-		return $retval
-	)
+			fi
+			;;
+		*)
+			line="$(sed -n -e "${lineno}p" "$1")"
+			warn "Warning: the command isn't recognized" \
+				"in the following line:"
+			warn " - $line"
+			warn
+			retval=1
+			;;
+		esac
+	done <"$1"
+	return $retval
 }
 
 # Print the list of the SHA-1 of the commits
@@ -1010,7 +1015,7 @@ check_todo_list () {
 		;;
 	esac
 
-	if ! check_bad_cmd_and_sha <"$todo"
+	if ! check_bad_cmd_and_sha "$todo"
 	then
 		raise_error=t
 	fi
@@ -1033,8 +1038,8 @@ check_todo_list () {
 # below were not inside any function, and expected to return
 # to the function that dot-sourced us.
 #
-# However, FreeBSD /bin/sh misbehaves on such a construct and
-# continues to run the statements that follow such a "return".
+# However, older (9.x) versions of FreeBSD /bin/sh misbehave on such a
+# construct and continue to run the statements that follow such a "return".
 # As a work-around, we introduce an extra layer of a function
 # here, and immediately call it after defining it.
 git_rebase__interactive () {
@@ -1229,7 +1234,8 @@ then
 	git rev-list $revisions |
 	while read rev
 	do
-		if test -f "$rewritten"/$rev && test "$(sane_grep "$rev" "$state_dir"/not-cherry-picks)" = ""
+		if test -f "$rewritten"/$rev &&
+		   ! sane_grep "$rev" "$state_dir"/not-cherry-picks >/dev/null
 		then
 			# Use -f2 because if rev-list is telling us this commit is
 			# not worthwhile, we don't want to track its multiple heads,

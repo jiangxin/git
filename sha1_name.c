@@ -87,20 +87,23 @@ static void find_short_object_filename(int len, const char *hex_pfx, struct disa
 		 * object databases including our own.
 		 */
 		const char *objdir = get_object_directory();
-		int objdir_len = strlen(objdir);
-		int entlen = objdir_len + 43;
-		fakeent = xmalloc(sizeof(*fakeent) + entlen);
+		size_t objdir_len = strlen(objdir);
+		fakeent = xmalloc(st_add3(sizeof(*fakeent), objdir_len, 43));
 		memcpy(fakeent->base, objdir, objdir_len);
 		fakeent->name = fakeent->base + objdir_len + 1;
 		fakeent->name[-1] = '/';
 	}
 	fakeent->next = alt_odb_list;
 
-	sprintf(hex, "%.2s", hex_pfx);
+	xsnprintf(hex, sizeof(hex), "%.2s", hex_pfx);
 	for (alt = fakeent; alt && !ds->ambiguous; alt = alt->next) {
 		struct dirent *de;
 		DIR *dir;
-		sprintf(alt->name, "%.2s/", hex_pfx);
+		/*
+		 * every alt_odb struct has 42 extra bytes after the base
+		 * for exactly this purpose
+		 */
+		xsnprintf(alt->name, 42, "%.2s/", hex_pfx);
 		dir = opendir(alt->base);
 		if (!dir)
 			continue;
@@ -368,14 +371,13 @@ int for_each_abbrev(const char *prefix, each_abbrev_fn fn, void *cb_data)
 	return ds.ambiguous;
 }
 
-const char *find_unique_abbrev(const unsigned char *sha1, int len)
+int find_unique_abbrev_r(char *hex, const unsigned char *sha1, int len)
 {
 	int status, exists;
-	static char hex[41];
 
-	memcpy(hex, sha1_to_hex(sha1), 40);
+	sha1_to_hex_r(hex, sha1);
 	if (len == 40 || !len)
-		return hex;
+		return 40;
 	exists = has_sha1_file(sha1);
 	while (len < 40) {
 		unsigned char sha1_ret[20];
@@ -384,10 +386,17 @@ const char *find_unique_abbrev(const unsigned char *sha1, int len)
 		    ? !status
 		    : status == SHORT_NAME_NOT_FOUND) {
 			hex[len] = 0;
-			return hex;
+			return len;
 		}
 		len++;
 	}
+	return len;
+}
+
+const char *find_unique_abbrev(const unsigned char *sha1, int len)
+{
+	static char hex[GIT_SHA1_HEXSZ + 1];
+	find_unique_abbrev_r(hex, sha1, len);
 	return hex;
 }
 
@@ -606,13 +615,13 @@ static int get_parent(const char *name, int len,
 	if (parse_commit(commit))
 		return -1;
 	if (!idx) {
-		hashcpy(result, commit->object.sha1);
+		hashcpy(result, commit->object.oid.hash);
 		return 0;
 	}
 	p = commit->parents;
 	while (p) {
 		if (!--idx) {
-			hashcpy(result, p->item->object.sha1);
+			hashcpy(result, p->item->object.oid.hash);
 			return 0;
 		}
 		p = p->next;
@@ -639,7 +648,7 @@ static int get_nth_ancestor(const char *name, int len,
 			return -1;
 		commit = commit->parents->item;
 	}
-	hashcpy(result, commit->object.sha1);
+	hashcpy(result, commit->object.oid.hash);
 	return 0;
 }
 
@@ -649,7 +658,7 @@ struct object *peel_to_type(const char *name, int namelen,
 	if (name && !namelen)
 		namelen = strlen(name);
 	while (1) {
-		if (!o || (!o->parsed && !parse_object(o->sha1)))
+		if (!o || (!o->parsed && !parse_object(o->oid.hash)))
 			return NULL;
 		if (expected_type == OBJ_ANY || o->type == expected_type)
 			return o;
@@ -726,9 +735,9 @@ static int peel_onion(const char *name, int len, unsigned char *sha1)
 		return -1;
 	if (!expected_type) {
 		o = deref_tag(o, name, sp - name - 2);
-		if (!o || (!o->parsed && !parse_object(o->sha1)))
+		if (!o || (!o->parsed && !parse_object(o->oid.hash)))
 			return -1;
-		hashcpy(sha1, o->sha1);
+		hashcpy(sha1, o->oid.hash);
 		return 0;
 	}
 
@@ -741,7 +750,7 @@ static int peel_onion(const char *name, int len, unsigned char *sha1)
 	if (!o)
 		return -1;
 
-	hashcpy(sha1, o->sha1);
+	hashcpy(sha1, o->oid.hash);
 	if (sp[0] == '/') {
 		/* "$commit^{/foo}" */
 		char *prefix;
@@ -838,8 +847,12 @@ static int get_sha1_1(const char *name, int len, unsigned char *sha1, unsigned l
  * through history and returning the first commit whose message starts
  * the given regular expression.
  *
- * For future extension, ':/!' is reserved. If you want to match a message
- * beginning with a '!', you have to repeat the exclamation mark.
+ * For negative-matching, prefix the pattern-part with '!-', like: ':/!-WIP'.
+ *
+ * For a literal '!' character at the beginning of a pattern, you have to repeat
+ * that, like: ':/!!foo'
+ *
+ * For future extension, all other sequences beginning with ':/!' are reserved.
  */
 
 /* Remember to update object flag allocation in object.h */
@@ -868,16 +881,22 @@ static int get_sha1_oneline(const char *prefix, unsigned char *sha1,
 {
 	struct commit_list *backup = NULL, *l;
 	int found = 0;
+	int negative = 0;
 	regex_t regex;
 
 	if (prefix[0] == '!') {
-		if (prefix[1] != '!')
-			die ("Invalid search pattern: %s", prefix);
 		prefix++;
+
+		if (prefix[0] == '-') {
+			prefix++;
+			negative = 1;
+		} else if (prefix[0] != '!') {
+			return -1;
+		}
 	}
 
 	if (regcomp(&regex, prefix, REG_EXTENDED))
-		die("Invalid search pattern: %s", prefix);
+		return -1;
 
 	for (l = list; l; l = l->next) {
 		l->item->object.flags |= ONELINE_SEEN;
@@ -889,15 +908,15 @@ static int get_sha1_oneline(const char *prefix, unsigned char *sha1,
 		int matches;
 
 		commit = pop_most_recent_commit(&list, ONELINE_SEEN);
-		if (!parse_object(commit->object.sha1))
+		if (!parse_object(commit->object.oid.hash))
 			continue;
 		buf = get_commit_buffer(commit, NULL);
 		p = strstr(buf, "\n\n");
-		matches = p && !regexec(&regex, p + 2, 0, NULL, 0);
+		matches = negative ^ (p && !regexec(&regex, p + 2, 0, NULL, 0));
 		unuse_commit_buffer(commit, buf);
 
 		if (matches) {
-			hashcpy(sha1, commit->object.sha1);
+			hashcpy(sha1, commit->object.oid.hash);
 			found = 1;
 			break;
 		}
@@ -1012,7 +1031,7 @@ int get_sha1_mb(const char *name, unsigned char *sha1)
 		st = -1;
 	else {
 		st = 0;
-		hashcpy(sha1, mbs->item->object.sha1);
+		hashcpy(sha1, mbs->item->object.oid.hash);
 	}
 	free_commit_list(mbs);
 	return st;
@@ -1196,6 +1215,15 @@ int get_sha1(const char *name, unsigned char *sha1)
 }
 
 /*
+ * This is like "get_sha1()", but for struct object_id.
+ */
+int get_oid(const char *name, struct object_id *oid)
+{
+	return get_sha1(name, oid->hash);
+}
+
+
+/*
  * Many callers know that the user meant to name a commit-ish by
  * syntactical positions where the object name appears.  Calling this
  * function allows the machinery to disambiguate shorter-than-unique
@@ -1283,8 +1311,7 @@ static void diagnose_invalid_index_path(int stage,
 	const struct cache_entry *ce;
 	int pos;
 	unsigned namelen = strlen(filename);
-	unsigned fullnamelen;
-	char *fullname;
+	struct strbuf fullname = STRBUF_INIT;
 
 	if (!prefix)
 		prefix = "";
@@ -1304,21 +1331,19 @@ static void diagnose_invalid_index_path(int stage,
 	}
 
 	/* Confusion between relative and absolute filenames? */
-	fullnamelen = namelen + strlen(prefix);
-	fullname = xmalloc(fullnamelen + 1);
-	strcpy(fullname, prefix);
-	strcat(fullname, filename);
-	pos = cache_name_pos(fullname, fullnamelen);
+	strbuf_addstr(&fullname, prefix);
+	strbuf_addstr(&fullname, filename);
+	pos = cache_name_pos(fullname.buf, fullname.len);
 	if (pos < 0)
 		pos = -pos - 1;
 	if (pos < active_nr) {
 		ce = active_cache[pos];
-		if (ce_namelen(ce) == fullnamelen &&
-		    !memcmp(ce->name, fullname, fullnamelen))
+		if (ce_namelen(ce) == fullname.len &&
+		    !memcmp(ce->name, fullname.buf, fullname.len))
 			die("Path '%s' is in the index, but not '%s'.\n"
 			    "Did you mean ':%d:%s' aka ':%d:./%s'?",
-			    fullname, filename,
-			    ce_stage(ce), fullname,
+			    fullname.buf, filename,
+			    ce_stage(ce), fullname.buf,
 			    ce_stage(ce), filename);
 	}
 
@@ -1328,7 +1353,7 @@ static void diagnose_invalid_index_path(int stage,
 		die("Path '%s' does not exist (neither on disk nor in the index).",
 		    filename);
 
-	free(fullname);
+	strbuf_release(&fullname);
 }
 
 
@@ -1336,9 +1361,6 @@ static char *resolve_relative_path(const char *rel)
 {
 	if (!starts_with(rel, "./") && !starts_with(rel, "../"))
 		return NULL;
-
-	if (!startup_info)
-		die("BUG: startup_info struct is not initialized.");
 
 	if (!is_inside_work_tree())
 		die("relative path syntax can't be used outside working tree.");

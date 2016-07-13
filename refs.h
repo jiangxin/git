@@ -109,6 +109,11 @@ extern int dwim_log(const char *str, int len, unsigned char *sha1, char **ref);
  *   If this succeeds, the ref updates will have taken place and
  *   the transaction cannot be rolled back.
  *
+ * - Instead of `ref_transaction_commit`, use
+ *   `initial_ref_transaction_commit()` if the ref database is known
+ *   to be empty (e.g. during clone).  This is likely to be much
+ *   faster.
+ *
  * - At any time call `ref_transaction_free()` to discard the
  *   transaction and free associated resources.  In particular,
  *   this rolls back the transaction if it has not been
@@ -124,6 +129,13 @@ extern int dwim_log(const char *str, int len, unsigned char *sha1, char **ref);
  *
  * The message is appended to err without first clearing err.
  * err will not be '\n' terminated.
+ *
+ * Caveats
+ * -------
+ *
+ * Note that no locks are taken, and no refs are read, until
+ * `ref_transaction_commit` is called.  So `ref_transaction_verify`
+ * won't report a verification failure until the commit is attempted.
  */
 struct ref_transaction;
 
@@ -173,6 +185,7 @@ typedef int each_ref_fn(const char *refname,
 extern int head_ref(each_ref_fn fn, void *cb_data);
 extern int for_each_ref(each_ref_fn fn, void *cb_data);
 extern int for_each_ref_in(const char *prefix, each_ref_fn fn, void *cb_data);
+extern int for_each_fullref_in(const char *prefix, each_ref_fn fn, void *cb_data, unsigned int broken);
 extern int for_each_tag_ref(each_ref_fn fn, void *cb_data);
 extern int for_each_branch_ref(each_ref_fn fn, void *cb_data);
 extern int for_each_remote_ref(each_ref_fn fn, void *cb_data);
@@ -291,7 +304,16 @@ extern char *shorten_unambiguous_ref(const char *refname, int strict);
 /** rename ref, return 0 on success **/
 extern int rename_ref(const char *oldref, const char *newref, const char *logmsg);
 
-extern int create_symref(const char *ref, const char *refs_heads_master, const char *logmsg);
+extern int create_symref(const char *refname, const char *target, const char *logmsg);
+
+/*
+ * Update HEAD of the specified gitdir.
+ * Similar to create_symref("relative-git-dir/HEAD", target, NULL), but
+ * this can update the main working tree's HEAD regardless of where
+ * $GIT_DIR points to.
+ * Return 0 if successful, non-zero otherwise.
+ * */
+extern int set_worktree_head_symref(const char *gitdir, const char *target);
 
 enum action_on_err {
 	UPDATE_REFS_MSG_ON_ERR,
@@ -323,7 +345,7 @@ struct ref_transaction *ref_transaction_begin(struct strbuf *err);
  *     msg -- a message describing the change (for the reflog).
  *
  *     err -- a strbuf for receiving a description of any error that
- *         might have occured.
+ *         might have occurred.
  *
  * The functions make internal copies of refname and msg, so the
  * caller retains ownership of these parameters.
@@ -443,7 +465,15 @@ int update_ref(const char *msg, const char *refname,
 
 extern int parse_hide_refs_config(const char *var, const char *value, const char *);
 
-extern int ref_is_hidden(const char *);
+/*
+ * Check whether a ref is hidden. If no namespace is set, both the first and
+ * the second parameter point to the full ref name. If a namespace is set and
+ * the ref is inside that namespace, the first parameter is a pointer to the
+ * name of the ref with the namespace prefix removed. If a namespace is set and
+ * the ref is outside that namespace, the first parameter is NULL. The second
+ * parameter always points to the full ref name.
+ */
+extern int ref_is_hidden(const char *, const char *);
 
 enum ref_type {
 	REF_TYPE_PER_WORKTREE,

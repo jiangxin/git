@@ -909,4 +909,72 @@ test_expect_success 'am -3 works with rerere' '
 	test_cmp expect file
 '
 
+test_expect_success 'am -s unexpected trailer block' '
+	rm -fr .git/rebase-apply &&
+	git reset --hard &&
+	echo signed >file &&
+	git add file &&
+	cat >msg <<-EOF &&
+	subject here
+
+	Signed-off-by: $GIT_COMMITTER_NAME <$GIT_COMMITTER_EMAIL>
+	[jc: tweaked log message]
+	Signed-off-by: J C H <j@c.h>
+	EOF
+	git commit -F msg &&
+	git cat-file commit HEAD | sed -e '1,/^$/d' >original &&
+	git format-patch --stdout -1 >patch &&
+
+	git reset --hard HEAD^ &&
+	git am -s patch &&
+	(
+		cat original &&
+		echo "Signed-off-by: $GIT_COMMITTER_NAME <$GIT_COMMITTER_EMAIL>"
+	) >expect &&
+	git cat-file commit HEAD | sed -e '1,/^$/d' >actual &&
+	test_cmp expect actual &&
+
+	cat >msg <<-\EOF &&
+	subject here
+
+	We make sure that there is a blank line between the log
+	message proper and Signed-off-by: line added.
+	EOF
+	git reset HEAD^ &&
+	git commit -F msg file &&
+	git cat-file commit HEAD | sed -e '1,/^$/d' >original &&
+	git format-patch --stdout -1 >patch &&
+
+	git reset --hard HEAD^ &&
+	git am -s patch &&
+
+	(
+		cat original &&
+		echo &&
+		echo "Signed-off-by: $GIT_COMMITTER_NAME <$GIT_COMMITTER_EMAIL>"
+	) >expect &&
+	git cat-file commit HEAD | sed -e '1,/^$/d' >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success 'am --patch-format=mboxrd handles mboxrd' '
+	rm -fr .git/rebase-apply &&
+	git checkout -f first &&
+	echo mboxrd >>file &&
+	git add file &&
+	cat >msg <<-\INPUT_END &&
+	mboxrd should escape the body
+
+	From could trip up a loose mbox parser
+	>From extra escape for reversibility
+	INPUT_END
+	git commit -F msg &&
+	git format-patch --pretty=mboxrd --stdout -1 >mboxrd1 &&
+	grep "^>From could trip up a loose mbox parser" mboxrd1 &&
+	git checkout -f first &&
+	git am --patch-format=mboxrd mboxrd1 &&
+	git cat-file commit HEAD | tail -n4 >out &&
+	test_cmp msg out
+'
+
 test_done

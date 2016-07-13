@@ -5,6 +5,7 @@
 #include "hashmap.h"
 
 enum {
+	REMOTE_UNCONFIGURED = 0,
 	REMOTE_CONFIG,
 	REMOTE_REMOTES,
 	REMOTE_BRANCHES
@@ -54,11 +55,12 @@ struct remote {
 	 * for curl remotes only
 	 */
 	char *http_proxy;
+	char *http_proxy_authmethod;
 };
 
 struct remote *remote_get(const char *name);
 struct remote *pushremote_get(const char *name);
-int remote_is_configured(const char *name);
+int remote_is_configured(struct remote *remote);
 
 typedef int each_remote_fn(struct remote *remote, void *priv);
 int for_each_remote(each_remote_fn fn, void *priv);
@@ -79,9 +81,9 @@ extern const struct refspec *tag_refspec;
 
 struct ref {
 	struct ref *next;
-	unsigned char old_sha1[20];
-	unsigned char new_sha1[20];
-	unsigned char old_sha1_expect[20]; /* used by expect-old */
+	struct object_id old_oid;
+	struct object_id new_oid;
+	struct object_id old_oid_expect; /* used by expect-old */
 	char *symref;
 	unsigned int
 		force:1,
@@ -150,7 +152,7 @@ extern struct ref **get_remote_heads(int in, char *src_buf, size_t src_len,
 				     struct sha1_array *shallow);
 
 int resolve_remote_symref(struct ref *ref, struct ref *list);
-int ref_newer(const unsigned char *new_sha1, const unsigned char *old_sha1);
+int ref_newer(const struct object_id *new_oid, const struct object_id *old_oid);
 
 /*
  * Remove and free all but the first of any entries in the input list

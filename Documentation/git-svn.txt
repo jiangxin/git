@@ -459,6 +459,20 @@ Any other arguments are passed directly to 'git log'
 	Gets the Subversion property given as the first argument, for a
 	file.  A specific revision can be specified with -r/--revision.
 
+'propset'::
+	Sets the Subversion property given as the first argument, to the
+	value given as the second argument for the file given as the
+	third argument.
++
+Example:
++
+------------------------------------------------------------------------
+git svn propset svn:keywords "FreeBSD=%H" devel/py-tipper/Makefile
+------------------------------------------------------------------------
++
+This will set the property 'svn:keywords' to 'FreeBSD=%H' for the file
+'devel/py-tipper/Makefile'.
+
 'show-externals'::
 	Shows the Subversion externals.  Use -r/--revision to specify a
 	specific revision.
@@ -748,7 +762,7 @@ svn-remote.<name>.rewriteUUID::
 
 svn-remote.<name>.pushurl::
 
-	Similar to Git's 'remote.<name>.pushurl', this key is designed
+	Similar to Git's `remote.<name>.pushurl`, this key is designed
 	to be used in cases where 'url' points to an SVN repository
 	via a read-only transport, to provide an alternate read/write
 	transport. It is assumed that both keys point to the same
@@ -1034,6 +1048,8 @@ listed below are allowed:
 	url = http://server.org/svn
 	fetch = trunk/project-a:refs/remotes/project-a/trunk
 	branches = branches/*/project-a:refs/remotes/project-a/branches/*
+	branches = branches/release_*:refs/remotes/project-a/branches/release_*
+	branches = branches/re*se:refs/remotes/project-a/branches/*
 	tags = tags/*/project-a:refs/remotes/project-a/tags/*
 ------------------------------------------------------------------------
 
@@ -1043,6 +1059,16 @@ however the remote wildcard may be anywhere as long as it's an
 independent path component (surrounded by '/' or EOL).   This
 type of configuration is not automatically created by 'init' and
 should be manually entered with a text-editor or using 'git config'.
+
+Also note that only one asterisk is allowed per word. For example:
+
+	branches = branches/re*se:refs/remotes/project-a/branches/*
+
+will match branches 'release', 'rese', 're123se', however
+
+	branches = branches/re*s*e:refs/remotes/project-a/branches/*
+
+will produce an error.
 
 It is also possible to fetch a subset of branches or tags by using a
 comma-separated list of names within braces. For example:

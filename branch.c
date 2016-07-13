@@ -4,6 +4,7 @@
 #include "refs.h"
 #include "remote.h"
 #include "commit.h"
+#include "worktree.h"
 
 struct tracking {
 	struct refspec spec;
@@ -48,7 +49,13 @@ static int should_setup_rebase(const char *origin)
 	return 0;
 }
 
-void install_branch_config(int flag, const char *local, const char *origin, const char *remote)
+static const char tracking_advice[] =
+N_("\n"
+"After fixing the error cause you may try to fix up\n"
+"the remote tracking information by invoking\n"
+"\"git branch --set-upstream-to=%s%s%s\".");
+
+int install_branch_config(int flag, const char *local, const char *origin, const char *remote)
 {
 	const char *shortname = NULL;
 	struct strbuf key = STRBUF_INIT;
@@ -59,20 +66,23 @@ void install_branch_config(int flag, const char *local, const char *origin, cons
 	    && !origin) {
 		warning(_("Not setting branch %s as its own upstream."),
 			local);
-		return;
+		return 0;
 	}
 
 	strbuf_addf(&key, "branch.%s.remote", local);
-	git_config_set(key.buf, origin ? origin : ".");
+	if (git_config_set_gently(key.buf, origin ? origin : ".") < 0)
+		goto out_err;
 
 	strbuf_reset(&key);
 	strbuf_addf(&key, "branch.%s.merge", local);
-	git_config_set(key.buf, remote);
+	if (git_config_set_gently(key.buf, remote) < 0)
+		goto out_err;
 
 	if (rebasing) {
 		strbuf_reset(&key);
 		strbuf_addf(&key, "branch.%s.rebase", local);
-		git_config_set(key.buf, "true");
+		if (git_config_set_gently(key.buf, "true") < 0)
+			goto out_err;
 	}
 	strbuf_release(&key);
 
@@ -101,6 +111,19 @@ void install_branch_config(int flag, const char *local, const char *origin, cons
 					  local, remote);
 		}
 	}
+
+	return 0;
+
+out_err:
+	strbuf_release(&key);
+	error(_("Unable to write upstream branch configuration"));
+
+	advise(_(tracking_advice),
+	       origin ? origin : "",
+	       origin ? "/" : "",
+	       shortname ? shortname : remote);
+
+	return -1;
 }
 
 /*
@@ -108,8 +131,8 @@ void install_branch_config(int flag, const char *local, const char *origin, cons
  * to infer the settings for branch.<new_ref>.{remote,merge} from the
  * config.
  */
-static int setup_tracking(const char *new_ref, const char *orig_ref,
-			  enum branch_track track, int quiet)
+static void setup_tracking(const char *new_ref, const char *orig_ref,
+			   enum branch_track track, int quiet)
 {
 	struct tracking tracking;
 	int config_flags = quiet ? 0 : BRANCH_CONFIG_VERBOSE;
@@ -117,7 +140,7 @@ static int setup_tracking(const char *new_ref, const char *orig_ref,
 	memset(&tracking, 0, sizeof(tracking));
 	tracking.spec.dst = (char *)orig_ref;
 	if (for_each_remote(find_tracked_branch, &tracking))
-		return 1;
+		return;
 
 	if (!tracking.matches)
 		switch (track) {
@@ -126,18 +149,18 @@ static int setup_tracking(const char *new_ref, const char *orig_ref,
 		case BRANCH_TRACK_OVERRIDE:
 			break;
 		default:
-			return 1;
+			return;
 		}
 
 	if (tracking.matches > 1)
-		return error(_("Not tracking: ambiguous information for ref %s"),
-				orig_ref);
+		die(_("Not tracking: ambiguous information for ref %s"),
+		    orig_ref);
 
-	install_branch_config(config_flags, new_ref, tracking.remote,
-			      tracking.src ? tracking.src : orig_ref);
+	if (install_branch_config(config_flags, new_ref, tracking.remote,
+			      tracking.src ? tracking.src : orig_ref) < 0)
+		exit(-1);
 
 	free(tracking.src);
-	return 0;
 }
 
 int read_branch_desc(struct strbuf *buf, const char *branch_name)
@@ -266,7 +289,7 @@ void create_branch(const char *head,
 
 	if ((commit = lookup_commit_reference(sha1)) == NULL)
 		die(_("Not a valid branch point: '%s'."), start_name);
-	hashcpy(sha1, commit->object.sha1);
+	hashcpy(sha1, commit->object.oid.hash);
 
 	if (forcing)
 		snprintf(msg, sizeof msg, "branch: Reset to %s",
@@ -311,91 +334,38 @@ void remove_branch_state(void)
 	unlink(git_path_squash_msg());
 }
 
-static char *find_linked_symref(const char *symref, const char *branch,
-				const char *id)
+void die_if_checked_out(const char *branch, int ignore_current_worktree)
 {
-	struct strbuf sb = STRBUF_INIT;
-	struct strbuf path = STRBUF_INIT;
-	struct strbuf gitdir = STRBUF_INIT;
-	char *existing = NULL;
+	const struct worktree *wt;
 
-	/*
-	 * $GIT_COMMON_DIR/$symref (e.g. HEAD) is practically outside
-	 * $GIT_DIR so resolve_ref_unsafe() won't work (it uses
-	 * git_path). Parse the ref ourselves.
-	 */
-	if (id)
-		strbuf_addf(&path, "%s/worktrees/%s/%s", get_git_common_dir(), id, symref);
-	else
-		strbuf_addf(&path, "%s/%s", get_git_common_dir(), symref);
-
-	if (!strbuf_readlink(&sb, path.buf, 0)) {
-		if (!starts_with(sb.buf, "refs/") ||
-		    check_refname_format(sb.buf, 0))
-			goto done;
-	} else if (strbuf_read_file(&sb, path.buf, 0) >= 0 &&
-	    starts_with(sb.buf, "ref:")) {
-		strbuf_remove(&sb, 0, strlen("ref:"));
-		strbuf_trim(&sb);
-	} else
-		goto done;
-	if (strcmp(sb.buf, branch))
-		goto done;
-	if (id) {
-		strbuf_reset(&path);
-		strbuf_addf(&path, "%s/worktrees/%s/gitdir", get_git_common_dir(), id);
-		if (strbuf_read_file(&gitdir, path.buf, 0) <= 0)
-			goto done;
-		strbuf_rtrim(&gitdir);
-	} else
-		strbuf_addstr(&gitdir, get_git_common_dir());
-	strbuf_strip_suffix(&gitdir, ".git");
-
-	existing = strbuf_detach(&gitdir, NULL);
-done:
-	strbuf_release(&path);
-	strbuf_release(&sb);
-	strbuf_release(&gitdir);
-
-	return existing;
+	wt = find_shared_symref("HEAD", branch);
+	if (!wt || (ignore_current_worktree && wt->is_current))
+		return;
+	skip_prefix(branch, "refs/heads/", &branch);
+	die(_("'%s' is already checked out at '%s'"),
+	    branch, wt->path);
 }
 
-char *find_shared_symref(const char *symref, const char *target)
+int replace_each_worktree_head_symref(const char *oldref, const char *newref)
 {
-	struct strbuf path = STRBUF_INIT;
-	DIR *dir;
-	struct dirent *d;
-	char *existing;
+	int ret = 0;
+	struct worktree **worktrees = get_worktrees();
+	int i;
 
-	if ((existing = find_linked_symref(symref, target, NULL)))
-		return existing;
-
-	strbuf_addf(&path, "%s/worktrees", get_git_common_dir());
-	dir = opendir(path.buf);
-	strbuf_release(&path);
-	if (!dir)
-		return NULL;
-
-	while ((d = readdir(dir)) != NULL) {
-		if (!strcmp(d->d_name, ".") || !strcmp(d->d_name, ".."))
+	for (i = 0; worktrees[i]; i++) {
+		if (worktrees[i]->is_detached)
 			continue;
-		existing = find_linked_symref(symref, target, d->d_name);
-		if (existing)
-			goto done;
+		if (strcmp(oldref, worktrees[i]->head_ref))
+			continue;
+
+		if (set_worktree_head_symref(get_worktree_git_dir(worktrees[i]),
+					     newref)) {
+			ret = -1;
+			error(_("HEAD of working tree %s is not updated"),
+			      worktrees[i]->path);
+		}
 	}
-done:
-	closedir(dir);
 
-	return existing;
-}
-
-void die_if_checked_out(const char *branch)
-{
-	char *existing;
-
-	existing = find_shared_symref("HEAD", branch);
-	if (existing) {
-		skip_prefix(branch, "refs/heads/", &branch);
-		die(_("'%s' is already checked out at '%s'"), branch, existing);
-	}
+	free_worktrees(worktrees);
+	return ret;
 }

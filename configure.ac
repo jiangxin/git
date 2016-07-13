@@ -471,6 +471,13 @@ if test -n "$ASCIIDOC"; then
 	esac
 fi
 
+if grep -a ascii configure.ac >/dev/null; then
+  AC_MSG_RESULT([Using 'grep -a' for sane_grep])
+  SANE_TEXT_GREP=-a
+else
+  SANE_TEXT_GREP=
+fi
+GIT_CONF_SUBST([SANE_TEXT_GREP])
 
 ## Checks for libraries.
 AC_MSG_NOTICE([CHECKS for libraries])
@@ -521,9 +528,32 @@ AC_CHECK_LIB([curl], [curl_global_init],
 [NO_CURL=],
 [NO_CURL=YesPlease])
 
+if test -z "${NO_CURL}" && test -z "${NO_OPENSSL}"; then
+
+AC_CHECK_LIB([curl], [Curl_ssl_init],
+[NEEDS_SSL_WITH_CURL=YesPlease],
+[NEEDS_SSL_WITH_CURL=])
+
+GIT_CONF_SUBST([NEEDS_SSL_WITH_CURL])
+
+fi
+
 GIT_UNSTASH_FLAGS($CURLDIR)
 
 GIT_CONF_SUBST([NO_CURL])
+
+if test -z "$NO_CURL"; then
+
+AC_CHECK_PROG([CURL_CONFIG], [curl-config],
+[curl-config],
+[no])
+
+if test $CURL_CONFIG != no; then
+    GIT_CONF_SUBST([CURL_CONFIG])
+fi
+
+fi
+
 
 #
 # Define NO_EXPAT if you do not have expat installed.  git-http-push is
@@ -767,13 +797,6 @@ elif test x$ac_cv_member_struct_stat_st_mtim_tv_nsec != xyes; then
 	GIT_CONF_SUBST([NO_NSEC])
 fi
 #
-# Define NO_D_INO_IN_DIRENT if you don't have d_ino in your struct dirent.
-AC_CHECK_MEMBER(struct dirent.d_ino,
-[NO_D_INO_IN_DIRENT=],
-[NO_D_INO_IN_DIRENT=YesPlease],
-[#include <dirent.h>])
-GIT_CONF_SUBST([NO_D_INO_IN_DIRENT])
-#
 # Define NO_D_TYPE_IN_DIRENT if your platform defines DT_UNKNOWN but lacks
 # d_type in struct dirent (latest Cygwin -- will be fixed soonish).
 AC_CHECK_MEMBER(struct dirent.d_type,
@@ -946,10 +969,6 @@ AC_CHECK_LIB([iconv], [locale_charset],
        [AC_CHECK_LIB([charset], [locale_charset],
                      [CHARSET_LIB=-lcharset])])
 GIT_CONF_SUBST([CHARSET_LIB])
-#
-# Define NO_HMAC_CTX_CLEANUP=YesPlease if HMAC_CTX_cleanup is missing.
-AC_CHECK_LIB([crypto], [HMAC_CTX_cleanup],
-	[], [GIT_CONF_SUBST([NO_HMAC_CTX_CLEANUP], [YesPlease])])
 #
 # Define HAVE_CLOCK_GETTIME=YesPlease if clock_gettime is available.
 GIT_CHECK_FUNC(clock_gettime,
@@ -1126,7 +1145,12 @@ elif test -z "$PTHREAD_CFLAGS"; then
   # would then trigger compiler warnings on every single file we compile.
   for opt in "" -mt -pthread -lpthread; do
      old_CFLAGS="$CFLAGS"
-     CFLAGS="$opt $CFLAGS"
+     old_LIBS="$LIBS"
+     case "$opt" in
+        -l*)  LIBS="$opt $LIBS" ;;
+        *)    CFLAGS="$opt $CFLAGS" ;;
+     esac
+
      AC_MSG_CHECKING([for POSIX Threads with '$opt'])
      AC_LINK_IFELSE([PTHREADTEST_SRC],
 	[AC_MSG_RESULT([yes])
@@ -1138,6 +1162,7 @@ elif test -z "$PTHREAD_CFLAGS"; then
 	],
 	[AC_MSG_RESULT([no])])
       CFLAGS="$old_CFLAGS"
+      LIBS="$old_LIBS"
   done
   if test $threads_found != yes; then
     AC_CHECK_LIB([pthread], [pthread_create],

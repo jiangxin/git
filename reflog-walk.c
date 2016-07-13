@@ -56,12 +56,11 @@ static struct complete_reflogs *read_complete_reflog(const char *ref)
 		}
 	}
 	if (reflogs->nr == 0) {
-		int len = strlen(ref);
-		char *refname = xmalloc(len + 12);
-		sprintf(refname, "refs/%s", ref);
+		char *refname = xstrfmt("refs/%s", ref);
 		for_each_reflog_ent(refname, read_one_reflog, reflogs);
 		if (reflogs->nr == 0) {
-			sprintf(refname, "refs/heads/%s", ref);
+			free(refname);
+			refname = xstrfmt("refs/heads/%s", ref);
 			for_each_reflog_ent(refname, read_one_reflog, reflogs);
 		}
 		free(refname);
@@ -222,6 +221,7 @@ void fake_reflog_parent(struct reflog_walk_info *info, struct commit *commit)
 	struct commit_info *commit_info =
 		get_commit_info(commit, &info->reflogs, 0);
 	struct commit_reflog *commit_reflog;
+	struct object *logobj;
 	struct reflog_info *reflog;
 
 	info->last_commit_reflog = NULL;
@@ -233,15 +233,26 @@ void fake_reflog_parent(struct reflog_walk_info *info, struct commit *commit)
 		commit->parents = NULL;
 		return;
 	}
-
-	reflog = &commit_reflog->reflogs->items[commit_reflog->recno];
 	info->last_commit_reflog = commit_reflog;
-	commit_reflog->recno--;
-	commit_info->commit = (struct commit *)parse_object(reflog->osha1);
-	if (!commit_info->commit) {
+
+	do {
+		reflog = &commit_reflog->reflogs->items[commit_reflog->recno];
+		commit_reflog->recno--;
+		logobj = parse_object(reflog->osha1);
+	} while (commit_reflog->recno && (logobj && logobj->type != OBJ_COMMIT));
+
+	if (!logobj && commit_reflog->recno >= 0 && is_null_sha1(reflog->osha1)) {
+		/* a root commit, but there are still more entries to show */
+		reflog = &commit_reflog->reflogs->items[commit_reflog->recno];
+		logobj = parse_object(reflog->nsha1);
+	}
+
+	if (!logobj || logobj->type != OBJ_COMMIT) {
+		commit_info->commit = NULL;
 		commit->parents = NULL;
 		return;
 	}
+	commit_info->commit = (struct commit *)logobj;
 
 	commit->parents = xcalloc(1, sizeof(struct commit_list));
 	commit->parents->item = commit_info->commit;

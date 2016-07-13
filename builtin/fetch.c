@@ -37,6 +37,8 @@ static int prune = -1; /* unspecified */
 static int all, append, dry_run, force, keep, multiple, update_head_ok, verbosity;
 static int progress = -1, recurse_submodules = RECURSE_SUBMODULES_DEFAULT;
 static int tags = TAGS_DEFAULT, unshallow, update_shallow;
+static int max_children = -1;
+static enum transport_family family;
 static const char *depth;
 static const char *upload_pack;
 static struct strbuf default_rla = STRBUF_INIT;
@@ -99,6 +101,8 @@ static struct option builtin_fetch_options[] = {
 		    N_("fetch all tags and associated objects"), TAGS_SET),
 	OPT_SET_INT('n', NULL, &tags,
 		    N_("do not fetch all tags (--no-tags)"), TAGS_UNSET),
+	OPT_INTEGER('j', "jobs", &max_children,
+		    N_("number of submodules fetched in parallel")),
 	OPT_BOOL('p', "prune", &prune,
 		 N_("prune remote-tracking branches no longer on remote")),
 	{ OPTION_CALLBACK, 0, "recurse-submodules", NULL, N_("on-demand"),
@@ -124,6 +128,10 @@ static struct option builtin_fetch_options[] = {
 		 N_("accept refs that update .git/shallow")),
 	{ OPTION_CALLBACK, 0, "refmap", NULL, N_("refmap"),
 	  N_("specify fetch refmap"), PARSE_OPT_NONEG, parse_refmap_arg },
+	OPT_SET_INT('4', "ipv4", &family, N_("use IPv4 addresses only"),
+			TRANSPORT_FAMILY_IPV4),
+	OPT_SET_INT('6', "ipv6", &family, N_("use IPv6 addresses only"),
+			TRANSPORT_FAMILY_IPV6),
 	OPT_END()
 };
 
@@ -196,7 +204,7 @@ static int will_fetch(struct ref **head, const unsigned char *sha1)
 {
 	struct ref *rm = *head;
 	while (rm) {
-		if (!hashcmp(rm->old_sha1, sha1))
+		if (!hashcmp(rm->old_oid.hash, sha1))
 			return 1;
 		rm = rm->next;
 	}
@@ -224,8 +232,8 @@ static void find_non_local_tags(struct transport *transport,
 		 * as one to ignore by setting util to NULL.
 		 */
 		if (ends_with(ref->name, "^{}")) {
-			if (item && !has_sha1_file(ref->old_sha1) &&
-			    !will_fetch(head, ref->old_sha1) &&
+			if (item && !has_object_file(&ref->old_oid) &&
+			    !will_fetch(head, ref->old_oid.hash) &&
 			    !has_sha1_file(item->util) &&
 			    !will_fetch(head, item->util))
 				item->util = NULL;
@@ -251,7 +259,7 @@ static void find_non_local_tags(struct transport *transport,
 			continue;
 
 		item = string_list_insert(&remote_refs, ref->name);
-		item->util = (void *)ref->old_sha1;
+		item->util = (void *)&ref->old_oid;
 	}
 	string_list_clear(&existing_refs, 1);
 
@@ -273,7 +281,7 @@ static void find_non_local_tags(struct transport *transport,
 		{
 			struct ref *rm = alloc_ref(item->string);
 			rm->peer_ref = alloc_ref(item->string);
-			hashcpy(rm->old_sha1, item->util);
+			oidcpy(&rm->old_oid, item->util);
 			**tail = rm;
 			*tail = &rm->next;
 		}
@@ -419,8 +427,8 @@ static int s_update_ref(const char *action,
 	transaction = ref_transaction_begin(&err);
 	if (!transaction ||
 	    ref_transaction_update(transaction, ref->name,
-				   ref->new_sha1,
-				   check_old ? ref->old_sha1 : NULL,
+				   ref->new_oid.hash,
+				   check_old ? ref->old_oid.hash : NULL,
 				   0, msg, &err))
 		goto fail;
 
@@ -453,11 +461,11 @@ static int update_local_ref(struct ref *ref,
 	struct branch *current_branch = branch_get(NULL);
 	const char *pretty_ref = prettify_refname(ref->name);
 
-	type = sha1_object_info(ref->new_sha1, NULL);
+	type = sha1_object_info(ref->new_oid.hash, NULL);
 	if (type < 0)
-		die(_("object %s not found"), sha1_to_hex(ref->new_sha1));
+		die(_("object %s not found"), oid_to_hex(&ref->new_oid));
 
-	if (!hashcmp(ref->old_sha1, ref->new_sha1)) {
+	if (!oidcmp(&ref->old_oid, &ref->new_oid)) {
 		if (verbosity > 0)
 			strbuf_addf(display, "= %-*s %-*s -> %s",
 				    TRANSPORT_SUMMARY(_("[up to date]")),
@@ -468,7 +476,7 @@ static int update_local_ref(struct ref *ref,
 	if (current_branch &&
 	    !strcmp(ref->name, current_branch->name) &&
 	    !(update_head_ok || is_bare_repository()) &&
-	    !is_null_sha1(ref->old_sha1)) {
+	    !is_null_oid(&ref->old_oid)) {
 		/*
 		 * If this is the head, and it's not okay to update
 		 * the head, and the old value of the head isn't empty...
@@ -480,7 +488,7 @@ static int update_local_ref(struct ref *ref,
 		return 1;
 	}
 
-	if (!is_null_sha1(ref->old_sha1) &&
+	if (!is_null_oid(&ref->old_oid) &&
 	    starts_with(ref->name, "refs/tags/")) {
 		int r;
 		r = s_update_ref("updating tag", ref, 0);
@@ -492,8 +500,8 @@ static int update_local_ref(struct ref *ref,
 		return r;
 	}
 
-	current = lookup_commit_reference_gently(ref->old_sha1, 1);
-	updated = lookup_commit_reference_gently(ref->new_sha1, 1);
+	current = lookup_commit_reference_gently(ref->old_oid.hash, 1);
+	updated = lookup_commit_reference_gently(ref->new_oid.hash, 1);
 	if (!current || !updated) {
 		const char *msg;
 		const char *what;
@@ -517,7 +525,7 @@ static int update_local_ref(struct ref *ref,
 
 		if ((recurse_submodules != RECURSE_SUBMODULES_OFF) &&
 		    (recurse_submodules != RECURSE_SUBMODULES_ON))
-			check_for_new_submodule_commits(ref->new_sha1);
+			check_for_new_submodule_commits(ref->new_oid.hash);
 		r = s_update_ref(msg, ref, 0);
 		strbuf_addf(display, "%c %-*s %-*s -> %s%s",
 			    r ? '!' : '*',
@@ -528,36 +536,38 @@ static int update_local_ref(struct ref *ref,
 	}
 
 	if (in_merge_bases(current, updated)) {
-		char quickref[83];
+		struct strbuf quickref = STRBUF_INIT;
 		int r;
-		strcpy(quickref, find_unique_abbrev(current->object.sha1, DEFAULT_ABBREV));
-		strcat(quickref, "..");
-		strcat(quickref, find_unique_abbrev(ref->new_sha1, DEFAULT_ABBREV));
+		strbuf_add_unique_abbrev(&quickref, current->object.oid.hash, DEFAULT_ABBREV);
+		strbuf_addstr(&quickref, "..");
+		strbuf_add_unique_abbrev(&quickref, ref->new_oid.hash, DEFAULT_ABBREV);
 		if ((recurse_submodules != RECURSE_SUBMODULES_OFF) &&
 		    (recurse_submodules != RECURSE_SUBMODULES_ON))
-			check_for_new_submodule_commits(ref->new_sha1);
+			check_for_new_submodule_commits(ref->new_oid.hash);
 		r = s_update_ref("fast-forward", ref, 1);
 		strbuf_addf(display, "%c %-*s %-*s -> %s%s",
 			    r ? '!' : ' ',
-			    TRANSPORT_SUMMARY_WIDTH, quickref,
+			    TRANSPORT_SUMMARY_WIDTH, quickref.buf,
 			    REFCOL_WIDTH, remote, pretty_ref,
 			    r ? _("  (unable to update local ref)") : "");
+		strbuf_release(&quickref);
 		return r;
 	} else if (force || ref->force) {
-		char quickref[84];
+		struct strbuf quickref = STRBUF_INIT;
 		int r;
-		strcpy(quickref, find_unique_abbrev(current->object.sha1, DEFAULT_ABBREV));
-		strcat(quickref, "...");
-		strcat(quickref, find_unique_abbrev(ref->new_sha1, DEFAULT_ABBREV));
+		strbuf_add_unique_abbrev(&quickref, current->object.oid.hash, DEFAULT_ABBREV);
+		strbuf_addstr(&quickref, "...");
+		strbuf_add_unique_abbrev(&quickref, ref->new_oid.hash, DEFAULT_ABBREV);
 		if ((recurse_submodules != RECURSE_SUBMODULES_OFF) &&
 		    (recurse_submodules != RECURSE_SUBMODULES_ON))
-			check_for_new_submodule_commits(ref->new_sha1);
+			check_for_new_submodule_commits(ref->new_oid.hash);
 		r = s_update_ref("forced-update", ref, 1);
 		strbuf_addf(display, "%c %-*s %-*s -> %s  (%s)",
 			    r ? '!' : '+',
-			    TRANSPORT_SUMMARY_WIDTH, quickref,
+			    TRANSPORT_SUMMARY_WIDTH, quickref.buf,
 			    REFCOL_WIDTH, remote, pretty_ref,
 			    r ? _("unable to update local ref") : _("forced update"));
+		strbuf_release(&quickref);
 		return r;
 	} else {
 		strbuf_addf(display, "! %-*s %-*s -> %s  %s",
@@ -578,7 +588,7 @@ static int iterate_ref_map(void *cb_data, unsigned char sha1[20])
 	if (!ref)
 		return -1; /* end of the list */
 	*rm = ref->next;
-	hashcpy(sha1, ref->old_sha1);
+	hashcpy(sha1, ref->old_oid.hash);
 	return 0;
 }
 
@@ -597,7 +607,7 @@ static int store_updated_refs(const char *raw_url, const char *remote_name,
 
 	fp = fopen(filename, "a");
 	if (!fp)
-		return error(_("cannot open %s: %s\n"), filename, strerror(errno));
+		return error_errno(_("cannot open %s"), filename);
 
 	if (raw_url)
 		url = transport_anonymize_url(raw_url);
@@ -629,7 +639,7 @@ static int store_updated_refs(const char *raw_url, const char *remote_name,
 				continue;
 			}
 
-			commit = lookup_commit_reference_gently(rm->old_sha1, 1);
+			commit = lookup_commit_reference_gently(rm->old_oid.hash, 1);
 			if (!commit)
 				rm->fetch_head_status = FETCH_HEAD_NOT_FOR_MERGE;
 
@@ -637,10 +647,9 @@ static int store_updated_refs(const char *raw_url, const char *remote_name,
 				continue;
 
 			if (rm->peer_ref) {
-				ref = xcalloc(1, sizeof(*ref) + strlen(rm->peer_ref->name) + 1);
-				strcpy(ref->name, rm->peer_ref->name);
-				hashcpy(ref->old_sha1, rm->peer_ref->old_sha1);
-				hashcpy(ref->new_sha1, rm->old_sha1);
+				ref = alloc_ref(rm->peer_ref->name);
+				oidcpy(&ref->old_oid, &rm->peer_ref->old_oid);
+				oidcpy(&ref->new_oid, &rm->old_oid);
 				ref->force = rm->peer_ref->force;
 			}
 
@@ -685,7 +694,7 @@ static int store_updated_refs(const char *raw_url, const char *remote_name,
 				/* fall-through */
 			case FETCH_HEAD_MERGE:
 				fprintf(fp, "%s\t%s\t%s",
-					sha1_to_hex(rm->old_sha1),
+					oid_to_hex(&rm->old_oid),
 					merge_status_marker,
 					note.buf);
 				for (i = 0; i < url_len; ++i)
@@ -836,10 +845,10 @@ static void check_not_current_branch(struct ref *ref_map)
 static int truncate_fetch_head(void)
 {
 	const char *filename = git_path_fetch_head();
-	FILE *fp = fopen(filename, "w");
+	FILE *fp = fopen_for_writing(filename);
 
 	if (!fp)
-		return error(_("cannot open %s: %s\n"), filename, strerror(errno));
+		return error_errno(_("cannot open %s"), filename);
 	fclose(fp);
 	return 0;
 }
@@ -860,6 +869,7 @@ static struct transport *prepare_transport(struct remote *remote)
 	struct transport *transport;
 	transport = transport_get(remote, NULL);
 	transport_set_verbosity(transport, verbosity, progress);
+	transport->family = family;
 	if (upload_pack)
 		set_option(transport, TRANS_OPT_UPLOADPACK, upload_pack);
 	if (keep)
@@ -927,7 +937,7 @@ static int do_fetch(struct transport *transport,
 						   rm->peer_ref->name);
 			if (peer_item) {
 				struct object_id *old_oid = peer_item->util;
-				hashcpy(rm->peer_ref->old_sha1, old_oid->hash);
+				oidcpy(&rm->peer_ref->old_oid, old_oid);
 			}
 		}
 	}
@@ -995,7 +1005,7 @@ static int get_remote_group(const char *key, const char *value, void *priv)
 			size_t wordlen = strcspn(value, " \t\n");
 
 			if (wordlen >= 1)
-				string_list_append(g->list,
+				string_list_append_nodup(g->list,
 						   xstrndup(value, wordlen));
 			value += wordlen + (value[wordlen] != '\0');
 		}
@@ -1012,10 +1022,9 @@ static int add_remote_or_group(const char *name, struct string_list *list)
 
 	git_config(get_remote_group, &g);
 	if (list->nr == prev_nr) {
-		struct remote *remote;
-		if (!remote_is_configured(name))
+		struct remote *remote = remote_get(name);
+		if (!remote_is_configured(remote))
 			return 0;
-		remote = remote_get(name);
 		string_list_append(list, remote->name);
 	}
 	return 1;
@@ -1106,7 +1115,7 @@ static int fetch_one(struct remote *remote, int argc, const char **argv)
 	if (argc > 0) {
 		int j = 0;
 		int i;
-		refs = xcalloc(argc + 1, sizeof(const char *));
+		refs = xcalloc(st_add(argc, 1), sizeof(const char *));
 		for (i = 0; i < argc; i++) {
 			if (!strcmp(argv[i], "tag")) {
 				i++;
@@ -1134,7 +1143,7 @@ static int fetch_one(struct remote *remote, int argc, const char **argv)
 int cmd_fetch(int argc, const char **argv, const char *prefix)
 {
 	int i;
-	struct string_list list = STRING_LIST_INIT_NODUP;
+	struct string_list list = STRING_LIST_INIT_DUP;
 	struct remote *remote;
 	int result = 0;
 	struct argv_array argv_gc_auto = ARGV_ARRAY_INIT;
@@ -1156,11 +1165,8 @@ int cmd_fetch(int argc, const char **argv, const char *prefix)
 			die(_("--depth and --unshallow cannot be used together"));
 		else if (!is_repository_shallow())
 			die(_("--unshallow on a complete repository does not make sense"));
-		else {
-			static char inf_depth[12];
-			sprintf(inf_depth, "%d", INFINITE_DEPTH);
-			depth = inf_depth;
-		}
+		else
+			depth = xstrfmt("%d", INFINITE_DEPTH);
 	}
 
 	/* no need to be strict, transport_set_option() will validate it again */
@@ -1215,13 +1221,14 @@ int cmd_fetch(int argc, const char **argv, const char *prefix)
 		result = fetch_populated_submodules(&options,
 						    submodule_prefix,
 						    recurse_submodules,
-						    verbosity < 0);
+						    verbosity < 0,
+						    max_children);
 		argv_array_clear(&options);
 	}
 
-	/* All names were strdup()ed or strndup()ed */
-	list.strdup_strings = 1;
 	string_list_clear(&list, 0);
+
+	close_all_packs();
 
 	argv_array_pushl(&argv_gc_auto, "gc", "--auto", NULL);
 	if (verbosity < 0)
