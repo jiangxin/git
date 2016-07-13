@@ -2839,7 +2839,7 @@ msgstr "选项 --ignore-missing 只能和 --dry-run 同时使用"
 #: builtin/add.c:352
 #, c-format
 msgid "--chmod param '%s' must be either -x or +x"
-msgstr ""
+msgstr "--chmod 的参数 '%s' 只可以是 -x 或者 +x"
 
 #: builtin/add.c:367
 #, c-format
@@ -9374,7 +9374,7 @@ msgstr ""
 
 #: builtin/pull.c:820
 msgid "ignoring --verify-signatures for rebase"
-msgstr ""
+msgstr "忽略 --verify-signatures （验证签名）以便变基"
 
 #: builtin/pull.c:867
 msgid "--[no-]autostash option is only valid with --rebase."
@@ -11123,7 +11123,7 @@ msgstr "从 '%s' 拷贝注解到 '%s' 时失败"
 #: builtin/submodule--helper.c:800
 #, c-format
 msgid "Failed to clone '%s' a second time, aborting"
-msgstr ""
+msgstr "第二次克隆 '%s' 失败，正在中止"
 
 #: builtin/submodule--helper.c:821
 msgid "path into the working tree"
@@ -11146,8 +11146,9 @@ msgid "parallel jobs"
 msgstr "并发任务"
 
 #: builtin/submodule--helper.c:837
+#, fuzzy
 msgid "whether the initial clone should follow the shallow recommendation"
-msgstr ""
+msgstr "初始克隆是否要遵循浅推荐"
 
 #: builtin/submodule--helper.c:838
 msgid "don't print cloning progress"
@@ -11770,11 +11771,11 @@ msgstr ""
 
 #: upload-pack.c:841
 msgid "do not try <directory>/.git/ if <directory> is no Git directory"
-msgstr ""
+msgstr "不要尝试 <directory>/.git/ 如果 <directory> 不是 Git 目录"
 
 #: upload-pack.c:843
 msgid "interrupt transfer after <n> seconds of inactivity"
-msgstr ""
+msgstr "<n> 秒没有活动之后中断传输"
 
 #: credential-cache--daemon.c:271
 msgid "print debugging messages to stderr"
