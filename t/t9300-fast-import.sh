@@ -52,6 +52,7 @@ echo "$@"'
 ###
 
 test_expect_success 'empty stream succeeds' '
+	git config fastimport.unpackLimit 0 &&
 	git fast-import </dev/null
 '
 
@@ -2650,6 +2651,21 @@ test_expect_success 'R: ignore non-git options' '
 	git fast-import <input
 '
 
+test_expect_success 'R: corrupt lines do not mess marks file' '
+	rm -f io.marks &&
+	blob=$(echo hi | git hash-object --stdin) &&
+	cat >expect <<-EOF &&
+	:3 0000000000000000000000000000000000000000
+	:1 $blob
+	:2 $blob
+	EOF
+	cp expect io.marks &&
+	test_must_fail git fast-import --import-marks=io.marks --export-marks=io.marks <<-\EOF &&
+
+	EOF
+	test_cmp expect io.marks
+'
+
 ##
 ## R: very large blobs
 ##
@@ -2675,6 +2691,7 @@ test_expect_success 'R: blob bigger than threshold' '
 	echo >>input &&
 
 	test_create_repo R &&
+	git --git-dir=R/.git config fastimport.unpackLimit 0 &&
 	git --git-dir=R/.git fast-import --big-file-threshold=1 <input
 '
 

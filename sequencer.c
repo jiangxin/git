@@ -544,10 +544,8 @@ static int do_pick_commit(struct commit *commit, struct replay_opts *opts)
 		 * information followed by "\n\n".
 		 */
 		p = strstr(msg.message, "\n\n");
-		if (p) {
-			p += 2;
-			strbuf_addstr(&msgbuf, p);
-		}
+		if (p)
+			strbuf_addstr(&msgbuf, skip_blank_lines(p + 2));
 
 		if (opts->record_origin) {
 			if (!has_conforming_footer(&msgbuf, NULL, 0))
@@ -888,6 +886,10 @@ static int sequencer_rollback(struct replay_opts *opts)
 			git_path_head_file());
 		goto fail;
 	}
+	if (is_null_sha1(sha1)) {
+		error(_("cannot abort from a branch yet to be born"));
+		goto fail;
+	}
 	if (reset_for_rollback(sha1))
 		goto fail;
 	remove_sequencer_state();
@@ -1086,11 +1088,8 @@ int sequencer_pick_revisions(struct replay_opts *opts)
 	walk_revs_populate_todo(&todo_list, opts);
 	if (create_seq_dir() < 0)
 		return -1;
-	if (get_sha1("HEAD", sha1)) {
-		if (opts->action == REPLAY_REVERT)
-			return error(_("Can't revert as initial commit"));
-		return error(_("Can't cherry-pick into empty head"));
-	}
+	if (get_sha1("HEAD", sha1) && (opts->action == REPLAY_REVERT))
+		return error(_("Can't revert as initial commit"));
 	save_head(sha1_to_hex(sha1));
 	save_opts(opts);
 	return pick_commits(todo_list, opts);

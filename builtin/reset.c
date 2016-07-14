@@ -103,7 +103,7 @@ static void print_new_head_line(struct commit *commit)
 	if (body) {
 		const char *eol;
 		size_t len;
-		body += 2;
+		body = skip_blank_lines(body + 2);
 		eol = strchr(body, '\n');
 		len = eol ? eol - body : strlen(body);
 		printf(" %.*s\n", (int) len, body);
@@ -158,7 +158,7 @@ static int read_from_tree(const struct pathspec *pathspec,
 		return 1;
 	diffcore_std(&opt);
 	diff_flush(&opt);
-	free_pathspec(&opt.pathspec);
+	clear_pathspec(&opt.pathspec);
 
 	return 0;
 }

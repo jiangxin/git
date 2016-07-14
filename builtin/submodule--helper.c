@@ -287,10 +287,8 @@ static int module_list(int argc, const char **argv, const char *prefix)
 	argc = parse_options(argc, argv, prefix, module_list_options,
 			     git_submodule_helper_usage, 0);
 
-	if (module_list_compute(argc, argv, prefix, &pathspec, &list) < 0) {
-		printf("#unmatched\n");
+	if (module_list_compute(argc, argv, prefix, &pathspec, &list) < 0)
 		return 1;
-	}
 
 	for (i = 0; i < list.nr; i++) {
 		const struct cache_entry *ce = list.entries[i];
@@ -581,6 +579,7 @@ struct submodule_update_clone {
 
 	/* configuration parameters which are passed on to the children */
 	int quiet;
+	int recommend_shallow;
 	const char *reference;
 	const char *depth;
 	const char *recursive_prefix;
@@ -591,10 +590,14 @@ struct submodule_update_clone {
 
 	/* If we want to stop as fast as possible and return an error */
 	unsigned quickstop : 1;
+
+	/* failed clones to be retried again */
+	const struct cache_entry **failed_clones;
+	int failed_clones_nr, failed_clones_alloc;
 };
 #define SUBMODULE_UPDATE_CLONE_INIT {0, MODULE_LIST_INIT, 0, \
-	SUBMODULE_UPDATE_STRATEGY_INIT, 0, NULL, NULL, NULL, NULL, \
-	STRING_LIST_INIT_DUP, 0}
+	SUBMODULE_UPDATE_STRATEGY_INIT, 0, -1, NULL, NULL, NULL, NULL, \
+	STRING_LIST_INIT_DUP, 0, NULL, 0, 0}
 
 
 static void next_submodule_warn_missing(struct submodule_update_clone *suc,
@@ -698,6 +701,8 @@ static int prepare_to_clone_next_submodule(const struct cache_entry *ce,
 		argv_array_push(&child->args, "--quiet");
 	if (suc->prefix)
 		argv_array_pushl(&child->args, "--prefix", suc->prefix, NULL);
+	if (suc->recommend_shallow && sub->recommend_shallow == 1)
+		argv_array_push(&child->args, "--depth=1");
 	argv_array_pushl(&child->args, "--path", sub->path, NULL);
 	argv_array_pushl(&child->args, "--name", sub->name, NULL);
 	argv_array_pushl(&child->args, "--url", url, NULL);
@@ -717,23 +722,47 @@ cleanup:
 static int update_clone_get_next_task(struct child_process *child,
 				      struct strbuf *err,
 				      void *suc_cb,
-				      void **void_task_cb)
+				      void **idx_task_cb)
 {
 	struct submodule_update_clone *suc = suc_cb;
+	const struct cache_entry *ce;
+	int index;
 
 	for (; suc->current < suc->list.nr; suc->current++) {
-		const struct cache_entry *ce = suc->list.entries[suc->current];
+		ce = suc->list.entries[suc->current];
 		if (prepare_to_clone_next_submodule(ce, child, suc, err)) {
+			int *p = xmalloc(sizeof(*p));
+			*p = suc->current;
+			*idx_task_cb = p;
 			suc->current++;
 			return 1;
 		}
 	}
+
+	/*
+	 * The loop above tried cloning each submodule once, now try the
+	 * stragglers again, which we can imagine as an extension of the
+	 * entry list.
+	 */
+	index = suc->current - suc->list.nr;
+	if (index < suc->failed_clones_nr) {
+		int *p;
+		ce = suc->failed_clones[index];
+		if (!prepare_to_clone_next_submodule(ce, child, suc, err))
+			die("BUG: ce was a submodule before?");
+		p = xmalloc(sizeof(*p));
+		*p = suc->current;
+		*idx_task_cb = p;
+		suc->current ++;
+		return 1;
+	}
+
 	return 0;
 }
 
 static int update_clone_start_failure(struct strbuf *err,
 				      void *suc_cb,
-				      void *void_task_cb)
+				      void *idx_task_cb)
 {
 	struct submodule_update_clone *suc = suc_cb;
 	suc->quickstop = 1;
@@ -743,15 +772,39 @@ static int update_clone_start_failure(struct strbuf *err,
 static int update_clone_task_finished(int result,
 				      struct strbuf *err,
 				      void *suc_cb,
-				      void *void_task_cb)
+				      void *idx_task_cb)
 {
+	const struct cache_entry *ce;
 	struct submodule_update_clone *suc = suc_cb;
+
+	int *idxP = *(int**)idx_task_cb;
+	int idx = *idxP;
+	free(idxP);
 
 	if (!result)
 		return 0;
 
-	suc->quickstop = 1;
-	return 1;
+	if (idx < suc->list.nr) {
+		ce  = suc->list.entries[idx];
+		strbuf_addf(err, _("Failed to clone '%s'. Retry scheduled"),
+			    ce->name);
+		strbuf_addch(err, '\n');
+		ALLOC_GROW(suc->failed_clones,
+			   suc->failed_clones_nr + 1,
+			   suc->failed_clones_alloc);
+		suc->failed_clones[suc->failed_clones_nr++] = ce;
+		return 0;
+	} else {
+		idx = suc->current - suc->list.nr;
+		ce  = suc->failed_clones[idx];
+		strbuf_addf(err, _("Failed to clone '%s' a second time, aborting"),
+			    ce->name);
+		strbuf_addch(err, '\n');
+		suc->quickstop = 1;
+		return 1;
+	}
+
+	return 0;
 }
 
 static int update_clone(int argc, const char **argv, const char *prefix)
@@ -780,6 +833,8 @@ static int update_clone(int argc, const char **argv, const char *prefix)
 			      "specified number of revisions")),
 		OPT_INTEGER('j', "jobs", &max_jobs,
 			    N_("parallel jobs")),
+		OPT_BOOL(0, "recommend-shallow", &suc.recommend_shallow,
+			    N_("whether the initial clone should follow the shallow recommendation")),
 		OPT__QUIET(&suc.quiet, N_("don't print cloning progress")),
 		OPT_END()
 	};
@@ -833,6 +888,17 @@ static int update_clone(int argc, const char **argv, const char *prefix)
 	return 0;
 }
 
+static int resolve_relative_path(int argc, const char **argv, const char *prefix)
+{
+	struct strbuf sb = STRBUF_INIT;
+	if (argc != 3)
+		die("submodule--helper relative_path takes exactly 2 arguments, got %d", argc);
+
+	printf("%s", relative_path(argv[1], argv[2], &sb));
+	strbuf_release(&sb);
+	return 0;
+}
+
 struct cmd_struct {
 	const char *cmd;
 	int (*fn)(int, const char **, const char *);
@@ -843,6 +909,7 @@ static struct cmd_struct commands[] = {
 	{"name", module_name},
 	{"clone", module_clone},
 	{"update-clone", update_clone},
+	{"relative-path", resolve_relative_path},
 	{"resolve-relative-url", resolve_relative_url},
 	{"resolve-relative-url-test", resolve_relative_url_test},
 	{"init", module_init}

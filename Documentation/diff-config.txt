@@ -75,7 +75,7 @@ diff.ignoreSubmodules::
 	commands such as 'git diff-files'. 'git checkout' also honors
 	this setting when reporting uncommitted changes. Setting it to
 	'all' disables the submodule summary normally shown by 'git commit'
-	and 'git status' when 'status.submoduleSummary' is set unless it is
+	and 'git status' when `status.submoduleSummary` is set unless it is
 	overridden by using the --ignore-submodules command-line option.
 	The 'git submodule' commands are not affected by this setting.
 
@@ -169,6 +169,11 @@ diff.tool::
 	that a corresponding difftool.<tool>.cmd variable is defined.
 
 include::mergetools-diff.txt[]
+
+diff.compactionHeuristic::
+	Set this option to `true` to enable an experimental heuristic that
+	shifts the hunk boundary in an attempt to make the resulting
+	patch easier to read.
 
 diff.algorithm::
 	Choose a diff algorithm.  The variants are as follows:

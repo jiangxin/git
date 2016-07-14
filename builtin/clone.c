@@ -40,7 +40,7 @@ static const char * const builtin_clone_usage[] = {
 
 static int option_no_checkout, option_bare, option_mirror, option_single_branch = -1;
 static int option_local = -1, option_no_hardlinks, option_shared, option_recursive;
-static int option_shallow_submodules = -1;
+static int option_shallow_submodules;
 static char *option_template, *option_depth;
 static char *option_origin = NULL;
 static char *option_branch = NULL;
@@ -49,8 +49,8 @@ static char *option_upload_pack = "git-upload-pack";
 static int option_verbosity;
 static int option_progress = -1;
 static enum transport_family family;
-static struct string_list option_config;
-static struct string_list option_reference;
+static struct string_list option_config = STRING_LIST_INIT_NODUP;
+static struct string_list option_reference = STRING_LIST_INIT_NODUP;
 static int option_dissociate;
 static int max_jobs = -1;
 
@@ -738,8 +738,7 @@ static int checkout(void)
 		struct argv_array args = ARGV_ARRAY_INIT;
 		argv_array_pushl(&args, "submodule", "update", "--init", "--recursive", NULL);
 
-		if (option_shallow_submodules == 1
-		    || (option_shallow_submodules == -1 && option_depth))
+		if (option_shallow_submodules == 1)
 			argv_array_push(&args, "--depth=1");
 
 		if (max_jobs != -1)
