@@ -225,7 +225,7 @@ msgstr ""
 "如果您想要通过创建分支来保留在此状态下所做的提交，您可以通过在检出命令添加\n"
 "参数 -b 来实现（现在或稍后）。例如：\n"
 "\n"
-"  git checkout -b <new-branch-name>\n"
+"  git checkout -b <新分支名>\n"
 "\n"
 
 #: apply.c:58
@@ -3635,7 +3635,7 @@ msgid ""
 "Use 'git <command> -- <path>...' to specify paths that do not exist locally."
 msgstr ""
 "%s：工作区中无此路径。\n"
-"使用命令 'git <command> -- <path>...' 来指定本地不存在的路径。"
+"使用命令 'git <命令> -- <路径>...' 来指定本地不存在的路径。"
 
 #: setup.c:184
 #, c-format
@@ -3646,7 +3646,7 @@ msgid ""
 msgstr ""
 "有歧义的参数 '%s'：未知的版本或路径不存在于工作区中。\n"
 "使用 '--' 来分隔版本和路径，例如：\n"
-"'git <command> [<revision>...] -- [<file>...]'"
+"'git <命令> [<版本>...] -- [<文件>...]'"
 
 #: setup.c:252
 #, c-format
@@ -3657,7 +3657,7 @@ msgid ""
 msgstr ""
 "有歧义的参数 '%s'：可同时是版本和文件\n"
 "使用 '--' 来分隔版本和路径，例如：\n"
-"'git <command> [<revision>...] -- [<file>...]'"
+"'git <命令> [<版本>...] -- [<文件>...]'"
 
 #: setup.c:499
 #, c-format
@@ -9617,7 +9617,7 @@ msgid ""
 msgstr ""
 "无法得到上游地址，如果你想自动记录基线提交，请使用命令\n"
 "git branch --set-upstream-to 来跟踪一个远程分支。或者你可以通过\n"
-"参数 --base=<base-commit-id> 手动指定一个基线提交。"
+"参数 --base=<基线提交> 手动指定一个基线提交。"
 
 #: builtin/log.c:1308
 msgid "Failed to find exact merge base"
@@ -14518,7 +14518,7 @@ msgid ""
 "To abort and get back to the state before \"git rebase\", run \"git rebase --"
 "abort\"."
 msgstr ""
-"手工解决所有冲突，执行 \"git add/rm <conflicted_files>\" 标记\n"
+"手工解决所有冲突，执行 \"git add/rm <冲突的文件>\" 标记\n"
 "冲突已解决，然后执行 \"git rebase --continue\"。您也可以执行\n"
 "\"git rebase --skip\" 命令跳过这个提交。如果想要终止执行并回到\n"
 "\"git rebase\" 执行之前的状态，执行 \"git rebase --abort\"。"
