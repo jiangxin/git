@@ -40,6 +40,24 @@ format_git_output () {
 		-e "s/'/\"/g"
 }
 
+# Asynchronous sideband may generate inconsistent output messages,
+# sort before comparison.
+test_sorted_cmp () {
+	if ! $GIT_TEST_CMP "$@"
+	then
+		cmd=$GIT_TEST_CMP 
+		for f in "$@"
+		do
+			sort "$f" >"$f.sorted"
+			cmd="$cmd \"$f.sorted\""
+		done
+		if ! eval $cmd
+		then
+			$GIT_TEST_CMP "$@"
+		fi
+	fi
+}
+
 test_expect_success "setup" '
 	git init --bare bare.git &&
 	git clone --no-local bare.git work &&
@@ -88,7 +106,7 @@ test_expect_success "setup" '
 test_expect_success "normal git-push command" '
 	(
 		cd work &&
-		git push -f origin \
+		git push -f --atomic origin \
 			refs/tags/v1.0.0 \
 			:refs/heads/next \
 			HEAD:refs/heads/master \
@@ -126,6 +144,534 @@ test_expect_success "normal git-push command" '
 	$A refs/heads/master
 	$A refs/review/master/topic
 	$TAG refs/tags/v1.0.0
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "cleanup" '
+	(
+		cd bare.git &&
+		git update-ref -d refs/review/master/topic &&
+		git update-ref -d refs/tags/v1.0.0 &&
+		git update-ref -d refs/heads/a/b/c
+	)
+'
+
+test_expect_success "no proc-receive hook, fail to push special ref" '
+	(
+		cd work &&
+		test_must_fail git push origin \
+			HEAD:next \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/heads/next
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: error: cannot to find hook "proc-receive"
+	remote: # post-receive hook
+	remote: post-receive< $ZERO_OID $A refs/heads/next
+	To path/of/repo.git
+	 * [new branch]      HEAD -> next
+	 ! [remote rejected] HEAD -> refs/for/master/topic (fail to run proc-receive hook)
+	error: failed to push some refs to "path/of/repo.git"
+	EOF
+	test_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	$A refs/heads/next
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "cleanup" '
+	(
+		cd bare.git &&
+		git update-ref -d refs/heads/next
+	)
+'
+
+test_expect_success "no proc-receive hook, fail all for atomic push" '
+	(
+		cd work &&
+		test_must_fail git push --atomic origin \
+			HEAD:next \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/heads/next
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: error: cannot to find hook "proc-receive"
+	To path/of/repo.git
+	 ! [rejected]        master (atomic push failed)
+	 ! [remote rejected] HEAD -> next (fail to run proc-receive hook)
+	 ! [remote rejected] HEAD -> refs/for/master/topic (fail to run proc-receive hook)
+	error: failed to push some refs to "path/of/repo.git"
+	EOF
+	test_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "setup proc-receive hook (bad version)" '
+	cat >bare.git/hooks/proc-receive <<-EOF &&
+	#!/bin/sh
+
+	printf >&2 "# proc-receive hook\n"
+
+	test-tool proc-receive -v --version 2
+	EOF
+	chmod a+x bare.git/hooks/proc-receive
+'
+
+test_expect_success "pro-receive bad protocol: unknown version" '
+	(
+		cd work &&
+		test_must_fail git push origin \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: # proc-receive hook
+	fatal: protocol error: unknown proc-receive version "2"
+	fatal: the remote end hung up unexpectedly
+	fatal: the remote end hung up unexpectedly
+	EOF
+	test_sorted_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "setup proc-receive hook (no report)" '
+	cat >bare.git/hooks/proc-receive <<-EOF
+	#!/bin/sh
+
+	printf >&2 "# proc-receive hook\n"
+
+	test-tool proc-receive -v
+	EOF
+'
+
+test_expect_success "pro-receive bad protocol: no report" '
+	(
+		cd work &&
+		test_must_fail git push origin \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: # proc-receive hook
+	remote: proc-receive< $ZERO_OID $A refs/for/master/topic
+	To path/of/repo.git
+	 ! [remote failure]  HEAD -> refs/for/master/topic (remote failed to report status)
+	error: failed to push some refs to "path/of/repo.git"
+	EOF
+	test_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "setup proc-receive hook (bad oid)" '
+	cat >bare.git/hooks/proc-receive <<-EOF
+	#!/bin/sh
+
+	printf >&2 "# proc-receive hook\n"
+
+	test-tool proc-receive -v \
+		-r "bad-id new-id ref ok"
+	EOF
+'
+
+test_expect_success "pro-receive bad protocol: bad oid" '
+	(
+		cd work &&
+		test_must_fail git push origin \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: # proc-receive hook
+	remote: proc-receive< $ZERO_OID $A refs/for/master/topic
+	remote: proc-receive> bad-id new-id ref ok
+	fatal: protocol error: proc-receive expected "old new ref status [msg]", got "bad-id new-id ref ok"
+	fatal: the remote end hung up unexpectedly
+	fatal: the remote end hung up unexpectedly
+	EOF
+	test_sorted_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "setup proc-receive hook (no status)" '
+	cat >bare.git/hooks/proc-receive <<-EOF
+	#!/bin/sh
+
+	printf >&2 "# proc-receive hook\n"
+
+	test-tool proc-receive -v \
+		-r "$ZERO_OID $A refs/for/master/topic"
+	EOF
+'
+
+test_expect_success "pro-receive bad protocol: no status" '
+	(
+		cd work &&
+		test_must_fail git push origin \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: # proc-receive hook
+	remote: proc-receive< $ZERO_OID $A refs/for/master/topic
+	remote: proc-receive> $ZERO_OID $A refs/for/master/topic
+	fatal: protocol error: proc-receive expected "old new ref status [msg]", got "$ZERO_OID $A refs/for/master/topic"
+	fatal: the remote end hung up unexpectedly
+	fatal: the remote end hung up unexpectedly
+	EOF
+	test_sorted_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "setup proc-receive hook (unknown status)" '
+	cat >bare.git/hooks/proc-receive <<-EOF
+	#!/bin/sh
+
+	printf >&2 "# proc-receive hook\n"
+
+	test-tool proc-receive -v \
+		-r "$ZERO_OID $A refs/for/master/topic xx msg"
+	EOF
+'
+
+test_expect_success "pro-receive bad protocol: unknown status" '
+	(
+		cd work &&
+		test_must_fail git push origin \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: # proc-receive hook
+	remote: proc-receive< $ZERO_OID $A refs/for/master/topic
+	remote: proc-receive> $ZERO_OID $A refs/for/master/topic xx msg
+	fatal: protocol error: proc-receive has bad status "xx" for "$ZERO_OID $A refs/for/master/topic"
+	fatal: the remote end hung up unexpectedly
+	fatal: the remote end hung up unexpectedly
+	EOF
+	test_sorted_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "setup proc-receive hook (bad status)" '
+	cat >bare.git/hooks/proc-receive <<-EOF
+	#!/bin/sh
+
+	printf >&2 "# proc-receive hook\n"
+
+	test-tool proc-receive -v \
+		-r "$ZERO_OID $A refs/for/master/topic bad status"
+	EOF
+'
+
+test_expect_success "pro-receive bad protocol: bad status" '
+	(
+		cd work &&
+		test_must_fail git push origin \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: # proc-receive hook
+	remote: proc-receive< $ZERO_OID $A refs/for/master/topic
+	remote: proc-receive> $ZERO_OID $A refs/for/master/topic bad status
+	fatal: protocol error: proc-receive has bad status "bad status" for "$ZERO_OID $A refs/for/master/topic"
+	fatal: the remote end hung up unexpectedly
+	fatal: the remote end hung up unexpectedly
+	EOF
+	test_sorted_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "setup proc-receive hook (ng)" '
+	cat >bare.git/hooks/proc-receive <<-EOF
+	#!/bin/sh
+
+	printf >&2 "# proc-receive hook\n"
+
+	test-tool proc-receive -v \
+		-r "$ZERO_OID $A refs/for/master/topic ng"
+	EOF
+'
+
+test_expect_success "pro-receive: fail to update (no message)" '
+	(
+		cd work &&
+		test_must_fail git push origin \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: # proc-receive hook
+	remote: proc-receive< $ZERO_OID $A refs/for/master/topic
+	remote: proc-receive> $ZERO_OID $A refs/for/master/topic ng
+	To path/of/repo.git
+	 ! [remote rejected] HEAD -> refs/for/master/topic (failed)
+	error: failed to push some refs to "path/of/repo.git"
+	EOF
+	test_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "setup proc-receive hook (ng message)" '
+	cat >bare.git/hooks/proc-receive <<-EOF
+	#!/bin/sh
+
+	printf >&2 "# proc-receive hook\n"
+
+	test-tool proc-receive -v \
+		-r "$ZERO_OID $A refs/for/master/topic ng error msg"
+	EOF
+'
+
+test_expect_success "pro-receive: fail to update (has message)" '
+	(
+		cd work &&
+		test_must_fail git push origin \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: # proc-receive hook
+	remote: proc-receive< $ZERO_OID $A refs/for/master/topic
+	remote: proc-receive> $ZERO_OID $A refs/for/master/topic ng error msg
+	To path/of/repo.git
+	 ! [remote rejected] HEAD -> refs/for/master/topic (error msg)
+	error: failed to push some refs to "path/of/repo.git"
+	EOF
+	test_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "setup proc-receive hook (ok)" '
+	cat >bare.git/hooks/proc-receive <<-EOF
+	#!/bin/sh
+
+	printf >&2 "# proc-receive hook\n"
+
+	test-tool proc-receive -v \
+		-r "$ZERO_OID $A refs/for/master/topic ok"
+	EOF
+'
+
+test_expect_success "pro-receive: ok" '
+	(
+		cd work &&
+		git push origin \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: # proc-receive hook
+	remote: proc-receive< $ZERO_OID $A refs/for/master/topic
+	remote: proc-receive> $ZERO_OID $A refs/for/master/topic ok
+	remote: # post-receive hook
+	remote: post-receive< $ZERO_OID $A refs/for/master/topic
+	To path/of/repo.git
+	 * [new reference]   HEAD -> refs/for/master/topic
+	EOF
+	test_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "pro-receive: report unknown ref" '
+	(
+		cd work &&
+		test_must_fail git push origin \
+			HEAD:refs/for/a/b/c/my/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/for/a/b/c/my/topic
+	remote: # proc-receive hook
+	remote: proc-receive< $ZERO_OID $A refs/for/a/b/c/my/topic
+	remote: proc-receive> $ZERO_OID $A refs/for/master/topic ok
+	warning: remote reported status on unknown ref: refs/for/master/topic
+	remote: # post-receive hook
+	remote: post-receive< $ZERO_OID $A refs/for/master/topic
+	To path/of/repo.git
+	 ! [remote failure]  HEAD -> refs/for/a/b/c/my/topic (remote failed to report status)
+	error: failed to push some refs to "path/of/repo.git"
+	EOF
+	test_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "not support push options" '
+	(
+		cd work &&
+		test_must_fail git push \
+			-o issue=123 \
+			-o reviewer=user1 \
+			origin \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	fatal: the receiving end does not support push options
+	fatal: the remote end hung up unexpectedly
+	EOF
+	test_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "enable push options" '
+	(
+		cd bare.git &&
+		git config receive.advertisePushOptions true
+	)
+'
+
+test_expect_success "push with options" '
+	(
+		cd work &&
+		git push \
+			-o issue=123 \
+			-o reviewer=user1 \
+			origin \
+			HEAD:refs/heads/next \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/heads/next
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: # proc-receive hook
+	remote: proc-receive< $ZERO_OID $A refs/for/master/topic
+	remote: proc-receive< issue=123
+	remote: proc-receive< reviewer=user1
+	remote: proc-receive> $ZERO_OID $A refs/for/master/topic ok
+	remote: # post-receive hook
+	remote: post-receive< $ZERO_OID $A refs/for/master/topic
+	remote: post-receive< $ZERO_OID $A refs/heads/next
+	To path/of/repo.git
+	 * [new branch]      HEAD -> next
+	 * [new reference]   HEAD -> refs/for/master/topic
+	EOF
+	test_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	$A refs/heads/next
 	EOF
 	test_cmp expect actual
 '
