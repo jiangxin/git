@@ -41,6 +41,9 @@ test_expect_success setup '
 	# Enable push options for bare.git.
 	git -C $bare config receive.advertisePushOptions true &&
 
+	# Register ref prefix for execute-commands hook.
+	git -C $bare config --add receive.executeCommandsHookRefs refs/for/ &&
+
 	git clone --no-local $bare work &&
 	create_commits_in work A B
 '
@@ -192,25 +195,86 @@ test_expect_success "push to two special references" '
 	test_cmp expect actual
 '
 
+test_expect_success "push to two special references, but one is not registered" '
+	(
+		cd work &&
+		git push origin \
+			HEAD:refs/for/master/my/topic \
+			HEAD:refs/drafts/maint/my/topic
+	) >out 2>&1 &&
+	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
+	cat >expect <<-EOF &&
+	remote: execute: execute-commands
+	remote: >> pre-receive mode
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/master/my/topic.
+	remote: execute: pre-receive hook
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/drafts/maint/my/topic.
+	remote: execute: execute-commands
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/master/my/topic.
+	remote: execute: post-receive hook
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/master/my/topic.
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/drafts/maint/my/topic.
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "restore bare.git, and register new ref prefix" '
+	(
+		cd $bare &&
+		git config --add receive.executeCommandsHookRefs refs/drafts/ &&
+		git update-ref -d refs/drafts/maint/my/topic &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	102939797ab91a4f201d131418d2c9d919dcdd2c refs/heads/a/b/c
+	102939797ab91a4f201d131418d2c9d919dcdd2c refs/heads/maint
+	102939797ab91a4f201d131418d2c9d919dcdd2c refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "push to two special references (all registered)" '
+	(
+		cd work &&
+		git push origin \
+			HEAD:refs/for/master/my/topic \
+			HEAD:refs/drafts/maint/my/topic
+	) >out 2>&1 &&
+	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
+	cat >expect <<-EOF &&
+	remote: execute: execute-commands
+	remote: >> pre-receive mode
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/master/my/topic.
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/drafts/maint/my/topic.
+	remote: execute: execute-commands
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/master/my/topic.
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/drafts/maint/my/topic.
+	remote: execute: post-receive hook
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/master/my/topic.
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/drafts/maint/my/topic.
+	EOF
+	test_cmp expect actual
+'
+
 test_expect_success "push to a normal and a special references" '
 	(
 		cd work &&
 		git push origin \
-			HEAD:refs/for/maint/my/topic \
+			HEAD:refs/drafts/maint/my/topic \
 			HEAD:refs/heads/master
 	) >out 2>&1 &&
 	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
 	cat >expect <<-EOF &&
 	remote: execute: execute-commands
 	remote: >> pre-receive mode
-	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/maint/my/topic.
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/drafts/maint/my/topic.
 	remote: execute: pre-receive hook
 	remote: >> old: 102939797ab91a4f201d131418d2c9d919dcdd2c, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/heads/master.
 	remote: execute: execute-commands
-	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/maint/my/topic.
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/drafts/maint/my/topic.
 	remote: execute: post-receive hook
 	remote: >> old: 102939797ab91a4f201d131418d2c9d919dcdd2c, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/heads/master.
-	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/maint/my/topic.
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/drafts/maint/my/topic.
 	EOF
 	test_cmp expect actual
 '
