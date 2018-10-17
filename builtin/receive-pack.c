@@ -71,6 +71,7 @@ static unsigned char push_cert_sha1[20];
 static struct signature_check sigcheck;
 static const char *push_cert_nonce;
 static const char *cert_nonce_seed;
+static struct string_list *execute_commands_refs;
 
 static const char *NONCE_UNSOLICITED = "UNSOLICITED";
 static const char *NONCE_BAD = "BAD";
@@ -220,6 +221,24 @@ static int receive_pack_config(const char *var, const char *value, void *cb)
 
 	if (strcmp(var, "receive.maxinputsize") == 0) {
 		max_input_size = git_config_int64(var, value);
+		return 0;
+	}
+
+	if (strcmp(var, "receive.executecommandsrefs") == 0) {
+		char *ref;
+		int len;
+
+		if (!value)
+			return config_error_nonbool(var);
+		ref = xstrdup(value);
+		len = strlen(ref);
+		while (len && ref[len - 1] == '/')
+			ref[--len] = '\0';
+		if (!execute_commands_refs) {
+			execute_commands_refs = xcalloc(1, sizeof(*execute_commands_refs));
+			execute_commands_refs->strdup_strings = 1;
+		}
+		string_list_append(execute_commands_refs, ref);
 		return 0;
 	}
 
