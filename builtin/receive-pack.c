@@ -327,7 +327,8 @@ struct command {
 	struct command *next;
 	const char *error_string;
 	unsigned int skip_update:1,
-		     did_not_exist:1;
+		     did_not_exist:1,
+		     exec_hook:1;
 	int index;
 	struct object_id old_oid;
 	struct object_id new_oid;
@@ -779,7 +780,10 @@ static int feed_receive_hook(void *state_, const char **bufp, size_t *sizep)
 	struct command *cmd = state->cmd;
 
 	while (cmd &&
-	       state->skip_broken && (cmd->error_string || cmd->did_not_exist))
+	       (/* post-receive: not skip exec_hook */
+		(state->skip_broken && (cmd->error_string || cmd->did_not_exist)) ||
+		/* pre-receive: skip exec_hook */
+		(!state->skip_broken && cmd->exec_hook)))
 		cmd = cmd->next;
 	if (!cmd)
 		return -1; /* EOF */
@@ -840,6 +844,110 @@ static int run_update_hook(struct command *cmd)
 		return code;
 	if (use_sideband)
 		copy_to_sideband(proc.err, -1, NULL);
+	return finish_command(&proc);
+}
+
+static int run_execute_commands_hook(struct command *cmd,
+				     const struct string_list *push_options,
+				     int pre_receive)
+{
+	const char *argv[3];
+	struct child_process proc = CHILD_PROCESS_INIT;
+	struct async muxer;
+	int code;
+	struct strbuf feed_buf = STRBUF_INIT;
+	struct strbuf stdout_buf = STRBUF_INIT;
+
+	/* If cannot find hook, return error */
+	argv[0] = find_hook("execute-commands");
+	if (!argv[0])
+		return 1;
+
+	if (pre_receive) {
+		argv[1] = "--pre-receive";
+		argv[2] = NULL;
+	} else {
+		argv[1] = NULL;
+	}
+
+	proc.argv = argv;
+	proc.in = -1;
+	proc.out = -1;
+	proc.err = use_sideband ? -1 : 0;
+
+	if (push_options) {
+		int i;
+		for (i = 0; i < push_options->nr; i++)
+			argv_array_pushf(&proc.env_array,
+				"GIT_PUSH_OPTION_%d=%s", i,
+				push_options->items[i].string);
+		argv_array_pushf(&proc.env_array, "GIT_PUSH_OPTION_COUNT=%d",
+				 push_options->nr);
+	} else
+		argv_array_pushf(&proc.env_array, "GIT_PUSH_OPTION_COUNT");
+
+	if (tmp_objdir)
+		argv_array_pushv(&proc.env_array, tmp_objdir_env(tmp_objdir));
+
+	if (use_sideband) {
+		memset(&muxer, 0, sizeof(muxer));
+		muxer.proc = copy_to_sideband;
+		muxer.in = -1;
+		code = start_async(&muxer);
+		if (code)
+			return code;
+		proc.err = muxer.in;
+	}
+
+	code = start_command(&proc);
+	if (code) {
+		if (use_sideband)
+			finish_async(&muxer);
+		return code;
+	}
+
+	sigchain_push(SIGPIPE, SIG_IGN);
+
+	while (cmd) {
+		if (!cmd->error_string && cmd->exec_hook && !cmd->skip_update) {
+			strbuf_reset(&feed_buf);
+			strbuf_addf(&feed_buf, "%s %s %s\n",
+				    oid_to_hex(&cmd->old_oid), oid_to_hex(&cmd->new_oid),
+				    cmd->ref_name);
+
+			if (write_in_full(proc.in, feed_buf.buf, feed_buf.len) < 0)
+				break;
+		}
+		cmd = cmd->next;
+	}
+	close(proc.in);
+	strbuf_release(&feed_buf);
+
+	/* Parse hook stdout, and set envionments */
+	while (strbuf_getwholeline_fd(&stdout_buf, proc.out, '\n') != EOF) {
+		char *p = stdout_buf.buf + stdout_buf.len -1;
+		if (*p =='\n') {
+			*p = '\0';
+		}
+
+		p = strchr(stdout_buf.buf, '=');
+		if (p == NULL) {
+			continue;
+		}
+		*p++ = '\0';
+
+		if (strncmp(stdout_buf.buf, "GIT", 3)) {
+			setenv(stdout_buf.buf, p, 0);
+		}
+		strbuf_reset(&stdout_buf);
+	}
+	strbuf_release(&stdout_buf);
+
+	if (use_sideband)
+		finish_async(&muxer);
+
+	sigchain_pop(SIGPIPE);
+
 	return finish_command(&proc);
 }
 
@@ -1377,7 +1485,7 @@ static void reject_updates_to_hidden(struct command *commands)
 
 static int should_process_cmd(struct command *cmd)
 {
-	return !cmd->error_string && !cmd->skip_update;
+	return !cmd->error_string && !cmd->skip_update && !cmd->exec_hook;
 }
 
 static void warn_if_skipped_connectivity_check(struct command *commands,
@@ -1481,6 +1589,7 @@ static void execute_commands(struct command *commands,
 	struct iterate_data data;
 	struct async muxer;
 	int err_fd = 0;
+	int use_execute_commands_hook = 0;
 
 	if (unpacker_error) {
 		for (cmd = commands; cmd; cmd = cmd->next)
@@ -1510,6 +1619,41 @@ static void execute_commands(struct command *commands,
 
 	reject_updates_to_hidden(commands);
 
+	/* If not find matched refname in commands, do not run external execute-commands hook. */
+	if (execute_commands_refs && execute_commands_refs->nr > 0) {
+		struct strbuf refname_full = STRBUF_INIT;
+		size_t prefix_len;
+
+		strbuf_addstr(&refname_full, get_git_namespace());
+		prefix_len = refname_full.len;
+
+		for (cmd = commands; cmd; cmd = cmd->next) {
+			if (cmd->error_string || cmd->did_not_exist || cmd->skip_update)
+				continue;
+
+			strbuf_setlen(&refname_full, prefix_len);
+			strbuf_addstr(&refname_full, cmd->ref_name);
+
+			if (ref_is_matched(execute_commands_refs, cmd->ref_name, refname_full.buf)) {
+				cmd->exec_hook = 1;
+				use_execute_commands_hook = 1;
+			}
+		}
+
+		strbuf_release(&refname_full);
+	}
+
+	if (use_execute_commands_hook) {
+		/* Run execute-commands hook in pre-receive mode */
+		if (run_execute_commands_hook(commands, push_options, 1)) {
+			for (cmd = commands; cmd; cmd = cmd->next) {
+				if (!cmd->error_string)
+					cmd->error_string = "execute-commands hook declined";
+			}
+			return;
+		}
+	}
+
 	if (run_receive_hook(commands, "pre-receive", 0, push_options)) {
 		for (cmd = commands; cmd; cmd = cmd->next) {
 			if (!cmd->error_string)
@@ -1535,6 +1679,15 @@ static void execute_commands(struct command *commands,
 
 	free(head_name_to_free);
 	head_name = head_name_to_free = resolve_refdup("HEAD", 0, oid.hash, NULL);
+
+	if (use_execute_commands_hook) {
+		if (run_execute_commands_hook(commands, push_options, 0)) {
+			for (cmd = commands; cmd; cmd = cmd->next) {
+				if (!cmd->error_string)
+					cmd->error_string = "fail to run execute-commands hook";
+			}
+		}
+	}
 
 	if (use_atomic)
 		execute_commands_atomic(commands, si);
