@@ -1,3 +1,7 @@
+test_expect_success "setup receive.procReceiveRefs" '
+	git -C "$upstream" config --add receive.procReceiveRefs refs/for
+'
+
 test_expect_success "setup proc-receive hook" '
 	write_script "$upstream/hooks/proc-receive" <<-EOF
 	printf >&2 "# proc-receive hook\n"
@@ -88,6 +92,7 @@ test_expect_success "proc-receive: report status v1" '
 test_expect_success "cleanup" '
 	(
 		cd "$upstream" &&
+		git config --unset receive.procReceiveRefs &&
 		rm -f "hooks/proc-receive" &&
 		git update-ref refs/heads/master $A &&
 		git update-ref -d refs/for/master/topic1 &&
