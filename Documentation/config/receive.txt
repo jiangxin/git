@@ -108,6 +108,17 @@ receive.denyNonFastForwards::
 	even if that push is forced. This configuration variable is
 	set when initializing a shared repository.
 
+receive.executeCommandsHookRefs::
+	If the specific prefix matches the reference name of the command
+	which is sent by the client to `receive-pack`, the command will be
+	executed by an external hook (named "execute-commands"), instead of
+	the internal `execute_commands` function. For example, if it is
+	set to "refs/for/", pushing to reference such as "refs/for/master"
+	will not create or update a reference named "refs/for/master", but
+	may create or update a pull request directly by running the external
+	hook. Use more than one definition to specify multiple prefix
+	strings.
+
 receive.hideRefs::
 	This variable is the same as `transfer.hideRefs`, but applies
 	only to `receive-pack` (and so affects pushes, but not fetches).
