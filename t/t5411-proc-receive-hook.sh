@@ -106,7 +106,7 @@ test_expect_success "setup" '
 test_expect_success "normal git-push command" '
 	(
 		cd work &&
-		git push -f --atomic origin \
+		git push -f origin \
 			refs/tags/v1.0.0 \
 			:refs/heads/next \
 			HEAD:refs/heads/master \
@@ -154,6 +154,14 @@ test_expect_success "cleanup" '
 		git update-ref -d refs/review/master/topic &&
 		git update-ref -d refs/tags/v1.0.0 &&
 		git update-ref -d refs/heads/a/b/c
+	)
+'
+
+test_expect_success "add two receive.procReceiveRefs settings" '
+	(
+		cd bare.git &&
+		git config --add receive.procReceiveRefs refs/for/ &&
+		git config --add receive.procReceiveRefs refs/review/
 	)
 '
 
@@ -672,6 +680,178 @@ test_expect_success "push with options" '
 	cat >expect <<-EOF &&
 	$A refs/heads/master
 	$A refs/heads/next
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "cleanup" '
+	(
+		cd bare.git &&
+		git update-ref -d refs/heads/next
+	)
+'
+
+test_expect_success "setup proc-receive hook" '
+	cat >bare.git/hooks/proc-receive <<-EOF &&
+	#!/bin/sh
+
+	printf >&2 "# proc-receive hook\n"
+
+	test-tool proc-receive -v \
+		-r "$ZERO_OID $A refs/for/next/topic ok" \
+		-r "$ZERO_OID $A refs/review/a/b/c/topic ok" \
+		-r "$ZERO_OID $A refs/for/master/topic ok"
+	EOF
+	chmod a+x bare.git/hooks/proc-receive
+'
+
+test_expect_success "report test: all special refs" '
+	(
+		cd work &&
+		git push origin \
+			HEAD:refs/for/next/topic \
+			HEAD:refs/review/a/b/c/topic \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/for/next/topic
+	remote: pre-receive< $ZERO_OID $A refs/review/a/b/c/topic
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: # proc-receive hook
+	remote: proc-receive< $ZERO_OID $A refs/for/next/topic
+	remote: proc-receive< $ZERO_OID $A refs/review/a/b/c/topic
+	remote: proc-receive< $ZERO_OID $A refs/for/master/topic
+	remote: proc-receive> $ZERO_OID $A refs/for/next/topic ok
+	remote: proc-receive> $ZERO_OID $A refs/review/a/b/c/topic ok
+	remote: proc-receive> $ZERO_OID $A refs/for/master/topic ok
+	remote: # post-receive hook
+	remote: post-receive< $ZERO_OID $A refs/for/next/topic
+	remote: post-receive< $ZERO_OID $A refs/review/a/b/c/topic
+	remote: post-receive< $ZERO_OID $A refs/for/master/topic
+	To path/of/repo.git
+	 * [new reference]   HEAD -> refs/for/next/topic
+	 * [new reference]   HEAD -> refs/review/a/b/c/topic
+	 * [new reference]   HEAD -> refs/for/master/topic
+	EOF
+	test_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "report test: mixed refs" '
+	(
+		cd work &&
+		git push origin \
+			HEAD:refs/heads/zzz \
+			HEAD:refs/heads/yyy \
+			HEAD:refs/for/next/topic \
+			HEAD:refs/review/a/b/c/topic \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/heads/zzz
+	remote: pre-receive< $ZERO_OID $A refs/heads/yyy
+	remote: pre-receive< $ZERO_OID $A refs/for/next/topic
+	remote: pre-receive< $ZERO_OID $A refs/review/a/b/c/topic
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: # proc-receive hook
+	remote: proc-receive< $ZERO_OID $A refs/for/next/topic
+	remote: proc-receive< $ZERO_OID $A refs/review/a/b/c/topic
+	remote: proc-receive< $ZERO_OID $A refs/for/master/topic
+	remote: proc-receive> $ZERO_OID $A refs/for/next/topic ok
+	remote: proc-receive> $ZERO_OID $A refs/review/a/b/c/topic ok
+	remote: proc-receive> $ZERO_OID $A refs/for/master/topic ok
+	remote: # post-receive hook
+	remote: post-receive< $ZERO_OID $A refs/for/next/topic
+	remote: post-receive< $ZERO_OID $A refs/heads/zzz
+	remote: post-receive< $ZERO_OID $A refs/heads/yyy
+	remote: post-receive< $ZERO_OID $A refs/review/a/b/c/topic
+	remote: post-receive< $ZERO_OID $A refs/for/master/topic
+	To path/of/repo.git
+	 * [new branch]      HEAD -> zzz
+	 * [new branch]      HEAD -> yyy
+	 * [new reference]   HEAD -> refs/for/next/topic
+	 * [new reference]   HEAD -> refs/review/a/b/c/topic
+	 * [new reference]   HEAD -> refs/for/master/topic
+	EOF
+	test_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	$A refs/heads/yyy
+	$A refs/heads/zzz
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "cleanup" '
+	(
+		cd bare.git &&
+		git update-ref -d refs/heads/yyy &&
+		git update-ref -d refs/heads/zzz
+	)
+'
+
+test_expect_success "report test: mixed refs" '
+	(
+		cd work &&
+		git push origin \
+			HEAD:refs/for/next/topic \
+			HEAD:refs/heads/zzz \
+			HEAD:refs/heads/yyy \
+			HEAD:refs/review/a/b/c/topic \
+			HEAD:refs/for/master/topic
+	) >out 2>&1 &&
+	format_git_output <out >actual &&
+	cat >expect <<-EOF &&
+	remote: # pre-receive hook
+	remote: pre-receive< $ZERO_OID $A refs/for/next/topic
+	remote: pre-receive< $ZERO_OID $A refs/heads/zzz
+	remote: pre-receive< $ZERO_OID $A refs/heads/yyy
+	remote: pre-receive< $ZERO_OID $A refs/review/a/b/c/topic
+	remote: pre-receive< $ZERO_OID $A refs/for/master/topic
+	remote: # proc-receive hook
+	remote: proc-receive< $ZERO_OID $A refs/for/next/topic
+	remote: proc-receive< $ZERO_OID $A refs/review/a/b/c/topic
+	remote: proc-receive< $ZERO_OID $A refs/for/master/topic
+	remote: proc-receive> $ZERO_OID $A refs/for/next/topic ok
+	remote: proc-receive> $ZERO_OID $A refs/review/a/b/c/topic ok
+	remote: proc-receive> $ZERO_OID $A refs/for/master/topic ok
+	remote: # post-receive hook
+	remote: post-receive< $ZERO_OID $A refs/for/next/topic
+	remote: post-receive< $ZERO_OID $A refs/heads/zzz
+	remote: post-receive< $ZERO_OID $A refs/heads/yyy
+	remote: post-receive< $ZERO_OID $A refs/review/a/b/c/topic
+	remote: post-receive< $ZERO_OID $A refs/for/master/topic
+	To path/of/repo.git
+	 * [new reference]   HEAD -> refs/for/next/topic
+	 * [new branch]      HEAD -> zzz
+	 * [new branch]      HEAD -> yyy
+	 * [new reference]   HEAD -> refs/review/a/b/c/topic
+	 * [new reference]   HEAD -> refs/for/master/topic
+	EOF
+	test_cmp expect actual &&
+	(
+		cd bare.git &&
+		git show-ref
+	) >actual &&
+	cat >expect <<-EOF &&
+	$A refs/heads/master
+	$A refs/heads/yyy
+	$A refs/heads/zzz
 	EOF
 	test_cmp expect actual
 '
