@@ -1,0 +1,119 @@
+#!/bin/sh
+#
+# This is an  example hook script, DO NOT use it on production service.
+
+debug() {
+	case "$AGIT_DEBUG" in
+	"yes" | "true" | "1")
+		;;
+	*)
+		return
+	esac
+
+	echo >&2 "[DEBUG] $@"
+}
+
+# Parse push options
+if test -n "$GIT_PUSH_OPTION_COUNT"
+then
+	i=0
+	while test "$i" -lt "$GIT_PUSH_OPTION_COUNT"
+	do
+		eval "value=\$GIT_PUSH_OPTION_$i"
+		i=$((i + 1))
+
+		k=$(echo ${value%=*} | tr [a-z] [A-Z])
+		v=${value#*=}
+		if test -n "$v" && test -n "$k"
+		then
+			k="AGIT_$k"
+		else
+			continue
+		fi
+		eval "$k=$v"
+		debug "[proc-receive] push-option: $k=$v"
+	done
+fi
+
+# Read push commands.
+count=0
+while read old new refname
+do
+	debug "[proc-receive] command from stdin: $old $new $refname"
+	count=$(( count + 1 ))
+	# Only one special refname is allowed for each push
+	if test $count -gt 1
+	then
+		echo >&2 "[proc-receive]: cannot handle more than one push commands"
+		exit 1
+	fi
+
+	# Parse refname, and set envrionment
+	remains=
+	if test "${refname#refs/for/}" != "$refname"
+	then
+		AGIT_PR_IS_DRAFT=false
+		remains=${refname#refs/for/}
+	elif test "${refname#refs/drafts/}" != "$refname"
+	then
+		AGIT_PR_IS_DRAFT=true
+		remains=${refname#refs/drafts/}
+	else
+		echo >&2 "[proc-receive] unknown refname: $refname"
+		exit 1
+	fi
+
+	ref=
+	found_ref=
+	for i in $(echo $remains | tr "/" "\n")
+	do
+		if test -z "$ref"
+		then
+			ref=$i
+		else
+			ref=$ref/$i
+		fi
+		if git rev-parse --verify $ref -- 2>/dev/null
+		then
+			found_ref=yes
+			break
+		fi
+	done
+	if test -z "$found_ref"
+	then
+		echo >&2 "[proc-receive] cannot find target branch from ref: $refname"
+		exit 1
+	fi
+	AGIT_PR_TARGET=$ref
+	AGIT_PR_SOURCE=${remains#$ref/}
+done
+
+if test -z "$AGIT_PR_TARGET"
+then
+	echo >&2 "[proc-receive] fail to parse refname, no target found"
+	exit 1
+fi
+
+# Call API to generate code review.
+debug "[proc-receive] call API (AGIT_PR_TARGET=$AGIT_PR_TARGET, AGIT_PR_TOPIC=$AGIT_PR_TOPIC)..."
+
+# Parse result of API.
+debug "[proc-receive] parse API result, and get AGIT_PR_ID, etc."
+AGIT_PR_ID="12345678901"
+AGIT_PR_LOCAL_ID="23"
+
+# Show message.
+if test -n "$AGIT_PR_ID"
+then
+	echo >&2 "[proc-receive] *******************************************************"
+	echo >&2 "[proc-receive] * Pull request #$AGIT_PR_ID created/updated           *"
+	echo >&2 "[proc-receive] * URL: https://... ...                                *"
+	echo >&2 "[proc-receive] *******************************************************"
+fi
+
+# Show envs to stdout, and will be exported as envs for "post-receive" hook.
+debug "[proc-receive] output kv pairs to stdout for git to parse."
+echo "AGIT_PR_ID=$AGIT_PR_ID"
+echo "AGIT_PR_LOCAL_ID=$AGIT_PR_LOCAL_ID"
+
+exit 0
