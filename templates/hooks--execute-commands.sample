@@ -1,0 +1,137 @@
+#!/bin/sh
+#
+# An example hook script to execute commands.
+# The example simply echoes actions, set environments.
+#
+# To enable this hook, rename this file to "execute-commands".
+
+debug() {
+	case "$AGIT_DEBUG" in
+	"yes" | "true" | "1")
+		;;
+	*)
+		return
+	esac
+
+	echo >&2 "[DEBUG"] "$@"
+}
+
+# This script will be called twice, the first stage is used to check permissions,
+# parse refnames, etc.  Messages to stdout will be read by git to set envionments.
+if test "$1" = "--pre-receive"; then
+	# Read push-opitons
+	if test -n "$GIT_PUSH_OPTION_COUNT"
+	then
+		i=0
+		while test "$i" -lt "$GIT_PUSH_OPTION_COUNT"
+		do
+			eval "value=\$GIT_PUSH_OPTION_$i"
+			i=$((i + 1))
+
+			k=$(echo ${value%=*} | tr [a-z] [A-Z])
+			v=${value#*=}
+			if test -n "$v" && test -n "$k"; then
+				k="AGIT_$k"
+			else
+				continue
+			fi
+			eval "$k=$v"
+			echo >&2 "[execute-commands: pre-receive] env from push-option: $k=$v"
+			# Output return to git to setenv
+			echo "$k=$v"
+		done
+	fi
+
+	debug "[execute-commands: pre-receive] start"
+
+	# Read stdin for commands
+	count=0
+	while read old new refname; do
+		debug "[execute-commands: pre-receive] command from stdin: $old $new $refname"
+		count=$(( count + 1 ))
+		# Only one special refname is allowed for each push
+		if test $count -gt 1; then
+			debug "[execute-commands: pre-receive] only one merge-request is permitted for each push"
+			exit 1
+		fi
+
+		# Parse refname, and set envrionment
+		remains=
+		if test "${refname#refs/for/}" != "$refname"; then
+			AGIT_MR_IS_DRAFT=false
+			remains=${refname#refs/for/}
+		elif test "${refname#refs/drafts/}" != "$refname"; then
+			AGIT_MR_IS_DRAFT=true
+			remains=${refname#refs/drafts/}
+		else
+			debug "[execute-commands: pre-receive] unknown refname: $refname, exit"
+			exit 1
+		fi
+
+		ref=
+		for i in $(echo $remains | tr "/" "\n"); do 
+			if test -z "$ref"; then
+				ref=$i
+			else
+				ref=$ref/$i
+			fi
+			if git rev-parse --verify $ref -- 2>/dev/null; then
+				break
+			fi
+		done
+		if ! git rev-parse $ref -- >/dev/null; then
+			debug "[execute-commands: pre-receive] fail to parse target reference from $refname"
+			exit 1
+		fi
+		AGIT_MR_TARGET=$ref
+		AGIT_MR_TOPIC=${remains#$ref/}
+	done
+
+	# Check permissions. E.g. Project owner may not like merge request to `maint` branch.
+	debug "[execute-commands: pre-receive] check permissions..."
+	if test -z "$AGIT_MR_TARGET"; then
+		debug "[execute-commands: pre-receive] fail to parse refname, no target found"
+		exit 1
+	fi
+	if test "$AGIT_MR_TARGET" = "maint"; then
+		debug "[execute-commands: pre-receive] Not allowed to send merge request to maint branch"
+		exit 1
+	fi
+
+	# Output return to git to setenv
+	debug "[execute-commands: pre-receive] parse commands and opitons, setenv..."
+	echo "AGIT_MR_TARGET=$AGIT_MR_TARGET"
+	echo "AGIT_MR_TOPIC=$AGIT_MR_TOPIC"
+
+	debug "[execute-commands: pre-receive] end"
+	exit 0
+fi
+
+debug "[execute-commands] start"
+
+# Drop stdins
+while read line; do
+	true
+done
+
+# Call merge request API to generate merge request
+debug "[execute-commands]will call merge-request-API(AGIT_MR_TARGET=$AGIT_MR_TARGET, AGIT_MR_TOPIC=$AGIT_MR_TOPIC)..."
+
+# Parse API result, and output will return to git to setenv
+debug "[execute-commands] read result of merge-request-API, setenv..."
+AGIT_MR_ID="123456"
+AGIT_MR_LOCAL_ID="23"
+echo "AGIT_MR_ID=$AGIT_MR_ID"
+echo "AGIT_MR_LOCAL_ID=$AGIT_MR_LOCAL_ID"
+
+# Notifications
+if test -n "$AGIT_MR_ID"; then
+	echo >&2 "[execute-commands] *******************************************************"
+	echo >&2 "[execute-commands] * Merge request #$AGIT_MR_ID created/updated               *"
+	echo >&2 "[execute-commands] * Access url: ... ...                                 *"
+	echo >&2 "[execute-commands] *******************************************************"
+fi
+
+debug "[execute-commands] end"
+
+exit 0
