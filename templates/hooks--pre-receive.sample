@@ -6,6 +6,19 @@
 #
 # To enable this hook, rename this file to "pre-receive".
 
+debug() {
+	case "$AGIT_DEBUG" in
+	"yes" | "true" | "1")
+		;;
+	*)
+		return
+	esac
+
+	echo >&2 "[DEBUG"] "$@"
+}
+
+debug "[pre-receive] start"
+
 if test -n "$GIT_PUSH_OPTION_COUNT"
 then
 	i=0
@@ -14,11 +27,22 @@ then
 		eval "value=\$GIT_PUSH_OPTION_$i"
 		case "$value" in
 		echoback=*)
-			echo "echo from the pre-receive-hook: ${value#*=}" >&2
 			;;
 		reject)
 			exit 1
 		esac
 		i=$((i + 1))
+		debug "[pre-receive] has env: ${value}"
 	done
 fi
+
+while read old new ref; do
+	debug "[pre-receive] command from stdin: $old $new $ref"
+done
+
+# Check permissions, if failed return 1
+debug "[pre-receive] check permissions"
+
+debug "[pre-receive] end"
+
+exit 0
