@@ -469,4 +469,102 @@ test_expect_success "push and show envs" '
 	test_cmp expect actual
 '
 
+test_expect_success "hooks: test templates/execute-commands.sample" '
+	mv $bare/hooks/pre-receive $bare/hooks/pre-receive.fail &&
+	mv $bare/hooks/pre-receive.ok $bare/hooks/pre-receive &&
+	mv $bare/hooks/post-receive $bare/hooks/post-receive.env &&
+	mv $bare/hooks/post-receive.ok $bare/hooks/post-receive &&
+	mv $bare/hooks/execute-commands $bare/hooks/execute-commands.env &&
+	cp ../../templates/hooks--execute-commands.sample $bare/hooks/execute-commands &&
+	chmod a+x $bare/hooks/execute-commands
+'
+
+test_expect_success "new execute-commands hook: show push result" '
+	(
+		cd work &&
+		git push origin \
+			HEAD:refs/for/a/b/c/my/topic
+	) >out 2>&1 &&
+	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
+	cat >expect <<-EOF &&
+	remote: 102939797ab91a4f201d131418d2c9d919dcdd2c
+	remote: [execute-commands] *******************************************************
+	remote: [execute-commands] * Pull request #12345678901 created/updated           *
+	remote: [execute-commands] * URL: https://... ...                                *
+	remote: [execute-commands] *******************************************************
+	remote: execute: post-receive hook
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/a/b/c/my/topic.
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "new execute-commands hook: show debug info" '
+	(
+		cd work &&
+		git push -o debug=1 -o reviewers=user1,user2 \
+			origin \
+			HEAD:refs/for/a/b/c/my/topic
+	) >out 2>&1 &&
+	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
+	cat >expect <<-EOF &&
+	remote: [DEBUG] [execute-commands] push-option: AGIT_DEBUG=1
+	remote: [DEBUG] [execute-commands] push-option: AGIT_REVIEWERS=user1,user2
+	remote: [DEBUG] [execute-commands] command from stdin: 0000000000000000000000000000000000000000 ce858e653cdbf70f9955a39d73a44219e4b92e9e refs/for/a/b/c/my/topic
+	remote: 102939797ab91a4f201d131418d2c9d919dcdd2c
+	remote: [DEBUG] [execute-commands: pre-receive] check permissions...
+	remote: [DEBUG] [execute-commands] push-option: AGIT_DEBUG=1
+	remote: [DEBUG] [execute-commands] push-option: AGIT_REVIEWERS=user1,user2
+	remote: [DEBUG] [execute-commands] command from stdin: 0000000000000000000000000000000000000000 ce858e653cdbf70f9955a39d73a44219e4b92e9e refs/for/a/b/c/my/topic
+	remote: [DEBUG] [execute-commands] call API (AGIT_PR_TARGET=a/b/c, AGIT_PR_TOPIC=)...
+	remote: [DEBUG] [execute-commands] parse API result, and get AGIT_PR_ID, etc.
+	remote: [execute-commands] *******************************************************
+	remote: [execute-commands] * Pull request #12345678901 created/updated           *
+	remote: [execute-commands] * URL: https://... ...                                *
+	remote: [execute-commands] *******************************************************
+	remote: [DEBUG] [execute-commands] output kv pairs to stdout for git to parse.
+	remote: execute: post-receive hook
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/a/b/c/my/topic.
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "new execute-commands hook: fail to push to refs/for/maint" '
+	(
+		cd work &&
+		test_must_fail git push -o reviewers=user1,user2 \
+			origin \
+			HEAD:refs/for/maint/my/topic
+	) >out 2>&1 &&
+	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
+	cat >expect <<-EOF &&
+	remote: 102939797ab91a4f201d131418d2c9d919dcdd2c
+	remote: [execute-commands: pre-receive] send pull request to maint branch is not allowed
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "new execute-commands hook: fail to push non-exist branch" '
+	(
+		cd work &&
+		test_must_fail git push -o reviewers=user1,user2 \
+			origin \
+			HEAD:refs/for/a/b/x/my/topic
+	) >out 2>&1 &&
+	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
+	cat >expect <<-EOF &&
+	remote: [execute-commands] cannot find target branch from ref: refs/for/a/b/x/my/topic
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success "after all above operations" '
+	git -C $bare show-ref >actual &&
+	cat >expect <<-EOF &&
+	102939797ab91a4f201d131418d2c9d919dcdd2c refs/heads/a/b/c
+	102939797ab91a4f201d131418d2c9d919dcdd2c refs/heads/maint
+	102939797ab91a4f201d131418d2c9d919dcdd2c refs/heads/master
+	EOF
+	test_cmp expect actual
+'
+
 test_done
