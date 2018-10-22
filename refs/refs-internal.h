@@ -755,4 +755,10 @@ void base_ref_store_init(struct ref_store *refs, struct repository *repo,
  */
 struct ref_store *maybe_debug_wrap_ref_store(const char *gitdir, struct ref_store *store);
 
+/*
+ * refs_txn_pre_hook run as an internal implementation for "refs-txn prepared" hook,
+ * and can be used to check lock of repository.
+ */
+int refs_txn_pre_hook(struct ref_transaction *);
+
 #endif /* REFS_REFS_INTERNAL_H */

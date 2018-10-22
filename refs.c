@@ -2127,6 +2127,13 @@ static int run_transaction_hook(struct ref_transaction *transaction,
 	if (!strcmp(state, "prepared")) {
 		if (!(transaction->hook_flags & REF_TRANSACTION_RUN_PREPARED_HOOK))
 			return 0;
+
+		/*
+		 * Run internal hook process for prepared state to resolve problems
+		 * for some scenarios. such as: lock write for repositories.
+		 */
+		if (refs_txn_pre_hook(transaction))
+			return -1;
 	} else if (!strcmp(state, "committed")) {
 		if (!(transaction->hook_flags & REF_TRANSACTION_RUN_COMMITTED_HOOK))
 			return 0;
