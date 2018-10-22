@@ -675,4 +675,10 @@ struct ref_store {
 void base_ref_store_init(struct ref_store *refs,
 			 const struct ref_storage_be *be);
 
+/*
+ * pre-check hook run before transaction_commit, which may be used to check
+ * lock of repository.
+ */
+int ref_transaction_pre_check_hook(struct ref_transaction *, struct strbuf *);
+
 #endif /* REFS_REFS_INTERNAL_H */
