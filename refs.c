@@ -2089,11 +2089,22 @@ int ref_transaction_abort(struct ref_transaction *transaction,
 	return ret;
 }
 
+/*
+ * pre-check hook run before transaction_commit, which may be used to check
+ * lock of repository.
+ */
+int ref_transaction_pre_check_hook(struct ref_transaction *, struct strbuf *);
+
 int ref_transaction_commit(struct ref_transaction *transaction,
 			   struct strbuf *err)
 {
 	struct ref_store *refs = transaction->ref_store;
 	int ret;
+
+	/* Perform pre-check for transaction (write-lock check, etc.) */
+	if (ref_transaction_pre_check_hook(transaction, err)) {
+		return -1;
+	}
 
 	switch (transaction->state) {
 	case REF_TRANSACTION_OPEN:
