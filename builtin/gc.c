@@ -364,6 +364,9 @@ int cmd_gc(int argc, const char **argv, const char *prefix)
 		OPT_END()
 	};
 
+	/* Refs not changed in this command, so do not run hooks in refs transaction */
+	setenv("GIT_REFS_TXN_NO_HOOK", "1", 1);
+
 	if (argc == 2 && !strcmp(argv[1], "-h"))
 		usage_with_options(builtin_gc_usage, builtin_gc_options);
 
