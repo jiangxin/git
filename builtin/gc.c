@@ -499,6 +499,9 @@ int cmd_gc(int argc, const char **argv, const char *prefix)
 	int keep_base_pack = -1;
 	timestamp_t dummy;
 
+	/* Refs not changed in this command, so do not run hooks in refs transaction */
+	setenv("GIT_REFS_TXN_NO_HOOK", "1", 1);
+
 	struct option builtin_gc_options[] = {
 		OPT__QUIET(&quiet, N_("suppress progress reporting")),
 		{ OPTION_STRING, 0, "prune", &prune_expire, N_("date"),

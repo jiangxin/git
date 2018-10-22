@@ -670,4 +670,11 @@ struct ref_store {
 void base_ref_store_init(struct ref_store *refs,
 			 const struct ref_storage_be *be);
 
+
+/*
+ * common function for refs transaction hooks
+ */
+int ref_transaction_pre_check_hook(struct strbuf *);
+void ref_transaction_post_action_hook();
+
 #endif /* REFS_REFS_INTERNAL_H */
