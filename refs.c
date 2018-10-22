@@ -1804,6 +1804,22 @@ int ref_transaction_commit(struct ref_transaction *transaction,
 {
 	struct ref_store *refs = transaction->ref_store;
 	int ret;
+	char *env = getenv("GIT_REFS_TXN_NO_HOOK");
+	int skip_hook = 0;
+	static int pre_check_once = 0;
+	static int post_action_once = 0;
+
+	if (env && !strcmp(env, "1") || transaction->nr == 0) {
+		skip_hook = 1;
+	}
+
+	/* Perform pre-check for transaction (write-lock check, etc.) */
+	if (!skip_hook && !pre_check_once) {
+		pre_check_once = 1;
+		if (ref_transaction_pre_check_hook(err)) {
+			return -1;
+		}
+	}
 
 	switch (transaction->state) {
 	case REF_TRANSACTION_OPEN:
@@ -1823,7 +1839,15 @@ int ref_transaction_commit(struct ref_transaction *transaction,
 		break;
 	}
 
-	return refs->be->transaction_finish(refs, transaction, err);
+	ret = refs->be->transaction_finish(refs, transaction, err);
+
+	/* Perform post-action for transaction (update last-modified, etc.) */
+	if (!skip_hook && ret == 0 && !post_action_once) {
+		post_action_once = 1;
+		ref_transaction_post_action_hook();
+	}
+
+	return ret;
 }
 
 int refs_verify_refname_available(struct ref_store *refs,

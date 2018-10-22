@@ -353,6 +353,9 @@ int cmd_gc(int argc, const char **argv, const char *prefix)
 	pid_t pid;
 	int daemonized = 0;
 
+	/* Refs not changed in this command, so do not run hooks in refs transaction */
+	setenv("GIT_REFS_TXN_NO_HOOK", "1", 1);
+
 	struct option builtin_gc_options[] = {
 		OPT__QUIET(&quiet, N_("suppress progress reporting")),
 		{ OPTION_STRING, 0, "prune", &prune_expire, N_("date"),
