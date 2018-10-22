@@ -2095,6 +2095,11 @@ int ref_transaction_commit(struct ref_transaction *transaction,
 	struct ref_store *refs = transaction->ref_store;
 	int ret;
 
+	/* Perform pre-check for transaction (write-lock check, etc.) */
+	if (ref_transaction_pre_check_hook(transaction, err)) {
+		return -1;
+	}
+
 	switch (transaction->state) {
 	case REF_TRANSACTION_OPEN:
 		/* Need to prepare first. */
