@@ -57,6 +57,8 @@
  */
 #define REF_DELETED_LOOSE (1 << 9)
 
+#define AGIT_REPO_INFO_TIMESTAMP  "last-modified"
+
 struct ref_lock {
 	char *ref_name;
 	struct lock_file lk;
@@ -2753,6 +2755,8 @@ cleanup:
 	return ret;
 }
 
+static void files_transaction_post_action_hook(struct ref_transaction *);
+
 static int files_transaction_finish(struct ref_store *ref_store,
 				    struct ref_transaction *transaction,
 				    struct strbuf *err)
@@ -2872,6 +2876,9 @@ static int files_transaction_finish(struct ref_store *ref_store,
 	clear_loose_ref_cache(refs);
 
 cleanup:
+	/* Perform post-action for transaction (update last-modified, etc.) */
+	files_transaction_post_action_hook(transaction);
+
 	files_transaction_cleanup(refs, transaction);
 
 	for (i = 0; i < transaction->nr; i++) {
@@ -3170,6 +3177,101 @@ static int files_init_db(struct ref_store *ref_store, struct strbuf *err)
 
 	strbuf_release(&sb);
 	return 0;
+}
+
+static int files_transaction_ref_is_changed(struct ref_update *update, int filter_ref) {
+	struct ref_lock *lock = update->backend_data;
+
+	if (!lock)
+		return 0;
+
+	if (update->flags & REF_LOG_ONLY || update->flags & REF_IS_PRUNING)
+		return 0;
+
+	if (update->flags & REF_NEEDS_COMMIT ||
+		(update->flags & REF_DELETING && !is_null_oid(&(lock->old_oid)))) {
+		if (!filter_ref)
+			return 1;
+		if (!strncmp(update->refname, "refs/heads/", 11) ||
+			!strncmp(update->refname, "refs/tags/", 10) ||
+			!strncmp(update->refname, "refs/merge-requests/", 20) ||
+			!strncmp(update->refname, "refs/pull/", 10))
+		       return 1;
+	}
+
+	return 0;
+}
+
+/*
+ * After ref_transaction finished successfully, run this post_action hook.
+ */
+static void files_transaction_post_action_hook(struct ref_transaction *transaction) {
+	struct strbuf ts_file = STRBUF_INIT;
+	struct stat fstat;
+	static int once = 0;
+	int fd;
+	int i;
+	int has_change = 0;
+	char *env = getenv("GIT_REFS_TXN_NO_HOOK");
+
+	if ((env && !strcmp(env, "1")) || transaction->nr == 0)
+		return;
+
+	// Will execute twice, one for files_backend, another for packed_backend.
+	// Only execute for files_backend.
+	if (!strcmp(transaction->ref_store->be->name, "packed"))
+		return;
+
+	if (!the_repository->gitdir)
+		return;
+
+	if (once)
+		return;
+
+	for (i = 0; i < transaction->nr; i++) {
+		if (files_transaction_ref_is_changed(transaction->updates[i], 1)) {
+			has_change = 1;
+			break;
+		}
+	}
+	if (!has_change)
+		return;
+
+	once = 1;
+
+	/* Create .git/info dir if not exist */
+	strbuf_addf(&ts_file, "%s/%s", the_repository->gitdir, "info");
+	if (access(ts_file.buf, F_OK)) {
+		if (mkdir(ts_file.buf, 0775)) {
+			error("cannot create dir '%s'", ts_file.buf);
+			goto cleanup;
+		}
+	}
+
+	/* Create .git/info/last-modified file if not exist */
+	strbuf_addstr(&ts_file, "/" AGIT_REPO_INFO_TIMESTAMP);
+	if (access(ts_file.buf, F_OK)) {
+		fd = creat(ts_file.buf, 0644);
+		if (fd < 0)
+			error("fail to create file %s", ts_file.buf);
+		else
+			close(fd);
+		goto cleanup;
+	}
+
+	if (stat(ts_file.buf, &fstat)) {
+		error("fail to stat %s", ts_file.buf);
+		goto cleanup;
+	}
+
+	if (utimes(ts_file.buf, NULL)) {
+		error("fail to change mtime of %s", ts_file.buf);
+		goto cleanup;
+	}
+
+cleanup:
+	strbuf_release(&ts_file);
+	return;
 }
 
 struct ref_storage_be refs_be_files = {
