@@ -2753,6 +2753,8 @@ cleanup:
 	return ret;
 }
 
+static void files_transaction_post_action_hook(struct ref_transaction *);
+
 static int files_transaction_finish(struct ref_store *ref_store,
 				    struct ref_transaction *transaction,
 				    struct strbuf *err)
@@ -2872,6 +2874,9 @@ static int files_transaction_finish(struct ref_store *ref_store,
 	clear_loose_ref_cache(refs);
 
 cleanup:
+	/* Perform post-action for transaction (update last-modified, etc.) */
+	files_transaction_post_action_hook(transaction);
+
 	files_transaction_cleanup(refs, transaction);
 
 	for (i = 0; i < transaction->nr; i++) {
@@ -3170,6 +3175,94 @@ static int files_init_db(struct ref_store *ref_store, struct strbuf *err)
 
 	strbuf_release(&sb);
 	return 0;
+}
+
+static int files_transaction_ref_is_changed(struct ref_update *update, int filter_ref) {
+	struct ref_lock *lock = update->backend_data;
+
+	if (!lock)
+		return 0;
+
+	if (update->flags & REF_LOG_ONLY || update->flags & REF_IS_PRUNING)
+		return 0;
+
+	if (update->flags & REF_NEEDS_COMMIT ||
+		(update->flags & REF_DELETING && !is_null_oid(&(lock->old_oid)))) {
+		if (!filter_ref)
+			return 1;
+		if (!strncmp(update->refname, "refs/heads/", 11) ||
+			!strncmp(update->refname, "refs/tags/", 10) ||
+			!strncmp(update->refname, "refs/merge-requests/", 20) ||
+			!strncmp(update->refname, "refs/pull/", 10))
+		       return 1;
+	}
+
+	return 0;
+}
+
+static GIT_PATH_FUNC(git_path_info_last_modified, "info/last-modified")
+
+/*
+ * After ref_transaction finished successfully, run this post_action hook.
+ */
+static void files_transaction_post_action_hook(struct ref_transaction *transaction) {
+	const char *path = git_path_info_last_modified();
+	char *env = getenv("GIT_REFS_TXN_NO_HOOK");
+	struct stat fstat;
+	static int once = 0;
+	int fd;
+	int i;
+	int has_change = 0;
+
+	if ((env && !strcmp(env, "1")) || transaction->nr == 0)
+		return;
+
+	// Will execute twice, one for files_backend, another for packed_backend.
+	// Only execute for files_backend.
+	if (!strcmp(transaction->ref_store->be->name, "packed"))
+		return;
+
+	if (!the_repository->gitdir)
+		return;
+
+	if (once)
+		return;
+
+	for (i = 0; i < transaction->nr; i++) {
+		if (files_transaction_ref_is_changed(transaction->updates[i], 1)) {
+			has_change = 1;
+			break;
+		}
+	}
+	if (!has_change)
+		return;
+
+	once = 1;
+
+	/* Create .git/info/last-modified file if not exist */
+	if (access(path, F_OK)) {
+		fd = creat(path, 0666);
+		if (fd < 0)
+			error("fail to create file %s", path);
+		else {
+			close(fd);
+			adjust_shared_perm(path);
+		}
+		goto cleanup;
+	}
+
+	if (stat(path, &fstat)) {
+		error("fail to stat %s", path);
+		goto cleanup;
+	}
+
+	if (utimes(path, NULL)) {
+		error("fail to change mtime of %s", path);
+		goto cleanup;
+	}
+
+cleanup:
+	return;
 }
 
 struct ref_storage_be refs_be_files = {
