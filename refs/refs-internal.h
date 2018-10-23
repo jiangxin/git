@@ -761,4 +761,12 @@ struct ref_store *maybe_debug_wrap_ref_store(const char *gitdir, struct ref_stor
  */
 int refs_txn_pre_hook(struct ref_transaction *);
 
+/*
+ * refs_txn_post_hook run as an internal implementation for "refs-txn committed" hook,
+ * and can be used to do some post actions if there are changes in a repository.
+ * E.g.: record last-modified time of the repository, or calculate checksum of the
+ * repository.
+ */
+void refs_txn_post_hook(struct ref_transaction *transaction);
+
 #endif /* REFS_REFS_INTERNAL_H */

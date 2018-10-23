@@ -2137,6 +2137,12 @@ static int run_transaction_hook(struct ref_transaction *transaction,
 	} else if (!strcmp(state, "committed")) {
 		if (!(transaction->hook_flags & REF_TRANSACTION_RUN_COMMITTED_HOOK))
 			return 0;
+
+		/*
+		 * Run internal hook process for committed state to do some post
+		 * actions when there are changes happened in a repository.
+		 */
+		refs_txn_post_hook(transaction);
 	} else if (!strcmp(state, "aborted")) {
 		if (!(transaction->hook_flags & REF_TRANSACTION_RUN_ABORTED_HOOK))
 			return 0;
