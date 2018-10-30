@@ -880,6 +880,7 @@ __git_list_porcelain_commands ()
 		prune)            : plumbing;;
 		prune-packed)     : plumbing;;
 		quiltimport)      : import;;
+		quiltexport)      : import;;
 		read-tree)        : plumbing;;
 		receive-pack)     : plumbing;;
 		remote-*)         : transport;;

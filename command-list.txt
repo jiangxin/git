@@ -103,6 +103,7 @@ git-prune-packed                        plumbingmanipulators
 git-pull                                mainporcelain           remote
 git-push                                mainporcelain           remote
 git-quiltimport                         foreignscminterface
+git-quiltexport                         foreignscminterface
 git-read-tree                           plumbingmanipulators
 git-rebase                              mainporcelain           history
 git-receive-pack                        synchelpers
