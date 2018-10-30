@@ -26,6 +26,13 @@ else
 	VN="$DEF_VER"
 fi
 
+if test -f agit-version
+then
+	AGITVN=$(cat agit-version | sed -e 's/-/./g')
+	AGITVN=$(expr "$AGITVN" : v*'\(.*\)')
+	VN="$VN.agit.$AGITVN"
+fi
+
 VN=$(expr "$VN" : v*'\(.*\)')
 
 if test -r $GVF
