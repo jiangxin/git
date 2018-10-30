@@ -1,0 +1,11 @@
+AGIT Release Notes
+==================
+
+v0.1.0
+------
+* New command 'git-quiltexport' to export commits to quilt patches.
+* Prohibit to write to repo if there is a 'agit-repo.lock' file at any upword directory.
+* Touch a '.git/info/last-modified' file after write to repo.
+* In order to support centralize workflow like gerrit in git, add a `.git/hooks/execute-commands`
+  hook.  If user has set `receive.executeCommandsRefs` config variables, git will check and mark
+  commands, and run external hook instead of internal functions on marked commands.
