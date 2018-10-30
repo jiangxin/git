@@ -1,0 +1,17 @@
+AGIT Release Notes
+==================
+
+v2
+------
+* Fix dirname bug, which not work well in MacOS.
+* Add test cases for git-receive-pack for execute-commands hook.
+* Add test cases for last-modified timestamp and agit-repo.lock.
+
+v1
+------
+* New command 'git-quiltexport' to export commits to quilt patches.
+* Prohibit to write to repo if there is a 'agit-repo.lock' file at any upword directory.
+* Touch a '.git/info/last-modified' file after write to repo.
+* In order to support centralize workflow like gerrit in git, add a `.git/hooks/execute-commands`
+  hook.  If user has set `receive.executeCommandsRefs` config variables, git will check and mark
+  commands, and run external hook instead of internal functions on marked commands.
