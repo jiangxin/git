@@ -120,6 +120,7 @@
 /git-pull
 /git-push
 /git-quiltimport
+/git-quiltexport
 /git-range-diff
 /git-read-tree
 /git-rebase
