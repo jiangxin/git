@@ -11,6 +11,7 @@
 int ref_transaction_pre_check_hook(struct strbuf *err) {
 	struct strbuf dir_buf = STRBUF_INIT;
 	struct strbuf lock_file = STRBUF_INIT;
+	char *dir;
 	int ret = 0;
 	int fd;
 	int len;
@@ -21,14 +22,15 @@ int ref_transaction_pre_check_hook(struct strbuf *err) {
 		return 0;
 
 	strbuf_addstr(&dir_buf, absolute_path(the_repository->gitdir));
+	dir = dir_buf.buf;
 	while (1) {
 		loop++;
 		strbuf_reset(&lock_file);
 
-		if (!strcmp(dir_buf.buf, "/"))
+		if (!strcmp(dir, "/"))
 			strbuf_addstr(&lock_file, "/" AGIT_REPO_WRITE_LOCK_FILE);
 		else
-			strbuf_addf(&lock_file, "%s/%s", dir_buf.buf, AGIT_REPO_WRITE_LOCK_FILE);
+			strbuf_addf(&lock_file, "%s/%s", dir, AGIT_REPO_WRITE_LOCK_FILE);
 
 		if (!access(lock_file.buf, F_OK)) {
 			strbuf_addf(err, "cannot write to repository, locked by file '%s'.\n\n", AGIT_REPO_WRITE_LOCK_FILE); 
@@ -43,14 +45,14 @@ int ref_transaction_pre_check_hook(struct strbuf *err) {
 			break;
 		}
 
-		if (!strcmp(dir_buf.buf, "/"))
+		if (!strcmp(dir, "/"))
 			break;
 
 		if (loop > 20) {
 			break;
 		}
 
-		dirname(dir_buf.buf);
+		dir = dirname(dir);
 	}
 
 	strbuf_release(&dir_buf);
