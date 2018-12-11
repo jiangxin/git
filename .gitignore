@@ -111,6 +111,7 @@
 /git-pull
 /git-push
 /git-quiltimport
+/git-quiltexport
 /git-read-tree
 /git-rebase
 /git-rebase--am
