@@ -1,6 +1,7 @@
 #include "builtin.h"
 #include "repository.h"
 #include "config.h"
+#include "limiting.h"
 #include "lockfile.h"
 #include "pack.h"
 #include "refs.h"
@@ -2191,6 +2192,10 @@ int cmd_receive_pack(int argc, const char **argv, const char *prefix)
 	if ((commands = read_head_info(&reader, &shallow)) != NULL) {
 		const char *unpack_status = NULL;
 		struct string_list push_options = STRING_LIST_INIT_DUP;
+
+		/* connection limit, for hooks also consume resources  */
+		if (wait_for_avail_loadavg(use_sideband))
+			die("failed to wait_for_avail_loadavg");
 
 		if (use_push_options)
 			read_push_options(&reader, &push_options);
