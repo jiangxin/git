@@ -23,6 +23,7 @@
 #include "fsck.h"
 #include "tmp-objdir.h"
 #include "oidset.h"
+#include "limiting.h"
 
 static const char * const receive_pack_usage[] = {
 	N_("git receive-pack <git-dir>"),
@@ -2152,6 +2153,8 @@ int cmd_receive_pack(int argc, const char **argv, const char *prefix)
 				cmd->error_string = "inconsistent push options";
 		}
 
+		if (wait_for_avail_loadavg(use_sideband))
+			die("failed to wait_for_avail_loadavg");
 		prepare_shallow_info(&si, &shallow);
 		if (!si.nr_ours && !si.nr_theirs)
 			shallow_update = 0;

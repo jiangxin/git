@@ -18,6 +18,7 @@
 #include "parse-options.h"
 #include "argv-array.h"
 #include "prio-queue.h"
+#include "limiting.h"
 
 static const char * const upload_pack_usage[] = {
 	N_("git upload-pack [<options>] <dir>"),
@@ -1000,6 +1001,8 @@ static void upload_pack(void)
 	receive_needs();
 	if (want_obj.nr) {
 		get_common_commits();
+		if (wait_for_avail_loadavg(use_sideband))
+			die("failed to wait_for_avail_loadavg");
 		create_pack_file();
 	}
 }
