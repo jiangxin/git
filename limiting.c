@@ -23,39 +23,84 @@
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
-#include <sys/sysinfo.h>
 
 #include "cache.h"
 #include "limiting.h"
+#include "run-command.h"
 #include "pkt-line.h"
 #include "sideband.h"
 
+#ifdef __APPLE__
+  #include <sys/sysctl.h>
+#else
+  #include <sys/sysinfo.h>
+#endif
+
 static int get_loadavg(void)
 {
-	char load1[10];
-	char *p;
+	struct strbuf buf = STRBUF_INIT;
+	char *loadavg, *p;
 	FILE *fp;
-	double load1f;
-	int ncpu = get_nprocs();
+	int percent;
+	int ncpu;
 
-	bzero(load1, 10);
+#ifdef __APPLE__
+	const char *argv[] = { "sysctl", "-n", "vm.loadavg", NULL };
+	struct child_process cmd = CHILD_PROCESS_INIT;
+#endif
+
+#ifdef __APPLE__
+	/* cmd `sysctl -n vm.loadavg` returns: { 1.92 2.17 2.19 } */
+	cmd.argv = argv;
+	cmd.git_cmd = 0;
+	cmd.in = 0;
+	cmd.out = -1;
+
+	if (start_command(&cmd))
+		die("unable to spawn sysctl");
+
+	if (strbuf_read(&buf, cmd.out, 20) < 0)
+		die_errno("unable to read from sysctl");
+	close(cmd.out);
+
+	if (finish_command(&cmd))
+		die("fail to finish sysctl");
+#else
 	fp = fopen("/proc/loadavg","r");
 	if (fp == NULL)
 		return -1;
-	if (!fread(load1, 1, 8, fp)) {
+	if (!strbuf_fread(&buf, 20, fp)) {
 		fclose(fp);
 		return 0;
 	}
 	fclose(fp);
+#endif
 
-	for (int i = 0; i < 8; i++) {
-		if (load1[i] == ' ') {
-			load1[i] = '\0';
+/* Get cpu core number */
+#ifdef __APPLE__
+	{
+		size_t len = sizeof(ncpu);
+		sysctlbyname("hw.ncpu", &ncpu, &len, NULL, 0);
+	}
+#else
+	ncpu = get_nprocs();
+#endif
+
+	p = buf.buf;
+	while (*p && (*p == '{' || *p == ' ')) {
+		p++;
+	};
+	loadavg = p;
+	while (*(++p)) {
+		if (*p == ' ') {
+			*p = '\0';
 			break;
 		}
 	}
-	load1f = atof(load1);
-	return load1f / ncpu * 100;
+
+	percent = atof(loadavg) / ncpu * 100;
+	strbuf_release(&buf);
+	return percent;
 }
 
 static int load_is_above_soft_limit(int load)
@@ -114,7 +159,6 @@ int wait_for_avail_loadavg(int use_sideband)
 				sideband_printf(band,
 						"Server load (%d%%) is still high, quilt",
 						loadavg);
-
 			else
 				sideband_printf(band,
 						"Server load (%d%%) is too high, quilt",
