@@ -36,6 +36,66 @@
   #include <sys/sysinfo.h>
 #endif
 
+static int get_from_env(char *env, int value)
+{
+	char *p = getenv(env);
+
+	if (p)
+		return atoi(p);
+	else
+		return value;
+}
+
+static int get_loadavg_soft_limit()
+{
+	static int n = 0;
+
+	if (n == 0)
+		n = get_from_env(ENV_LOADAVG_SOFT_LIMIT,
+				 DEFAULT_LOADAVG_SOFT_LIMIT);
+	return n;
+}
+
+static int get_loadavg_hard_limit()
+{
+	static int n = 0;
+
+	if (n == 0)
+		n = get_from_env(ENV_LOADAVG_HARD_LIMIT,
+				 DEFAULT_LOADAVG_HARD_LIMIT);
+	return n;
+}
+
+static int get_loadavg_sleep_min()
+{
+	static int n = 0;
+
+	if (n == 0)
+		n = get_from_env(ENV_LOADAVG_SLEEP_MIN,
+				 DEFAULT_LOADAVG_SLEEP_MIN);
+	return n;
+}
+
+static int get_loadavg_sleep_max()
+{
+	static int n = 0;
+
+	if (n == 0)
+		n = get_from_env(ENV_LOADAVG_SLEEP_MAX,
+				 DEFAULT_LOADAVG_SLEEP_MAX);
+	return n;
+}
+
+static int get_loadavg_retry()
+{
+	static int n = 0;
+
+	if (n == 0)
+		n = get_from_env(ENV_LOADAVG_RETRY,
+				 DEFAULT_LOADAVG_RETRY);
+	return n;
+}
+
 static int get_loadavg(void)
 {
 	struct strbuf buf = STRBUF_INIT;
@@ -103,14 +163,15 @@ static int get_loadavg(void)
 	return percent;
 }
 
+
 static int load_is_above_soft_limit(int load)
 {
-	return load >= LIMITING_SOFT_LOAD_THRESHOLD;
+	return load >= get_loadavg_soft_limit();
 }
 
 static int load_is_above_hard_limit(int load)
 {
-	return load >= LIMITING_HARD_LOAD_THRESHOLD;
+	return load >= get_loadavg_hard_limit();
 }
 
 /* sideband: 2 - progress, 3- error */
@@ -152,10 +213,10 @@ int wait_for_avail_loadavg(int use_sideband)
 	while ((loadavg = get_loadavg())) {
 		if (!load_is_above_soft_limit(loadavg)) {
 			break;
-		} else if (retries > LIMITING_MAX_RETRY || load_is_above_hard_limit(loadavg)) {
+		} else if (retries > get_loadavg_retry() || load_is_above_hard_limit(loadavg)) {
 			if (use_sideband)
 				band = 3;
-			if (retries > LIMITING_MAX_RETRY)
+			if (retries > get_loadavg_retry())
 				sideband_printf(band,
 						"Server load (%d%%) is still high, quilt",
 						loadavg);
@@ -166,7 +227,10 @@ int wait_for_avail_loadavg(int use_sideband)
 			return 1;
 		} else {
 			srand(time(NULL));
-			sleep_secs = LIMITING_MIN_SLEEP_SECONDS + rand() % (LIMITING_MAX_SLEEP_SECONDS - LIMITING_MIN_SLEEP_SECONDS + 1);
+			sleep_secs = get_loadavg_sleep_min() + rand() % (
+					get_loadavg_sleep_max() -
+					get_loadavg_sleep_min() +
+					1);
 			if (use_sideband)
 				band = 2;
 			sideband_printf(band,
@@ -174,7 +238,7 @@ int wait_for_avail_loadavg(int use_sideband)
 					loadavg,
 					sleep_secs,
 					retries,
-					LIMITING_MAX_RETRY);
+					get_loadavg_retry());
 			sleep(sleep_secs);
 		}
 		retries++;

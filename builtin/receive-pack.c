@@ -2145,6 +2145,10 @@ int cmd_receive_pack(int argc, const char **argv, const char *prefix)
 		const char *unpack_status = NULL;
 		struct string_list push_options = STRING_LIST_INIT_DUP;
 
+		/* connection limit, for hooks also consume resources  */
+		if (wait_for_avail_loadavg(use_sideband))
+			die("failed to wait_for_avail_loadavg");
+
 		if (use_push_options)
 			read_push_options(&push_options);
 		if (!check_cert_push_options(&push_options)) {
@@ -2152,9 +2156,6 @@ int cmd_receive_pack(int argc, const char **argv, const char *prefix)
 			for (cmd = commands; cmd; cmd = cmd->next)
 				cmd->error_string = "inconsistent push options";
 		}
-
-		if (wait_for_avail_loadavg(use_sideband))
-			die("failed to wait_for_avail_loadavg");
 		prepare_shallow_info(&si, &shallow);
 		if (!si.nr_ours && !si.nr_theirs)
 			shallow_update = 0;
