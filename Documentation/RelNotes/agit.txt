@@ -1,6 +1,10 @@
 AGIT Release Notes
 ==================
 
+v3
+------
+* Git traffic protection by checking loadavg.
+
 v2
 ------
 * Fix dirname bug, which not work well in MacOS.
