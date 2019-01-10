@@ -125,7 +125,7 @@ test_expect_success 'create pack 4, 5' '
 '
 
 cat >expected <<EOF
-P2:$P2
+P3:$P3
 EOF
 
 test_expect_success 'one of pack-2/pack-3 is redundant' '
