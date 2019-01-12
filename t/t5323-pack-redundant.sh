@@ -152,10 +152,10 @@ test_expect_success 'create pack 4, 5' '
 '
 
 cat >expected <<EOF
-P2:$P2
+P3:$P3
 EOF
 
-test_expect_failure 'one of pack-2/pack-3 is redundant' '
+test_expect_success 'one of pack-2/pack-3 is redundant' '
 	git pack-redundant --all >out &&
 	format_packfiles <out >actual &&
 	test_cmp expected actual
@@ -172,7 +172,7 @@ P4:$P4
 P6:$P6
 EOF
 
-test_expect_failure 'pack 2, 4, and 6 are redundant' '
+test_expect_success 'pack 2, 4, and 6 are redundant' '
 	git pack-redundant --all >out &&
 	format_packfiles <out >actual &&
 	test_cmp expected actual
@@ -189,7 +189,7 @@ P6:$P6
 P8:$P8
 EOF
 
-test_expect_failure 'pack-8 (subset of pack-1) is also redundant' '
+test_expect_success 'pack-8 (subset of pack-1) is also redundant' '
 	git pack-redundant --all >out &&
 	format_packfiles <out >actual &&
 	test_cmp expected actual
@@ -201,7 +201,7 @@ test_expect_success 'clean loose objects' '
 	test_must_be_empty out
 '
 
-test_expect_failure 'remove redundant packs and pass fsck' '
+test_expect_success 'remove redundant packs and pass fsck' '
 	git pack-redundant --all | xargs rm &&
 	git fsck --no-progress &&
 	git pack-redundant --all >out &&
@@ -215,7 +215,7 @@ test_expect_success 'setup shared.git' '
 	printf "../../master.git/objects" >objects/info/alternates
 '
 
-test_expect_failure 'no redundant packs without --alt-odb' '
+test_expect_success 'no redundant packs without --alt-odb' '
 	git pack-redundant --all >out &&
 	test_must_be_empty out
 '
@@ -227,7 +227,7 @@ P5:$P5
 P7:$P7
 EOF
 
-test_expect_failure 'pack-redundant --verbose: show duplicate packs in stderr' '
+test_expect_success 'pack-redundant --verbose: show duplicate packs in stderr' '
 	git pack-redundant --all --verbose >out 2>out.err &&
 	test_must_be_empty out &&
 	grep "pack$" out.err | format_packfiles >actual &&
