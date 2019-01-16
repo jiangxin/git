@@ -1,0 +1,36 @@
+#!/bin/sh
+#
+# An example hook script to notify result of execute-commands hook
+#
+# To enable this hook, rename this file to "post-receive".
+
+debug() {
+	case "$AGIT_DEBUG" in
+	"yes" | "true" | "1")
+		;;
+	*)
+		return
+	esac
+
+	echo >&2 "[DEBUG"] "$@"
+}
+
+debug "[post-receive] start"
+
+# Read stdin for commands
+while read old new ref; do
+	debug "[post-receive] command from stdin: $old $new $ref"
+done
+
+# Read envirionment
+case "$AGIT_DEBUG" in
+"yes" | "true" | "1")
+	env | while read e; do
+		if test "${e#AGIT_}" != "$e"; then
+			debug "[post-receive] has env: $e"
+		fi
+	done
+;;
+esac
+
+debug "[post-receive] end"
