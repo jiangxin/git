@@ -17,5 +17,9 @@ int cmd_pack_refs(int argc, const char **argv, const char *prefix)
 	};
 	if (parse_options(argc, argv, prefix, opts, pack_refs_usage, 0))
 		usage_with_options(pack_refs_usage, opts);
+
+	/* Refs not changed in this command, so do not run hooks in refs transaction */
+	setenv("GIT_REFS_TXN_NO_HOOK", "1", 1);
+
 	return refs_pack_refs(get_main_ref_store(), flags);
 }
