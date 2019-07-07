@@ -9,6 +9,11 @@
 struct string_list;
 
 struct git_transport_options {
+	/*
+	 * Black hole mode is for testing, will throw away any data from server.
+	 */
+	int black_hole;
+
 	unsigned thin : 1;
 	unsigned keep : 1;
 	unsigned followtags : 1;
@@ -159,6 +164,9 @@ int is_transport_allowed(const char *type, int from_user);
 void transport_check_allowed(const char *type);
 
 /* Transport options which apply to git:// and scp-style URLs */
+
+/* Black hole mode, which just throw away any date from server and just for testing */
+#define TRANS_OPT_BLACK_HOLE "black-hole"
 
 /* The program to use on the remote side to send a pack */
 #define TRANS_OPT_UPLOADPACK "uploadpack"

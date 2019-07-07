@@ -189,6 +189,13 @@ static int set_git_option(struct git_transport_options *opts,
 	if (!strcmp(name, TRANS_OPT_UPLOADPACK)) {
 		opts->uploadpack = value;
 		return 0;
+	} else if (!strcmp(name, TRANS_OPT_BLACK_HOLE)) {
+		if (!strcmp(value, "1")) {
+			opts->black_hole = 1;
+		} else if (!strcmp(value, "2")) {
+			opts->black_hole = 2;
+		}
+		return 0;
 	} else if (!strcmp(name, TRANS_OPT_RECEIVEPACK)) {
 		opts->receivepack = value;
 		return 0;
@@ -334,6 +341,7 @@ static int fetch_refs_via_pack(struct transport *transport,
 	struct ref *refs_tmp = NULL;
 
 	memset(&args, 0, sizeof(args));
+	args.black_hole = data->options.black_hole;
 	args.uploadpack = data->options.uploadpack;
 	args.keep_pack = data->options.keep;
 	args.lock_pack = 1;
