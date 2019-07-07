@@ -29,6 +29,7 @@ struct options {
 	struct string_list deepen_not;
 	struct string_list push_options;
 	char *filter;
+	int black_hole;
 	unsigned progress : 1,
 		check_self_contained_and_connected : 1,
 		cloning : 1,
@@ -54,6 +55,13 @@ static int set_option(const char *name, const char *value)
 		if (value == end || *end)
 			return -1;
 		options.verbosity = v;
+		return 0;
+	}
+	else if (!strcmp(name, "black-hole")) {
+		if (!strcmp(value, "1"))
+			options.black_hole = 1;
+		else if (!strcmp(value, "2"))
+			options.black_hole = 2;
 		return 0;
 	}
 	else if (!strcmp(name, "progress")) {
@@ -1048,6 +1056,10 @@ static int fetch_git(struct discovery *heads,
 
 	argv_array_pushl(&args, "fetch-pack", "--stateless-rpc",
 			 "--stdin", "--lock-pack", NULL);
+	if (options.black_hole == 1)
+		argv_array_push(&args, "--black-hole-verify");
+	else if (options.black_hole == 2)
+		argv_array_push(&args, "--black-hole");
 	if (options.followtags)
 		argv_array_push(&args, "--include-tag");
 	if (options.thin)
