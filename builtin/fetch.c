@@ -13,6 +13,7 @@
 #include "string-list.h"
 #include "remote.h"
 #include "transport.h"
+#include "version.h"
 #include "run-command.h"
 #include "parse-options.h"
 #include "sigchain.h"
@@ -56,6 +57,7 @@ static int prune_tags = -1; /* unspecified */
 
 static int all, append, dry_run, force, keep, multiple, update_head_ok;
 static int verbosity, deepen_relative, set_upstream;
+static int black_hole, black_hole_verify;
 static int progress = -1;
 static int enable_auto_gc = 1;
 static int tags = TAGS_DEFAULT, unshallow, update_shallow, deepen;
@@ -133,6 +135,10 @@ static int parse_refmap_arg(const struct option *opt, const char *arg, int unset
 }
 
 static struct option builtin_fetch_options[] = {
+	OPT_BOOL(0, "black-hole", &black_hole,
+		 N_("black hole mode, which will throw away data from server")),
+	OPT_BOOL(0, "black-hole-verify", &black_hole_verify,
+		 N_("black hole mode, which will validate before throwing data away")),
 	OPT__VERBOSITY(&verbosity),
 	OPT_BOOL(0, "all", &all,
 		 N_("fetch from all remotes")),
@@ -1105,12 +1111,15 @@ static int consume_refs(struct transport *transport, struct ref *ref_map)
 {
 	int connectivity_checked = transport->smart_options
 		? transport->smart_options->connectivity_checked : 0;
-	int ret;
+	int ret = 0;
+
 	trace2_region_enter("fetch", "consume_refs", the_repository);
-	ret = store_updated_refs(transport->url,
-				 transport->remote->name,
-				 connectivity_checked,
-				 ref_map);
+	if (!black_hole && !black_hole_verify) {
+		ret = store_updated_refs(transport->url,
+					 transport->remote->name,
+					 connectivity_checked,
+					 ref_map);
+	}
 	transport_unlock_pack(transport);
 	trace2_region_leave("fetch", "consume_refs", the_repository);
 	return ret;
@@ -1248,6 +1257,10 @@ static struct transport *prepare_transport(struct remote *remote, int deepen)
 	transport = transport_get(remote, NULL);
 	transport_set_verbosity(transport, verbosity, progress);
 	transport->family = family;
+	if (black_hole_verify)
+		set_option(transport, TRANS_OPT_BLACK_HOLE, "1");
+	else if (black_hole)
+		set_option(transport, TRANS_OPT_BLACK_HOLE, "2");
 	if (upload_pack)
 		set_option(transport, TRANS_OPT_UPLOADPACK, upload_pack);
 	if (keep)
@@ -1600,6 +1613,10 @@ static int fetch_multiple(struct string_list *list, int max_children)
 	}
 
 	argv_array_pushl(&argv, "fetch", "--append", "--no-auto-gc", NULL);
+	if (black_hole)
+		argv_array_push(&argv, "--black-hole");
+	else if (black_hole_verify)
+		argv_array_push(&argv, "--black-hole-verify");
 	add_options_to_argv(&argv);
 
 	if (max_children != 1 && list->nr != 1) {
@@ -1766,6 +1783,13 @@ int cmd_fetch(int argc, const char **argv, const char *prefix)
 
 	argc = parse_options(argc, argv, prefix,
 			     builtin_fetch_options, builtin_fetch_usage, 0);
+
+	if (black_hole || black_hole_verify) {
+		struct strbuf buf = STRBUF_INIT;
+		strbuf_addf(&buf, "%s.black-hole", git_version_string);
+		setenv("GIT_USER_AGENT", buf.buf, 1);
+		strbuf_release(&buf);
+	}
 
 	if (deepen_relative) {
 		if (deepen_relative < 0)

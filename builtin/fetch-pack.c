@@ -67,6 +67,14 @@ int cmd_fetch_pack(int argc, const char **argv, const char *prefix)
 	for (i = 1; i < argc && *argv[i] == '-'; i++) {
 		const char *arg = argv[i];
 
+		if (!strcmp("--black-hole", arg)) {
+			args.black_hole = 2;
+			continue;
+		}
+		if (!strcmp("--black-hole-verify", arg)) {
+			args.black_hole = 1;
+			continue;
+		}
 		if (skip_prefix(arg, "--upload-pack=", &arg)) {
 			args.uploadpack = arg;
 			continue;
