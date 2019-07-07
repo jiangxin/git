@@ -28,6 +28,7 @@
 #include "sigchain.h"
 #include "branch.h"
 #include "remote.h"
+#include "version.h"
 #include "run-command.h"
 #include "connected.h"
 #include "packfile.h"
@@ -47,6 +48,7 @@ static const char * const builtin_clone_usage[] = {
 };
 
 static int option_no_checkout, option_bare, option_mirror, option_single_branch = -1;
+static int option_black_hole, option_black_hole_verify;
 static int option_local = -1, option_no_hardlinks, option_shared;
 static int option_no_tags;
 static int option_shallow_submodules;
@@ -85,6 +87,10 @@ static int recurse_submodules_cb(const struct option *opt,
 }
 
 static struct option builtin_clone_options[] = {
+	OPT_BOOL(0, "black-hole", &option_black_hole,
+		 N_("black hole mode, which will throw away data from server")),
+	OPT_BOOL(0, "black-hole-verify", &option_black_hole_verify,
+		 N_("black hole mode, which will validate before throwing data away")),
 	OPT__VERBOSITY(&option_verbosity),
 	OPT_BOOL(0, "progress", &option_progress,
 		 N_("force progress reporting")),
@@ -674,6 +680,9 @@ static void update_remote_refs(const struct ref *refs,
 {
 	const struct ref *rm = mapped_refs;
 
+	if (option_black_hole || option_black_hole_verify)
+		return;
+
 	if (check_connectivity) {
 		struct check_connected_options opt = CHECK_CONNECTED_INIT;
 
@@ -707,6 +716,10 @@ static void update_head(const struct ref *our, const struct ref *remote,
 			const char *msg)
 {
 	const char *head;
+
+	if (option_black_hole || option_black_hole_verify)
+		return;
+
 	if (our && skip_prefix(our->name, "refs/heads/", &head)) {
 		/* Local default branch link */
 		if (create_symref("HEAD", our->name, NULL) < 0)
@@ -743,7 +756,7 @@ static int checkout(int submodule_progress)
 	struct tree_desc t;
 	int err = 0;
 
-	if (option_no_checkout)
+	if (option_no_checkout || option_black_hole || option_black_hole_verify)
 		return 0;
 
 	head = resolve_refdup("HEAD", RESOLVE_REF_READING, &oid, NULL);
@@ -1119,6 +1132,8 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 	path = get_repo_path(remote->url[0], &is_bundle);
 	is_local = option_local != 0 && path && !is_bundle;
 	if (is_local) {
+		if (option_black_hole || option_black_hole_verify)
+			warning(_("--black-hole or --black-hole-verify is ignored in local clones; use file:// instead."));
 		if (option_depth)
 			warning(_("--depth is ignored in local clones; use file:// instead."));
 		if (option_since)
@@ -1138,6 +1153,21 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 	transport->cloning = 1;
 
 	transport_set_option(transport, TRANS_OPT_KEEP, "yes");
+
+	if (option_black_hole || option_black_hole_verify) {
+		struct strbuf buf = STRBUF_INIT;
+		strbuf_addf(&buf, "%s.black-hole", git_version_string);
+		setenv("GIT_USER_AGENT", buf.buf, 1);
+		strbuf_release(&buf);
+
+		if (option_black_hole_verify) {
+			transport_set_option(transport, TRANS_OPT_BLACK_HOLE,
+					     "1");
+		} else if (option_black_hole) {
+			transport_set_option(transport, TRANS_OPT_BLACK_HOLE,
+					     "2");
+		}
+	}
 
 	if (option_depth)
 		transport_set_option(transport, TRANS_OPT_DEPTH,

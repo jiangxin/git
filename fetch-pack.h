@@ -23,6 +23,11 @@ struct fetch_pack_args {
 	 */
 	const struct oid_array *negotiation_tips;
 
+	/*
+	 * Run fetch, but throw away data.
+	 */
+	int black_hole;
+
 	unsigned deepen_relative:1;
 	unsigned quiet:1;
 	unsigned keep_pack:1;
