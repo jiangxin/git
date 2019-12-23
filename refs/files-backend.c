@@ -11,7 +11,8 @@
 #include "../dir.h"
 #include "../chdir-notify.h"
 #include "worktree.h"
-
+#include "run-command.h"
+#include "sigchain.h"
 /*
  * This backend uses the following flags in `ref_update::flags` for
  * internal bookkeeping purposes. Their numerical values must not
@@ -3203,9 +3204,9 @@ static int files_transaction_ref_is_changed(struct ref_update *update, int filte
 static GIT_PATH_FUNC(git_path_info_last_modified, "info/last-modified")
 
 /*
- * After ref_transaction finished successfully, run this post_action hook.
+ * Create/update last_modified file for post action of files_transaction.
  */
-static void files_transaction_post_action_hook(struct ref_transaction *transaction) {
+static void files_transaction_post_action_hook_last_modified(struct ref_transaction *transaction) {
 	const char *path = git_path_info_last_modified();
 	char *env = getenv("GIT_REFS_TXN_NO_HOOK");
 	struct stat fstat;
@@ -3263,6 +3264,88 @@ static void files_transaction_post_action_hook(struct ref_transaction *transacti
 
 cleanup:
 	return;
+}
+
+/*
+ * Update checksum file for a repository after writing references.
+ */
+static void files_transaction_post_action_hook_checksum(struct ref_transaction *transaction) {
+	struct child_process proc = CHILD_PROCESS_INIT;
+	struct strbuf sb = STRBUF_INIT;
+	const char *argv[4];
+	int code;
+	int i = 0;
+
+	for (; i < transaction->nr; i++) {
+		if (files_transaction_ref_is_changed(transaction->updates[i], 0))
+			break;
+	}
+
+	/* Reference not changed. */
+	if (i >= transaction->nr)
+		return;
+
+	argv[0] = "git-checksum";
+	argv[1] = "--update";
+	argv[2] = "-q";
+	argv[3] = NULL;
+
+	proc.argv = argv;
+	proc.in = -1;
+	proc.dir = the_repository->gitdir;
+	proc.stdout_to_stderr = 1;
+	proc.silent_exec_failure = 1;
+
+	code = start_command(&proc);
+	if (code) {
+		return;
+	}
+	sigchain_push(SIGPIPE, SIG_IGN);
+
+	for (; i < transaction->nr; i++) {
+		struct ref_update *update = transaction->updates[i];
+		struct ref_lock *lock = update->backend_data;
+
+		if (!files_transaction_ref_is_changed(update, 0))
+			continue;
+
+		strbuf_reset(&sb);
+		strbuf_addf(&sb, "%s %s %s\n",
+				oid_to_hex(&(lock->old_oid)),
+				oid_to_hex(&(update->new_oid)),
+				update->refname);
+		if (write_in_full(proc.in, sb.buf, sb.len) < 0) {
+			kill(proc.pid, SIGTERM);
+			break;
+		}
+		trace_printf("refs post-action: feed => %s\n", sb.buf);
+	}
+
+	strbuf_release(&sb);
+	close(proc.in);
+	sigchain_pop(SIGPIPE);
+	finish_command(&proc);
+}
+
+/*
+ * After ref_transaction finished successfully, run this post_action hook.
+ */
+static void files_transaction_post_action_hook(struct ref_transaction *transaction) {
+	char *env = getenv("GIT_REFS_TXN_NO_HOOK");
+
+	if ((env && !strcmp(env, "1")) || transaction->nr == 0)
+		return;
+
+	// Will execute twice, one for files_backend, another for packed_backend.
+	// Only execute for files_backend.
+	if (!strcmp(transaction->ref_store->be->name, "packed"))
+		return;
+
+	if (!the_repository->gitdir)
+		return;
+
+	files_transaction_post_action_hook_last_modified(transaction);
+	files_transaction_post_action_hook_checksum(transaction);
 }
 
 struct ref_storage_be refs_be_files = {
