@@ -4,6 +4,7 @@
 #include "sigchain.h"
 
 static GIT_PATH_FUNC(git_path_info_last_modified, "info/last-modified")
+static GIT_PATH_FUNC(git_path_info_checksum, "info/checksum")
 
 static int update_is_needed(struct ref_update *update) {
 	if (update->flags & REF_LOG_ONLY)
@@ -69,6 +70,64 @@ static void refs_txn_post_update_last_modified(struct ref_transaction *transacti
 }
 
 /*
+ * Update checksum file for a repository after writing references.
+ */
+static void refs_txn_post_update_checksum(struct ref_transaction *transaction) {
+	struct child_process proc = CHILD_PROCESS_INIT;
+	struct strbuf sb = STRBUF_INIT;
+	int i;
+
+	for (i = 0; i < transaction->nr; i++) {
+		if (update_is_needed(transaction->updates[i]))
+			break;
+	}
+
+	/* No real changes for references. */
+	if (i >= transaction->nr)
+		return;
+
+	strvec_pushl(&proc.args, "git-checksum", "--update", "-q", NULL);
+	proc.in = -1;
+	proc.dir = the_repository->gitdir;
+	proc.stdout_to_stderr = 1;
+	proc.silent_exec_failure = 1;
+
+	if (start_command(&proc))
+		return;
+	sigchain_push(SIGPIPE, SIG_IGN);
+
+	for (; i < transaction->nr; i++) {
+		struct ref_update *update = transaction->updates[i];
+
+		if (!update_is_needed(update))
+			continue;
+
+		strbuf_reset(&sb);
+		strbuf_addf(&sb, "%s %s %s\n",
+				oid_to_hex(&(update->old_oid)),
+				oid_to_hex(&(update->new_oid)),
+				update->refname);
+		if (write_in_full(proc.in, sb.buf, sb.len) < 0) {
+			kill(proc.pid, SIGTERM);
+			break;
+		}
+		trace_printf("refs post-action: feed => %s\n", sb.buf);
+	}
+
+	strbuf_release(&sb);
+	close(proc.in);
+	sigchain_pop(SIGPIPE);
+	if (finish_command(&proc))
+		goto cleanup;
+	return;
+
+cleanup:
+	/* Remove checksum file for it is broken. */
+	unlink_or_warn(git_path_info_checksum());
+	return;
+}
+
+/*
  * Called from "reference-transaction committed" for our internal
  * refs post routines.
  */
@@ -77,4 +136,5 @@ void refs_txn_post_hook(struct ref_transaction *transaction) {
 		return;
 
 	refs_txn_post_update_last_modified(transaction);
+	refs_txn_post_update_checksum(transaction);
 }
