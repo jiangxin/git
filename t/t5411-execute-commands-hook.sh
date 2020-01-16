@@ -64,6 +64,11 @@ test_expect_success "setup hooks" '
 
 	printf >&2 "execute: execute-commands\n"
 
+	if test \$# -gt 0 && test "\$1" = "--pre-receive"
+	then
+		printf >&2 ">> pre-receive mode\n"
+	fi
+
 	while read old new ref
 	do
 		printf >&2 ">> old: \$old, new: \$new, ref: \$ref.\n"
@@ -143,14 +148,16 @@ test_expect_success "push to refs/for/master" '
 	test_cmp expect actual
 '
 
-test_expect_success "push to refs/for/a/b/c" '
+test_expect_success "push to refs/for/a/b/c (call execute-commands --pre-receive)" '
+	mv $bare/hooks/execute-commands--pre-receive $bare/hooks/execute-commands--pre-receive.ok &&
 	(
 		cd work &&
 		git push origin HEAD:refs/for/a/b/c/my/topic
 	) >out 2>&1 &&
 	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
 	cat >expect <<-EOF &&
-	remote: execute: execute-commands--pre-receive
+	remote: execute: execute-commands
+	remote: >> pre-receive mode
 	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/a/b/c/my/topic.
 	remote: execute: execute-commands
 	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/a/b/c/my/topic.
@@ -167,7 +174,8 @@ test_expect_success "push to two special references" '
 	) >out 2>&1 &&
 	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
 	cat >expect <<-EOF &&
-	remote: execute: execute-commands--pre-receive
+	remote: execute: execute-commands
+	remote: >> pre-receive mode
 	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/maint/my/topic.
 	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/a/b/c/my/topic.
 	remote: execute: execute-commands
@@ -186,7 +194,8 @@ test_expect_success "push to a normal and a special references" '
 	) >out 2>&1 &&
 	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
 	cat >expect <<-EOF &&
-	remote: execute: execute-commands--pre-receive
+	remote: execute: execute-commands
+	remote: >> pre-receive mode
 	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/maint/my/topic.
 	remote: execute: pre-receive hook
 	remote: >> old: 102939797ab91a4f201d131418d2c9d919dcdd2c, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/heads/master.
@@ -212,25 +221,33 @@ test_expect_success "restore master branch of bare repo" '
 	test_cmp expect actual
 '
 
-test_expect_success "hooks: update execute-commands--pre-receive (declined version)" '
-	mv $bare/hooks/execute-commands--pre-receive $bare/hooks/execute-commands--pre-receive.ok &&
-	cat >$bare/hooks/execute-commands--pre-receive <<-EOF &&
+test_expect_success "hooks: update execute-commands (declined version)" '
+	mv $bare/hooks/execute-commands $bare/hooks/execute-commands.ok &&
+	cat >$bare/hooks/execute-commands <<-EOF &&
 	#!/bin/sh
 
-	printf >&2 "execute: execute-commands--pre-receive\n"
+	printf >&2 "execute: execute-commands\n"
+
+	if test \$# -gt 0 && test "\$1" = "--pre-receive"
+	then
+		printf >&2 ">> pre-receive mode\n"
+	fi
 
 	while read old new ref
 	do
 		printf >&2 ">> old: \$old, new: \$new, ref: \$ref.\n"
 	done
 
-	printf >&2 ">> ERROR: declined in execute-commands--pre-receive\n"
-	exit 1
+	if test \$# -gt 0 && test "\$1" = "--pre-receive"
+	then
+		printf >&2 ">> ERROR: declined in execute-commands--pre-receive\n"
+		exit 1
+	fi
 	EOF
-	chmod a+x $bare/hooks/execute-commands--pre-receive
+	chmod a+x $bare/hooks/execute-commands
 '
 
-test_expect_success "push to two special references (execute-commands--pre-receive declined)" '
+test_expect_success "push to two special references (execute-commands declined)" '
 	(
 		cd work &&
 		test_must_fail git push origin \
@@ -239,7 +256,8 @@ test_expect_success "push to two special references (execute-commands--pre-recei
 	) >out 2>&1 &&
 	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
 	cat >expect <<-EOF &&
-	remote: execute: execute-commands--pre-receive
+	remote: execute: execute-commands
+	remote: >> pre-receive mode
 	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/master/my/topic.
 	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/maint/my/topic.
 	remote: >> ERROR: declined in execute-commands--pre-receive
@@ -247,7 +265,7 @@ test_expect_success "push to two special references (execute-commands--pre-recei
 	test_cmp expect actual
 '
 
-test_expect_success "push to mixed references (execute-commands--pre-receive declined)" '
+test_expect_success "push to mixed references (execute-commands declined)" '
 	(
 		cd work &&
 		test_must_fail git push origin \
@@ -256,7 +274,8 @@ test_expect_success "push to mixed references (execute-commands--pre-receive dec
 	) >out 2>&1 &&
 	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
 	cat >expect <<-EOF &&
-	remote: execute: execute-commands--pre-receive
+	remote: execute: execute-commands
+	remote: >> pre-receive mode
 	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/master/my/topic.
 	remote: >> ERROR: declined in execute-commands--pre-receive
 	EOF
@@ -264,8 +283,8 @@ test_expect_success "push to mixed references (execute-commands--pre-receive dec
 '
 
 test_expect_success "hooks: update pre-receive hook (declined version)" '
-	mv $bare/hooks/execute-commands--pre-receive $bare/hooks/execute-commands--pre-receive.fail &&
-	mv $bare/hooks/execute-commands--pre-receive.ok $bare/hooks/execute-commands--pre-receive &&
+	mv $bare/hooks/execute-commands $bare/hooks/execute-commands.fail &&
+	mv $bare/hooks/execute-commands.ok $bare/hooks/execute-commands &&
 	mv $bare/hooks/pre-receive $bare/hooks/pre-receive.ok &&
 	cat >$bare/hooks/pre-receive <<-EOF &&
 	#!/bin/sh
@@ -291,7 +310,8 @@ test_expect_success "push to mixed references (pre-creceive declined)" '
 	) >out 2>&1 &&
 	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
 	cat >expect <<-EOF &&
-	remote: execute: execute-commands--pre-receive
+	remote: execute: execute-commands
+	remote: >> pre-receive mode
 	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/master/my/topic.
 	remote: execute: pre-receive hook
 	remote: >> old: 102939797ab91a4f201d131418d2c9d919dcdd2c, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/heads/master.

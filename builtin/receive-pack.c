@@ -681,14 +681,28 @@ static int run_and_feed_hook(const char *hook_name, feed_fn feed,
 {
 	struct child_process proc = CHILD_PROCESS_INIT;
 	struct async muxer;
-	const char *argv[2];
+	const char *argv[3];
 	int code;
 
 	argv[0] = find_hook(hook_name);
-	if (!argv[0])
-		return 0;
+	if (!argv[0]) {
+		char *hook_helper;
+		char *opt;
 
-	argv[1] = NULL;
+		opt = strstr(hook_name, "--");
+		if (!opt)
+			return 0;
+		hook_helper = xstrdup(hook_name);
+		hook_helper[opt - hook_name] = '\0';
+		argv[0] = find_hook(hook_helper);
+		free(hook_helper);
+		if (!argv[0])
+			return 0;
+		argv[1] = opt;
+		argv[2] = NULL;
+	} else {
+		argv[1] = NULL;
+	}
 
 	proc.argv = argv;
 	proc.in = -1;
