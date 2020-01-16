@@ -328,4 +328,81 @@ test_expect_success "push to mixed references (pre-creceive declined)" '
 	test_cmp expect actual
 '
 
+test_expect_success "hooks: update hooks to show envs" '
+	## execute-commands hook
+	mv $bare/hooks/execute-commands $bare/hooks/execute-commands.ok &&
+	cat >$bare/hooks/execute-commands <<-EOF &&
+	#!/bin/sh
+
+	printf >&2 "execute: execute-commands\n"
+
+	if test \$# -gt 0 && test "\$1" = "--pre-receive"
+	then
+		printf >&2 ">> pre-receive mode\n"
+	else
+		printf "GIT_VAR1=var1\n"
+		printf "GIT_VAR2=var2\n"
+		printf "AGIT_VAR1=foo\n"
+		printf "AGIT_VAR2=bar\n"
+	fi
+
+	while read old new ref
+	do
+		printf >&2 ">> old: \$old, new: \$new, ref: \$ref.\n"
+	done
+
+	for k in GIT_VAR1 GIT_VAR2 AGIT_VAR1 AGIT_VAR2
+	do
+		if test -n "\$(eval echo \\"\\\$\$k\")"
+		then
+			printf >&2 ">> has env: \$k=\$(eval echo \\"\\\$\$k\").\n"
+		fi
+	done
+	EOF
+	chmod a+x $bare/hooks/execute-commands &&
+
+	## post-receive hook
+	mv $bare/hooks/post-receive $bare/hooks/post-receive.ok &&
+	cat >$bare/hooks/post-receive <<-EOF &&
+	#!/bin/sh
+
+	printf >&2 "execute: post-receive hook\n"
+
+	while read old new ref
+	do
+		printf >&2 ">> old: \$old, new: \$new, ref: \$ref.\n"
+	done
+
+	for k in GIT_VAR1 GIT_VAR2 AGIT_VAR1 AGIT_VAR2
+	do
+		if test -n "\$(eval echo \\"\\\$\$k\")"
+		then
+			printf >&2 ">> has env: \$k=\$(eval echo \\"\\\$\$k\").\n"
+		fi
+	done
+	EOF
+	chmod a+x $bare/hooks/post-receive
+'
+
+test_expect_success "push and show envs" '
+	(
+		cd work &&
+		git push origin \
+			HEAD:refs/for/master/my/topic
+	) >out 2>&1 &&
+	grep "^remote:" out | sed -e "s/  *\$//g" >actual &&
+	cat >expect <<-EOF &&
+	remote: execute: execute-commands
+	remote: >> pre-receive mode
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/master/my/topic.
+	remote: execute: execute-commands
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/master/my/topic.
+	remote: execute: post-receive hook
+	remote: >> old: 0000000000000000000000000000000000000000, new: ce858e653cdbf70f9955a39d73a44219e4b92e9e, ref: refs/for/master/my/topic.
+	remote: >> has env: AGIT_VAR1=foo.
+	remote: >> has env: AGIT_VAR2=bar.
+	EOF
+	test_cmp expect actual
+'
+
 test_done

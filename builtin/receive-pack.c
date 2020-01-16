@@ -677,7 +677,9 @@ struct receive_hook_feed_state {
 };
 
 typedef int (*feed_fn)(void *, const char **, size_t *);
+typedef void (*stdout_handler_fn)(int out);
 static int run_and_feed_hook(const char *hook_name, feed_fn feed,
+			     stdout_handler_fn stdout_handler,
 			     struct receive_hook_feed_state *feed_state)
 {
 	struct child_process proc = CHILD_PROCESS_INIT;
@@ -707,7 +709,10 @@ static int run_and_feed_hook(const char *hook_name, feed_fn feed,
 
 	proc.argv = argv;
 	proc.in = -1;
-	proc.stdout_to_stderr = 1;
+	if (stdout_handler)
+		proc.out = -1;
+	else
+		proc.stdout_to_stderr = 1;
 	proc.trace2_hook_name = hook_name;
 
 	if (feed_state->push_options) {
@@ -754,6 +759,10 @@ static int run_and_feed_hook(const char *hook_name, feed_fn feed,
 			break;
 	}
 	close(proc.in);
+
+	if (stdout_handler)
+		stdout_handler(proc.out);
+
 	if (use_sideband)
 		finish_async(&muxer);
 
@@ -810,7 +819,7 @@ static int run_receive_hook(struct command *commands,
 		return 0;
 	state.cmd = commands;
 	state.push_options = push_options;
-	status = run_and_feed_hook(hook_name, feed_receive_hook, &state);
+	status = run_and_feed_hook(hook_name, feed_receive_hook, NULL, &state);
 	strbuf_release(&state.buf);
 	return status;
 }
@@ -860,9 +869,29 @@ static int run_execute_commands_pre_receive_hook(struct command *commands,
 	state.cmd = commands;
 	state.push_options = push_options;
 	status = run_and_feed_hook("execute-commands--pre-receive",
-			feed_receive_hook, &state);
+			feed_receive_hook, NULL, &state);
 	strbuf_release(&state.buf);
 	return status;
+}
+
+
+static void parse_env_from_output(int in) {
+	struct strbuf stdout_buf = STRBUF_INIT;
+
+	while (strbuf_getwholeline_fd(&stdout_buf, in, '\n') != EOF) {
+		char *p = stdout_buf.buf + stdout_buf.len -1;
+		if (*p =='\n')
+			*p = '\0';
+		p = strchr(stdout_buf.buf, '=');
+		if (p == NULL)
+			continue;
+		*p++ = '\0';
+		if (strncmp(stdout_buf.buf, "GIT", 3)) {
+			setenv(stdout_buf.buf, p, 0);
+		}
+		strbuf_reset(&stdout_buf);
+	}
+	strbuf_release(&stdout_buf);
 }
 
 static int run_execute_commands_hook(struct command *commands,
@@ -880,7 +909,8 @@ static int run_execute_commands_hook(struct command *commands,
 		return 0;
 	state.cmd = commands;
 	state.push_options = push_options;
-	status = run_and_feed_hook("execute-commands", feed_receive_hook, &state);
+	status = run_and_feed_hook("execute-commands",
+			feed_receive_hook, parse_env_from_output, &state);
 	strbuf_release(&state.buf);
 	return status;
 }
