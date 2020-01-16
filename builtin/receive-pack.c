@@ -669,6 +669,7 @@ static void prepare_push_cert_sha1(struct child_process *proc)
 
 struct receive_hook_feed_state {
 	struct command *cmd;
+	int exec_all;
 	int exec_by_hook;
 	int skip_broken;
 	struct strbuf buf;
@@ -769,6 +770,8 @@ static int feed_receive_hook(void *state_, const char **bufp, size_t *sizep)
 	while (cmd)
 		if (state->skip_broken && (cmd->error_string || cmd->did_not_exist))
 			cmd = cmd->next;
+		else if (state->exec_all)
+		       break;
 		else if (state->exec_by_hook && !cmd->exec_by_hook)
 			cmd = cmd->next;
 		else if (!state->exec_by_hook && cmd->exec_by_hook)
@@ -792,6 +795,7 @@ static int feed_receive_hook(void *state_, const char **bufp, size_t *sizep)
 static int run_receive_hook(struct command *commands,
 			    const char *hook_name,
 			    int skip_broken,
+			    int exec_all,
 			    const struct string_list *push_options)
 {
 	struct receive_hook_feed_state state;
@@ -799,6 +803,7 @@ static int run_receive_hook(struct command *commands,
 
 	strbuf_init(&state.buf, 0);
 	state.cmd = commands;
+	state.exec_all = exec_all;
 	state.exec_by_hook = 0;
 	state.skip_broken = skip_broken;
 	if (feed_receive_hook(&state, NULL, NULL))
@@ -847,6 +852,7 @@ static int run_execute_commands_pre_receive_hook(struct command *commands,
 
 	strbuf_init(&state.buf, 0);
 	state.cmd = commands;
+	state.exec_all = 0;
 	state.exec_by_hook = 1;
 	state.skip_broken = 0;
 	if (feed_receive_hook(&state, NULL, NULL))
@@ -867,6 +873,7 @@ static int run_execute_commands_hook(struct command *commands,
 
 	strbuf_init(&state.buf, 0);
 	state.cmd = commands;
+	state.exec_all = 0;
 	state.exec_by_hook = 1;
 	state.skip_broken = 1;
 	if (feed_receive_hook(&state, NULL, NULL))
@@ -1589,7 +1596,7 @@ static void execute_commands(struct command *commands,
 		}
 	}
 
-	if (run_receive_hook(commands, "pre-receive", 0, push_options)) {
+	if (run_receive_hook(commands, "pre-receive", 0, 0, push_options)) {
 		for (cmd = commands; cmd; cmd = cmd->next) {
 			if (!cmd->error_string)
 				cmd->error_string = "pre-receive hook declined";
@@ -2126,7 +2133,7 @@ int cmd_receive_pack(int argc, const char **argv, const char *prefix)
 			unlink_or_warn(pack_lockfile);
 		if (report_status)
 			report(commands, unpack_status);
-		run_receive_hook(commands, "post-receive", 1,
+		run_receive_hook(commands, "post-receive", 1, 1,
 				 &push_options);
 		run_update_post_hook(commands);
 		string_list_clear(&push_options, 0);
