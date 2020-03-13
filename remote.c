@@ -1,5 +1,6 @@
 #include "cache.h"
 #include "config.h"
+#include "connect.h"
 #include "remote.h"
 #include "refs.h"
 #include "refspec.h"
@@ -2310,4 +2311,24 @@ void apply_push_cas(struct push_cas_option *cas,
 	struct ref *ref;
 	for (ref = remote_refs; ref; ref = ref->next)
 		apply_cas(cas, remote, ref);
+}
+
+void update_ref_from_remote_status(struct ref *ref)
+{
+	char *val;
+	int len;
+
+	if (!ref->remote_status)
+		return;
+
+	val = (char *)parse_feature_value(ref->remote_status, "old-oid", &len);
+	if (val && len)
+		get_oid_hex(val, &ref->old_oid);
+
+	val = (char *)parse_feature_value(ref->remote_status, "new-oid", &len);
+	if (val && len)
+		get_oid_hex(val, &ref->new_oid);
+
+	if (parse_feature_request(ref->remote_status, "forced-update"))
+		ref->forced_update = 1;
 }

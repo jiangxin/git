@@ -463,11 +463,23 @@ static void print_ref_status(char flag, const char *summary,
 			     struct ref *to, struct ref *from, const char *msg,
 			     int porcelain, int summary_width)
 {
+	char *to_name = NULL;
+	const char *val;
+	int len;
+
+	if (to && to->remote_status) {
+		val = parse_feature_value(to->remote_status, "ref", &len);
+		if (val && len)
+			to_name = xmemdupz(val, len);
+	}
+
 	if (porcelain) {
 		if (from)
-			fprintf(stdout, "%c\t%s:%s\t", flag, from->name, to->name);
+			fprintf(stdout, "%c\t%s:%s\t", flag, from->name,
+				to_name ? to_name : to->name);
 		else
-			fprintf(stdout, "%c\t:%s\t", flag, to->name);
+			fprintf(stdout, "%c\t:%s\t", flag,
+				to_name ? to_name : to->name);
 		if (msg)
 			fprintf(stdout, "%s (%s)\n", summary, msg);
 		else
@@ -481,9 +493,11 @@ static void print_ref_status(char flag, const char *summary,
 		fprintf(stderr, " %s%c %-*s%s ", red, flag, summary_width,
 			summary, reset);
 		if (from)
-			fprintf(stderr, "%s -> %s", prettify_refname(from->name), prettify_refname(to->name));
+			fprintf(stderr, "%s -> %s",
+				prettify_refname(from->name),
+				prettify_refname(to_name ? to_name : to->name));
 		else
-			fputs(prettify_refname(to->name), stderr);
+			fputs(prettify_refname(to_name ? to_name : to->name), stderr);
 		if (msg) {
 			fputs(" (", stderr);
 			fputs(msg, stderr);
@@ -491,6 +505,7 @@ static void print_ref_status(char flag, const char *summary,
 		}
 		fputc('\n', stderr);
 	}
+	free(to_name);
 }
 
 static void print_ok_ref_status(struct ref *ref, int porcelain, int summary_width)
@@ -531,8 +546,8 @@ static void print_ok_ref_status(struct ref *ref, int porcelain, int summary_widt
 	}
 }
 
-static int print_one_push_status(struct ref *ref, const char *dest, int count,
-				 int porcelain, int summary_width)
+static int _print_one_push_status(struct ref *ref, const char *dest, int count,
+				  int porcelain, int summary_width)
 {
 	if (!count) {
 		char *url = transport_anonymize_url(dest);
@@ -600,6 +615,53 @@ static int print_one_push_status(struct ref *ref, const char *dest, int count,
 	}
 
 	return 1;
+}
+
+static int print_one_push_status(struct ref *ref, const char *dest, int count,
+				 int porcelain, int summary_width)
+{
+	char *head;
+	char *begin;
+	int n = 0;
+
+	if (!ref->remote_status)
+		return _print_one_push_status(ref, dest, count,
+					      porcelain, summary_width);
+
+	head = ref->remote_status;
+	begin = head;
+	for (;;) {
+		char *end;
+		struct object_id old_oid;
+		struct object_id new_oid;
+		int forced_update;
+
+		end = strstr(begin + 4, "ref=");
+		if (end)
+			*(end-1) = '\0';
+
+		oidcpy(&old_oid, &ref->old_oid);
+		oidcpy(&new_oid, &ref->new_oid);
+		forced_update = ref->forced_update;
+
+		ref->remote_status = begin;
+		update_ref_from_remote_status(ref);
+		_print_one_push_status(ref, dest, count + n++,
+				       porcelain, summary_width);
+
+		oidcpy(&ref->old_oid, &old_oid);
+		oidcpy(&ref->new_oid, &new_oid);
+		ref->forced_update = forced_update;
+
+		if (end) {
+			begin = end;
+			*(end-1) = ' ';
+		} else {
+			break;
+		}
+	}
+	ref->remote_status = head;
+	return n;
 }
 
 static int measure_abbrev(const struct object_id *oid, int sofar)

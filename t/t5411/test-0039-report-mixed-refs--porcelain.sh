@@ -46,7 +46,7 @@ test_expect_success "proc-receive: report update of mixed refs (--porcelain, $PR
 	*    HEAD:refs/heads/baz    [new branch]
 	*    HEAD:refs/for/next/topic    [new reference]
 	*    HEAD:refs/heads/foo    [new branch]
-	*    HEAD:refs/for/master/topic    [new reference]
+	     HEAD:refs/for/master/topic    <OID-A>..<OID-B>
 	Done
 	EOF
 	test_cmp expect actual &&
