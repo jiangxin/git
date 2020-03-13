@@ -463,11 +463,17 @@ static void print_ref_status(char flag, const char *summary,
 			     struct ref *to, struct ref *from, const char *msg,
 			     int porcelain, int summary_width)
 {
+	char *to_name = to->name;
+
+	if (to->remote_status) {
+		if (!strncmp("ref:", to->remote_status, 4))
+			to_name = to->remote_status + 4;
+	}
 	if (porcelain) {
 		if (from)
-			fprintf(stdout, "%c\t%s:%s\t", flag, from->name, to->name);
+			fprintf(stdout, "%c\t%s:%s\t", flag, from->name, to_name);
 		else
-			fprintf(stdout, "%c\t:%s\t", flag, to->name);
+			fprintf(stdout, "%c\t:%s\t", flag, to_name);
 		if (msg)
 			fprintf(stdout, "%s (%s)\n", summary, msg);
 		else
@@ -481,9 +487,9 @@ static void print_ref_status(char flag, const char *summary,
 		fprintf(stderr, " %s%c %-*s%s ", red, flag, summary_width,
 			summary, reset);
 		if (from)
-			fprintf(stderr, "%s -> %s", prettify_refname(from->name), prettify_refname(to->name));
+			fprintf(stderr, "%s -> %s", prettify_refname(from->name), prettify_refname(to_name));
 		else
-			fputs(prettify_refname(to->name), stderr);
+			fputs(prettify_refname(to_name), stderr);
 		if (msg) {
 			fputs(" (", stderr);
 			fputs(msg, stderr);
@@ -498,13 +504,19 @@ static void print_ok_ref_status(struct ref *ref, int porcelain, int summary_widt
 	if (ref->deletion)
 		print_ref_status('-', "[deleted]", ref, NULL, NULL,
 				 porcelain, summary_width);
-	else if (is_null_oid(&ref->old_oid))
+	else if (is_null_oid(&ref->old_oid)) {
+		char *refname;
+
+		if (ref->remote_status && !strncmp(ref->remote_status, "ref:", 4))
+			refname = ref->remote_status + 4;
+		else
+			refname = ref->name;
 		print_ref_status('*',
-			(starts_with(ref->name, "refs/tags/") ? "[new tag]" :
-			(starts_with(ref->name, "refs/heads/") ? "[new branch]" :
+			(starts_with(refname, "refs/tags/") ? "[new tag]" :
+			(starts_with(refname, "refs/heads/") ? "[new branch]" :
 			"[new reference]")),
 			ref, ref->peer_ref, NULL, porcelain, summary_width);
-	else {
+	} else {
 		struct strbuf quickref = STRBUF_INIT;
 		char type;
 		const char *msg;
