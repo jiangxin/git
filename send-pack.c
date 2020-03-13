@@ -159,6 +159,9 @@ static int receive_status(struct packet_reader *reader, struct ref *refs)
 	while (1) {
 		const char *refname;
 		char *msg;
+		char *extended_status = NULL;
+		int len;
+
 		if (packet_reader_read(reader) != PACKET_READ_NORMAL)
 			break;
 		if (!starts_with(reader->line, "ok ") && !starts_with(reader->line, "ng ")) {
@@ -167,10 +170,13 @@ static int receive_status(struct packet_reader *reader, struct ref *refs)
 			break;
 		}
 
+		len = strlen(reader->line);
 		refname = reader->line + 3;
 		msg = strchr(refname, ' ');
 		if (msg)
 			*msg++ = '\0';
+		if (reader->pktlen > len)
+			extended_status = (char *)reader->line + len + 1;
 
 		/* first try searching at our hint, falling back to all refs */
 		if (hint)
@@ -194,7 +200,12 @@ static int receive_status(struct packet_reader *reader, struct ref *refs)
 			hint->status = REF_STATUS_REMOTE_REJECT;
 			ret = -1;
 		}
-		hint->remote_status = xstrdup_or_null(msg);
+		if (msg) {
+			hint->remote_status = xstrdup(msg);
+		} else if (extended_status) {
+			hint->remote_status = xstrdup(extended_status);
+			update_ref_from_remote_status(hint);
+		}
 		/* start our next search from the next ref */
 		hint = hint->next;
 	}

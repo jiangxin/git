@@ -463,11 +463,30 @@ static void print_ref_status(char flag, const char *summary,
 			     struct ref *to, struct ref *from, const char *msg,
 			     int porcelain, int summary_width)
 {
+	char *from_name = NULL;
+	char *to_name = NULL;
+	const char *val;
+	int len;
+
+	if (from && from->remote_status) {
+		val = parse_feature_value(from->remote_status, "ref", &len);
+		if (val && len)
+			 from_name = xmemdupz(val, len);
+	}
+	if (to && to->remote_status) {
+		val = parse_feature_value(to->remote_status, "ref", &len);
+		if (val && len)
+			 to_name = xmemdupz(val, len);
+	}
+
 	if (porcelain) {
 		if (from)
-			fprintf(stdout, "%c\t%s:%s\t", flag, from->name, to->name);
+			fprintf(stdout, "%c\t%s:%s\t", flag,
+				from_name ? from_name : from->name,
+				to_name ? to_name: to->name);
 		else
-			fprintf(stdout, "%c\t:%s\t", flag, to->name);
+			fprintf(stdout, "%c\t:%s\t", flag,
+				to_name ? to_name: to->name);
 		if (msg)
 			fprintf(stdout, "%s (%s)\n", summary, msg);
 		else
@@ -481,9 +500,11 @@ static void print_ref_status(char flag, const char *summary,
 		fprintf(stderr, " %s%c %-*s%s ", red, flag, summary_width,
 			summary, reset);
 		if (from)
-			fprintf(stderr, "%s -> %s", prettify_refname(from->name), prettify_refname(to->name));
+			fprintf(stderr, "%s -> %s",
+				prettify_refname(from_name ? from_name : from->name),
+				prettify_refname(to_name ? to_name : to->name));
 		else
-			fputs(prettify_refname(to->name), stderr);
+			fputs(prettify_refname(to_name ? to_name : to->name), stderr);
 		if (msg) {
 			fputs(" (", stderr);
 			fputs(msg, stderr);
@@ -491,6 +512,10 @@ static void print_ref_status(char flag, const char *summary,
 		}
 		fputc('\n', stderr);
 	}
+	if (from_name)
+		free(from_name);
+	if (to_name)
+		free(to_name);
 }
 
 static void print_ok_ref_status(struct ref *ref, int porcelain, int summary_width)

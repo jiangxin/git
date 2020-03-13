@@ -345,4 +345,7 @@ int parseopt_push_cas_option(const struct option *, const char *arg, int unset);
 int is_empty_cas(const struct push_cas_option *);
 void apply_push_cas(struct push_cas_option *, struct remote *, struct ref *);
 
+/* Parse key-value pairs of remote_status and update the reference accordingly */
+void update_ref_from_remote_status(struct ref *ref);
+
 #endif
