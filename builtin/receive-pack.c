@@ -328,6 +328,7 @@ static void write_head_info(void)
 struct command {
 	struct command *next;
 	const char *error_string;
+	const char *extended_status;
 	unsigned int skip_update:1,
 		     did_not_exist:1,
 		     run_proc_receive:2;
@@ -850,6 +851,7 @@ static int read_proc_receive_report(struct packet_reader *reader,
 {
 	struct command *cmd;
 	struct command *hint = NULL;
+	struct strbuf extended_status = STRBUF_INIT;
 	int code = 0;
 
 	for (;;) {
@@ -858,9 +860,11 @@ static int read_proc_receive_report(struct packet_reader *reader,
 		const char *p;
 		char *status;
 		char *msg = NULL;
+		int len;
 
 		if (packet_reader_read(reader) != PACKET_READ_NORMAL)
 			break;
+		len = strlen(reader->line);
 		if (parse_oid_hex(reader->line, &old_oid, &p) ||
 		    *p++ != ' ' ||
 		    parse_oid_hex(p, &new_oid, &p) ||
@@ -912,6 +916,9 @@ static int read_proc_receive_report(struct packet_reader *reader,
 			else
 				hint->error_string = "failed";
 			code = -1;
+		} else if (!strcmp("ft", status)) {
+			/* Reset "run_proc_receive" field, and continue to run in "receive-pack" */
+			hint->run_proc_receive = 0;
 		} else if (strcmp("ok", status)) {
 			strbuf_addf(errmsg, "proc-receive has bad status '%s' for '%s'\n",
 				    status, reader->line);
@@ -919,9 +926,24 @@ static int read_proc_receive_report(struct packet_reader *reader,
 			/* Skip marking it as RUN_PROC_RECEIVE_RETURNED */
 			continue;
 		}
-		oidcpy(&hint->old_oid, &old_oid);
-		oidcpy(&hint->new_oid, &new_oid);
-		hint->run_proc_receive |= RUN_PROC_RECEIVE_RETURNED;
+		if (reader->pktlen > len)
+			strbuf_addstr(&extended_status, (char *)reader->line + len + 1);
+		if (oidcmp(&hint->old_oid, &old_oid)) {
+			oidcpy(&hint->old_oid, &old_oid);
+			strbuf_addf(&extended_status, "%sold-oid=%s",
+				    extended_status.len > 0 ? " ": "",
+				    oid_to_hex(&old_oid));
+		}
+		if (oidcmp(&hint->new_oid, &new_oid)) {
+			oidcpy(&hint->new_oid, &new_oid);
+			strbuf_addf(&extended_status, "%snew-oid=%s",
+				    extended_status.len > 0 ? " ": "",
+				    oid_to_hex(&new_oid));
+		}
+		if (extended_status.len > 0)
+			hint->extended_status = strbuf_detach(&extended_status, NULL);
+		if (hint->run_proc_receive)
+			hint->run_proc_receive |= RUN_PROC_RECEIVE_RETURNED;
 	}
 
 	for (cmd = commands; cmd; cmd = cmd->next)
@@ -2179,12 +2201,23 @@ static void report(struct command *commands, const char *unpack_status)
 	packet_buf_write(&buf, "unpack %s\n",
 			 unpack_status ? unpack_status : "ok");
 	for (cmd = commands; cmd; cmd = cmd->next) {
-		if (!cmd->error_string)
-			packet_buf_write(&buf, "ok %s\n",
-					 cmd->ref_name);
-		else
-			packet_buf_write(&buf, "ng %s %s\n",
-					 cmd->ref_name, cmd->error_string);
+		if (!cmd->error_string) {
+			if (cmd->extended_status)
+				packet_buf_write(&buf, "ok %s%c%s\n",
+						 cmd->ref_name, '\0',
+						 cmd->extended_status);
+			else
+				packet_buf_write(&buf, "ok %s\n",
+						 cmd->ref_name);
+		} else {
+			if (cmd->extended_status)
+				packet_buf_write(&buf, "ng %s %s%c%s\n",
+						 cmd->ref_name, cmd->error_string,
+						 '\0', cmd->extended_status);
+			else
+				packet_buf_write(&buf, "ng %s %s\n",
+						 cmd->ref_name, cmd->error_string);
+		}
 	}
 	packet_buf_flush(&buf);
 

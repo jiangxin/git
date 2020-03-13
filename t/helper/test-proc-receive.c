@@ -159,8 +159,18 @@ int cmd__proc_receive(int argc, const char **argv)
 	}
 
 	if (returns.nr)
-		for_each_string_list_item(item, &returns)
-			packet_write_fmt(1, "%s\n", item->string);
+		for_each_string_list_item(item, &returns) {
+			char *p;
+
+			p = strstr(item->string, "\\0");
+			if (p) {
+				*p = '\0';
+				p += 2;
+				packet_write_fmt(1, "%s%c%s\n", item->string, '\0', p);
+			} else {
+				packet_write_fmt(1, "%s\n", item->string);
+			}
+		}
 	packet_flush(1);
 	sigchain_pop(SIGPIPE);
 
