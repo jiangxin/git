@@ -501,7 +501,8 @@ static void print_ok_ref_status(struct ref *ref, int porcelain, int summary_widt
 	else if (is_null_oid(&ref->old_oid))
 		print_ref_status('*',
 			(starts_with(ref->name, "refs/tags/") ? "[new tag]" :
-			"[new branch]"),
+			(starts_with(ref->name, "refs/heads/") ? "[new branch]" :
+			"[new reference]")),
 			ref, ref->peer_ref, NULL, porcelain, summary_width);
 	else {
 		struct strbuf quickref = STRBUF_INIT;
