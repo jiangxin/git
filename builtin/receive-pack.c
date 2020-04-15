@@ -754,17 +754,66 @@ static int feed_receive_hook(void *state_, const char **bufp, size_t *sizep)
 {
 	struct receive_hook_feed_state *state = state_;
 	struct command *cmd = state->cmd;
+	static char *extended_status = NULL;
 
 	while (cmd &&
 	       state->skip_broken && (cmd->error_string || cmd->did_not_exist))
 		cmd = cmd->next;
 	if (!cmd)
 		return -1; /* EOF */
+	if (!bufp)
+		return 0; /* OK, can feed something. */
 	strbuf_reset(&state->buf);
-	strbuf_addf(&state->buf, "%s %s %s\n",
-		    oid_to_hex(&cmd->old_oid), oid_to_hex(&cmd->new_oid),
-		    cmd->ref_name);
-	state->cmd = cmd->next;
+	if (cmd->extended_status && extended_status == NULL)
+		extended_status = (char *)cmd->extended_status;
+	if (extended_status) {
+		struct object_id old_oid;
+		struct object_id new_oid;
+		char *end;
+		char *val;
+		int len;
+
+		end = strstr(extended_status + 4, "ref=");
+		if (end)
+			*(end-1) = '\0';
+
+		val = (char *)parse_feature_value(extended_status, "old-oid", &len);
+		if (val && len && !get_oid_hex(val, &old_oid))
+			strbuf_addf(&state->buf, "%s ",
+				    oid_to_hex(&old_oid));
+		else
+			strbuf_addf(&state->buf, "%s ",
+				    oid_to_hex(&cmd->old_oid));
+
+		val = (char *)parse_feature_value(extended_status, "new-oid", &len);
+		if (val && len && !get_oid_hex(val, &new_oid))
+			strbuf_addf(&state->buf, "%s ",
+				    oid_to_hex(&new_oid));
+		else
+			strbuf_addf(&state->buf, "%s ",
+				    oid_to_hex(&cmd->new_oid));
+
+		val = (char *)parse_feature_value(extended_status, "ref", &len);
+		if (val && len)
+			strbuf_add(&state->buf, val, len);
+		else
+			strbuf_addstr(&state->buf, cmd->ref_name);
+
+		strbuf_addch(&state->buf, '\n');
+
+		if (end) {
+			extended_status = end;
+			*(end-1) = ' ';
+		} else {
+			extended_status = NULL;
+			state->cmd = cmd->next;
+		}
+	} else {
+		strbuf_addf(&state->buf, "%s %s %s\n",
+			    oid_to_hex(&cmd->old_oid), oid_to_hex(&cmd->new_oid),
+			    cmd->ref_name);
+		state->cmd = cmd->next;
+	}
 	if (bufp) {
 		*bufp = state->buf.buf;
 		*sizep = state->buf.len;
