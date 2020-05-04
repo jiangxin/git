@@ -1,5 +1,6 @@
 #include "cache.h"
 #include "config.h"
+#include "connect.h"
 #include "remote.h"
 #include "refs.h"
 #include "refspec.h"
@@ -789,7 +790,7 @@ struct ref *copy_ref(const struct ref *ref)
 	memcpy(cpy, ref, len);
 	cpy->next = NULL;
 	cpy->symref = xstrdup_or_null(ref->symref);
-	cpy->remote_status = xstrdup_or_null(ref->remote_status);
+	cpy->report.error_message = xstrdup_or_null(ref->report.error_message);
 	cpy->peer_ref = copy_ref(ref->peer_ref);
 	return cpy;
 }
@@ -811,7 +812,7 @@ void free_one_ref(struct ref *ref)
 	if (!ref)
 		return;
 	free_one_ref(ref->peer_ref);
-	free(ref->remote_status);
+	free((void *)ref->report.error_message);
 	free(ref->symref);
 	free(ref);
 }
