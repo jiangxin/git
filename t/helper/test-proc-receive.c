@@ -12,6 +12,7 @@ static const char *proc_receive_usage[] = {
 
 static int die_version;
 static int die_readline;
+static int die_report;
 static int no_push_options;
 static int use_atomic;
 static int use_push_options;
@@ -52,8 +53,10 @@ static void proc_receive_verison(struct packet_reader *reader) {
 		}
 	}
 
-	if (server_version != 1 || die_version)
+	if (server_version != 1)
 		die("bad protocol version: %d", server_version);
+	if (die_version)
+		die("die with the --die-version option");
 
 	packet_write_fmt(1, "version=%d%c%s\n",
 			 version, '\0',
@@ -79,9 +82,15 @@ static void proc_receive_read_commands(struct packet_reader *reader,
 		    *p++ != ' ' ||
 		    parse_oid_hex(p, &new_oid, &p) ||
 		    *p++ != ' ' ||
-		    die_readline)
+		    die_readline) {
+			char *bad_line = xstrdup(reader->line);
+			while (packet_reader_read(reader) != PACKET_READ_EOF)
+				; /* do nothing */
+			if (die_readline)
+				die("die with the --die-readline option");
 			die("protocol error: expected 'old new ref', got '%s'",
-			    reader->line);
+			    bad_line);
+		}
 		refname = p;
 		FLEX_ALLOC_STR(cmd, ref_name, refname);
 		oidcpy(&cmd->old_oid, &old_oid);
@@ -121,6 +130,8 @@ int cmd__proc_receive(int argc, const char **argv)
 			 "die during version negotiation"),
 		OPT_BOOL(0, "die-readline", &die_readline,
 			 "die when readline"),
+		OPT_BOOL(0, "die-report", &die_report,
+			 "die when reporting"),
 		OPT_STRING_LIST('r', "return", &returns, "old/new/ref/status/msg",
 				"return of results"),
 		OPT__VERBOSE(&verbose, "be verbose"),
@@ -136,7 +147,7 @@ int cmd__proc_receive(int argc, const char **argv)
 		usage_msg_opt("Too many arguments.", proc_receive_usage, options);
 	packet_reader_init(&reader, 0, NULL, 0,
 			   PACKET_READ_CHOMP_NEWLINE |
-			   PACKET_READ_DIE_ON_ERR_PACKET);
+			   PACKET_READ_GENTLE_ON_EOF);
 
 	sigchain_push(SIGPIPE, SIG_IGN);
 	proc_receive_verison(&reader);
@@ -166,6 +177,8 @@ int cmd__proc_receive(int argc, const char **argv)
 				fprintf(stderr, "proc-receive> %s\n", item->string);
 	}
 
+	if (die_report)
+		die("die with the --die-report option");
 	if (returns.nr)
 		for_each_string_list_item(item, &returns)
 			packet_write_fmt(1, "%s\n", item->string);

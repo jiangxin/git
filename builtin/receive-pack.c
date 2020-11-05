@@ -1172,6 +1172,7 @@ static int run_proc_receive_hook(struct command *commands,
 	if (version != 1) {
 		strbuf_addf(&errmsg, "proc-receive version '%d' is not supported",
 			    version);
+		close(proc.in);
 		code = -1;
 		goto cleanup;
 	}
@@ -1196,11 +1197,12 @@ static int run_proc_receive_hook(struct command *commands,
 		packet_flush(proc.in);
 	}
 
+	close(proc.in);
+
 	/* Read result from proc-receive */
 	code = read_proc_receive_report(&reader, commands, &errmsg);
 
 cleanup:
-	close(proc.in);
 	close(proc.out);
 	if (use_sideband)
 		finish_async(&muxer);
