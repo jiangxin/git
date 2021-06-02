@@ -263,8 +263,17 @@ jobs:
     runs-on: ${{matrix.vector.pool}}
     steps:
     - uses: actions/checkout@v2
+      if: >-
+        ( !startsWith(env.jobname, 'osx') ||
+          contains(github.ref, 'macos') )
     - run: ci/install-dependencies.sh
+      if: >-
+        ( !startsWith(env.jobname, 'osx') ||
+          contains(github.ref, 'macos') )
     - run: ci/run-build-and-tests.sh
+      if: >-
+        ( !startsWith(env.jobname, 'osx') ||
+          contains(github.ref, 'macos') )
     - run: ci/print-test-failures.sh
       if: failure()
     - name: Upload failed tests' directories
