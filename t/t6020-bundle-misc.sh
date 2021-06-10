@@ -315,7 +315,7 @@ test_expect_success 'create bundle 2 - has prerequisites' '
 '
 
 test_expect_success 'fail to verify bundle without prerequisites' '
-	git init --bare test1.git &&
+	test_create_repo --bare test1.git &&
 
 	cat >expect <<-\EOF &&
 	error: Repository lacks these prerequisite commits:

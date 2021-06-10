@@ -18,8 +18,8 @@ setup_upstream_and_workbench () {
 	test_expect_success "setup upstream and workbench" '
 		rm -rf upstream.git &&
 		rm -rf workbench &&
-		git init --bare upstream.git &&
-		git init workbench &&
+		test_create_repo --bare upstream.git &&
+		test_create_repo workbench &&
 		create_commits_in workbench A B &&
 		(
 			cd workbench &&

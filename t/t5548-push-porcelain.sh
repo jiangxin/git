@@ -4,6 +4,9 @@
 #
 test_description='Test git push porcelain output'
 
+GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME=main
+export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
+
 . ./test-lib.sh
 
 # Create commits in <repo> and assign each commit's oid to shell variables
@@ -61,8 +64,8 @@ setup_upstream_and_workbench () {
 	# Workbench after setup : main(A)
 	test_expect_success "setup upstream repository and workbench" '
 		rm -rf upstream.git workbench &&
-		git init --bare upstream.git &&
-		git init workbench &&
+		test_create_repo --bare upstream.git &&
+		test_create_repo workbench &&
 		create_commits_in workbench A B &&
 		(
 			cd workbench &&
