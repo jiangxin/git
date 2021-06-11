@@ -1216,8 +1216,21 @@ test_atexit () {
 }
 
 # Most tests can use the created repository, but some may need to create more.
-# Usage: test_create_repo <directory>
+# Usage: test_create_repo [--bare] <directory>
 test_create_repo () {
+	bare= &&
+	while test $# -gt 0
+	do
+		case "$1" in
+		--bare)
+			bare=yes
+			;;
+		*)
+			break
+			;;
+		esac
+		shift
+	done &&
 	test "$#" = 1 ||
 	BUG "not 1 parameter to test-create-repo"
 	repo="$1"
@@ -1226,10 +1239,13 @@ test_create_repo () {
 		cd "$repo" || error "Cannot setup test environment"
 		"${GIT_TEST_INSTALLED:-$GIT_EXEC_PATH}/git$X" -c \
 			init.defaultBranch="${GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME-master}" \
-			init \
+			init ${bare:+--bare} \
 			"--template=$GIT_BUILD_DIR/templates/blt/" >&3 2>&4 ||
 		error "cannot run git init -- have you built things yet?"
-		mv .git/hooks .git/hooks-disabled
+		if test -z "$bare"
+		then
+			mv .git/hooks .git/hooks-disabled
+		fi
 	) || exit
 }
 
