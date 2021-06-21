@@ -21717,7 +21717,7 @@ msgstr "git submodule status [--quiet] [--cached] [--recursive] [<jalur>...]"
 
 #: builtin/submodule--helper.c:918
 msgid "git submodule--helper name <path>"
-msgstr "git submodule==helper name <jalur>"
+msgstr "git submodule--helper name <jalur>"
 
 #: builtin/submodule--helper.c:990
 #, c-format

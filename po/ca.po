@@ -5023,13 +5023,13 @@ msgstr "(comissió errònia)\n"
 #: merge-recursive.c:379
 #, c-format
 msgid "add_cacheinfo failed for path '%s'; merge aborting."
-msgstr "addinfo_cache ha fallat per al camí «%s»; interrompent la fusió."
+msgstr "add_cacheinfo ha fallat per al camí «%s»; interrompent la fusió."
 
 #: merge-recursive.c:388
 #, c-format
 msgid "add_cacheinfo failed to refresh for path '%s'; merge aborting."
 msgstr ""
-"addinfo_cache ha fallat al refrescar el camí «%s»; interrompent la fusió."
+"add_cacheinfo ha fallat al refrescar el camí «%s»; interrompent la fusió."
 
 #: merge-recursive.c:876
 #, c-format
@@ -15141,7 +15141,7 @@ msgstr "git fetch --all [<opcions>]"
 
 #: builtin/fetch.c:122
 msgid "fetch.parallel cannot be negative"
-msgstr "fetch.paral·lelisme no pot ser negatiu"
+msgstr "fetch.parallel no pot ser negatiu"
 
 #: builtin/fetch.c:145 builtin/pull.c:185
 msgid "fetch from all remotes"
