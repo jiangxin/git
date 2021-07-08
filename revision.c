@@ -2729,9 +2729,9 @@ int setup_revisions(int argc, const char **argv, struct rev_info *revs, struct s
 		revarg_opt |= REVARG_CANNOT_BE_FILENAME;
 	for (left = i = 1; i < argc; i++) {
 		const char *arg = argv[i];
-		if (!seen_end_of_options && *arg == '-') {
-			int opts;
+		int opts;
 
+		if (*arg == '-') {
 			opts = handle_revision_pseudo_opt(submodule,
 						revs, argv + i,
 						&flags);
@@ -2739,7 +2739,9 @@ int setup_revisions(int argc, const char **argv, struct rev_info *revs, struct s
 				i += opts - 1;
 				continue;
 			}
+		}
 
+		if (!seen_end_of_options && *arg == '-') {
 			if (!strcmp(arg, "--stdin")) {
 				if (revs->disable_stdin) {
 					argv[left++] = arg;
@@ -2766,7 +2768,6 @@ int setup_revisions(int argc, const char **argv, struct rev_info *revs, struct s
 				exit(128);
 			continue;
 		}
-
 
 		if (handle_revision_arg(arg, revs, flags, revarg_opt)) {
 			int j;

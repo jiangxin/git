@@ -169,4 +169,49 @@ test_expect_success 'rev-list --count --objects' '
 	test_line_count = $count actual
 '
 
+test_expect_success 'merge branch "--output=yikes" to main' '
+	git checkout main &&
+	git merge -m "Merge branch" \
+		--allow-unrelated-histories -- \
+		--output=yikes &&
+	echo three >> two/three &&
+	git add two/three &&
+	test_tick &&
+	git commit -m "three" &&
+	cat >expect <<-EOF &&
+	> three
+	> Merge branch
+	> another
+	> that
+	> two
+	> one
+	EOF
+	git log --pretty="%m %s" --end-of-options HEAD >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success 'parse pseudo option "--branches" after "--end-of-options"' '
+	cat >expect <<-EOF &&
+	> three
+	> another
+	> Merge branch
+	> that
+	> two
+	> one
+	EOF
+	git log --pretty="%m %s" --end-of-options \
+		--branches -- >actual &&
+	test_cmp expect actual
+'
+
+test_expect_success 'parse pseudo option "--not" after "--end-of-options"' '
+	cat >expect <<-EOF &&
+	> three
+	EOF
+	git log --pretty="%m %s" --end-of-options \
+		HEAD --not --output=yikes -- \
+		two/three >actual &&
+	test_cmp expect actual
+'
+
 test_done
