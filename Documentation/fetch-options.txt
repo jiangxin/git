@@ -118,6 +118,10 @@ ifndef::git-pull[]
 --[no-]write-commit-graph::
 	Write a commit-graph after fetching. This overrides the config
 	setting `fetch.writeCommitGraph`.
+
+--[no-]write-packed-refs::
+	Write packed-refs after fetching. This overrides the config
+	setting `fetch.writePackedRefs`.
 endif::git-pull[]
 
 --prefetch::
