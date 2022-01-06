@@ -194,6 +194,8 @@ configuration parameter `remote.<name>.skipDefaultUpdate` set to true will
 be updated.  (See linkgit:git-config[1]).
 +
 With `--prune` option, run pruning against all the remotes that are updated.
++
+With `--write-packed-refs` option, write packed-refs after fetching.
 
 
 DISCUSSION

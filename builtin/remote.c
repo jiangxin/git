@@ -1479,9 +1479,12 @@ static int get_remote_default(const char *key, const char *value, void *priv)
 static int update(int argc, const char **argv)
 {
 	int i, prune = -1;
+	int fetch_write_packed_refs = -1;
 	struct option options[] = {
 		OPT_BOOL('p', "prune", &prune,
 			 N_("prune remotes after fetching")),
+		OPT_BOOL(0, "write-packed-refs", &fetch_write_packed_refs,
+			 N_("write packed-refs when fetching")),
 		OPT_END()
 	};
 	struct strvec fetch_argv = STRVEC_INIT;
@@ -1495,6 +1498,10 @@ static int update(int argc, const char **argv)
 
 	if (prune != -1)
 		strvec_push(&fetch_argv, prune ? "--prune" : "--no-prune");
+	if (fetch_write_packed_refs != -1)
+		strvec_push(&fetch_argv, fetch_write_packed_refs ?
+						"--write-packed-refs" :
+						"--no-write-packed-refs");
 	if (verbose)
 		strvec_push(&fetch_argv, "-v");
 	strvec_push(&fetch_argv, "--multiple");
