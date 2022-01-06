@@ -557,9 +557,19 @@ typedef int ref_transaction_prepare_fn(struct ref_store *refs,
 				       struct ref_transaction *transaction,
 				       struct strbuf *err);
 
+typedef int ref_transaction_prepare_extended_fn(struct ref_store *refs,
+						struct ref_transaction *transaction,
+						struct strbuf *err,
+						int direct_to_packed_refs);
+
 typedef int ref_transaction_finish_fn(struct ref_store *refs,
 				      struct ref_transaction *transaction,
 				      struct strbuf *err);
+
+typedef int ref_transaction_finish_extended_fn(struct ref_store *refs,
+					       struct ref_transaction *transaction,
+					       struct strbuf *err,
+					       int direct_to_packed_refs);
 
 typedef int ref_transaction_abort_fn(struct ref_store *refs,
 				     struct ref_transaction *transaction,
@@ -691,7 +701,9 @@ struct ref_storage_be {
 	ref_init_db_fn *init_db;
 
 	ref_transaction_prepare_fn *transaction_prepare;
+	ref_transaction_prepare_extended_fn *transaction_prepare_extended;
 	ref_transaction_finish_fn *transaction_finish;
+	ref_transaction_finish_extended_fn *transaction_finish_extended;
 	ref_transaction_abort_fn *transaction_abort;
 	ref_transaction_commit_fn *initial_transaction_commit;
 

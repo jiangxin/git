@@ -757,6 +757,9 @@ int ref_transaction_verify(struct ref_transaction *transaction,
  */
 int ref_transaction_prepare(struct ref_transaction *transaction,
 			    struct strbuf *err);
+int ref_transaction_prepare_extended(struct ref_transaction *transaction,
+				     struct strbuf *err,
+				     int direct_to_packed_refs);
 
 /*
  * Commit all of the changes that have been queued in transaction, as
@@ -767,6 +770,9 @@ int ref_transaction_prepare(struct ref_transaction *transaction,
  */
 int ref_transaction_commit(struct ref_transaction *transaction,
 			   struct strbuf *err);
+int ref_transaction_commit_extended(struct ref_transaction *transaction,
+				    struct strbuf *err,
+				    int direct_to_packed_refs);
 
 /*
  * Abort `transaction`, which has been begun and possibly prepared,

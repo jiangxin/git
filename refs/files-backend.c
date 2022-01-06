@@ -2608,9 +2608,10 @@ static void files_transaction_cleanup(struct files_ref_store *refs,
 	transaction->state = REF_TRANSACTION_CLOSED;
 }
 
-static int files_transaction_prepare(struct ref_store *ref_store,
-				     struct ref_transaction *transaction,
-				     struct strbuf *err)
+static int files_transaction_prepare_extended(struct ref_store *ref_store,
+					      struct ref_transaction *transaction,
+					      struct strbuf *err,
+					      int direct_to_packed_refs)
 {
 	struct files_ref_store *refs =
 		files_downcast(ref_store, REF_STORE_WRITE,
@@ -2784,9 +2785,74 @@ cleanup:
 	return ret;
 }
 
-static int files_transaction_finish(struct ref_store *ref_store,
-				    struct ref_transaction *transaction,
-				    struct strbuf *err)
+static int files_transaction_prepare(struct ref_store *ref_store,
+				     struct ref_transaction *transaction,
+				     struct strbuf *err)
+{
+	return files_transaction_prepare_extended(ref_store, transaction, err, 0);
+}
+
+/*
+ * We have already prepared the transaction with the following changes:
+ *
+ *   1. Packed ref-store is prepared if necessary with locked packed-refs,
+ *      and packed-refs.new is written by removing delete-refs.
+ *
+ *   2. Each loose references is locked, and the old-oid of each update
+ *      entry of the transaction is set properly according to the
+ *      locked loose reference.
+ *
+ *   3. Each symref (not marked as REF_NO_DEREF) will be resolved and
+ *      add a new update entry for the real reference it points to.
+ *
+ * Each update entry may has the following flags, some of them are maked
+ * duing lock_ref_for_update():
+ *
+ *   1. REF_DELETING: For references should be deleted. These update
+ *      entries should have marked with REF_HAVE_NEW and the new_oid is
+ *      null_oid().
+ *
+ *   2. REF_NEEDS_COMMIT: For references should be created or updated
+ *      with new oid.  These update entries should not mark with
+ *      REF_DELETING and REF_LOG_ONLY, and the new-oid should be
+ *      different with the oid of the lockfile. We will write the new-oid
+ *      to the lockfile, and the lockfile is prepared for committing to
+ *      the loose reference file.
+ *
+ *   3. REF_LOG_ONLY: Only update reflog, but should not update/delete
+ *      the loose reference file.
+ *
+ *   4. REF_IS_PRUNING: The event is triggered by git-pack-refs, and
+ *      the loose reference has already been packed into the packed-refs
+ *      file. We should delete the loose reference file, but keep the
+ *      reflog file as is.
+ *
+ *   5. REF_UPDATE_VIA_HEAD: The reference is pointed and splitted from
+ *      HEAD, mark with this flag to prevent duplicate splitting.
+ *
+ *   6. REF_HAVE_NEW: Have new-oid, and given by ref_transaction_add_update().
+ *
+ *   7. REF_HAVE_OLD: Have old-oid, and given by ref_transaction_add_update().
+ *
+ * Each update entry may have a type that denotes the kind of the reference.
+ *
+ *   1. REF_ISSYMREF: reference is a symref.
+ *   2. REF_ISPACKED: reference is defined in the packed-ref file.
+ *   3. REF_ISBROKEN: bad loose reference file.
+ *
+ * In the prepare stage, we did:
+ *
+ *   * Prepare the new transaction for packed-ref-store with all update
+ *     entries including both deleting refs and changed refs.
+ *
+ * In the finish sage, we should:
+ *
+ *   * Do not commit but delete refereces which marked as REF_NEEDS_COMMIT.
+ */
+static int files_transaction_finish_extended(struct ref_store *ref_store,
+					     struct ref_transaction *transaction,
+					     struct strbuf *err,
+					     int direct_to_packed_refs)
 {
 	struct files_ref_store *refs =
 		files_downcast(ref_store, 0, "ref_transaction_finish");
@@ -2928,6 +2994,13 @@ cleanup:
 
 	strbuf_release(&sb);
 	return ret;
+}
+
+static int files_transaction_finish(struct ref_store *ref_store,
+				    struct ref_transaction *transaction,
+				    struct strbuf *err)
+{
+	return files_transaction_finish_extended(ref_store, transaction, err, 0);
 }
 
 static int files_transaction_abort(struct ref_store *ref_store,
@@ -3232,7 +3305,9 @@ struct ref_storage_be refs_be_files = {
 	.init = files_ref_store_create,
 	.init_db = files_init_db,
 	.transaction_prepare = files_transaction_prepare,
+	.transaction_prepare_extended = files_transaction_prepare_extended,
 	.transaction_finish = files_transaction_finish,
+	.transaction_finish_extended = files_transaction_finish_extended,
 	.transaction_abort = files_transaction_abort,
 	.initial_transaction_commit = files_initial_transaction_commit,
 

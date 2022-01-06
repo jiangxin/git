@@ -39,18 +39,28 @@ static int debug_init_db(struct ref_store *refs, struct strbuf *err)
 	return res;
 }
 
-static int debug_transaction_prepare(struct ref_store *refs,
-				     struct ref_transaction *transaction,
-				     struct strbuf *err)
+static int debug_transaction_prepare_extended(struct ref_store *refs,
+					      struct ref_transaction *transaction,
+					      struct strbuf *err,
+					      int direct_to_packed_refs)
 {
 	struct debug_ref_store *drefs = (struct debug_ref_store *)refs;
 	int res;
 	transaction->ref_store = drefs->refs;
-	res = drefs->refs->be->transaction_prepare(drefs->refs, transaction,
-						   err);
+	res = drefs->refs->be->transaction_prepare_extended(drefs->refs,
+							    transaction,
+							    err,
+							    direct_to_packed_refs);
 	trace_printf_key(&trace_refs, "transaction_prepare: %d \"%s\"\n", res,
 			 err->buf);
 	return res;
+}
+
+static int debug_transaction_prepare(struct ref_store *refs,
+				     struct ref_transaction *transaction,
+				     struct strbuf *err)
+{
+	return debug_transaction_prepare_extended(refs, transaction, err, 0);
 }
 
 static void print_update(int i, const char *refname,
@@ -84,18 +94,28 @@ static void print_transaction(struct ref_transaction *transaction)
 	trace_printf_key(&trace_refs, "}\n");
 }
 
-static int debug_transaction_finish(struct ref_store *refs,
-				    struct ref_transaction *transaction,
-				    struct strbuf *err)
+static int debug_transaction_finish_extended(struct ref_store *refs,
+					     struct ref_transaction *transaction,
+					     struct strbuf *err,
+					     int direct_to_packed_refs)
 {
 	struct debug_ref_store *drefs = (struct debug_ref_store *)refs;
 	int res;
 	transaction->ref_store = drefs->refs;
-	res = drefs->refs->be->transaction_finish(drefs->refs, transaction,
-						  err);
+	res = drefs->refs->be->transaction_finish_extended(drefs->refs,
+							   transaction,
+							   err,
+							   direct_to_packed_refs);
 	print_transaction(transaction);
 	trace_printf_key(&trace_refs, "finish: %d\n", res);
 	return res;
+}
+
+static int debug_transaction_finish(struct ref_store *refs,
+				    struct ref_transaction *transaction,
+				    struct strbuf *err)
+{
+	return debug_transaction_finish_extended(refs, transaction, err, 0);
 }
 
 static int debug_transaction_abort(struct ref_store *refs,
@@ -449,7 +469,9 @@ struct ref_storage_be refs_be_debug = {
 	 * Test the output with "GIT_TRACE_REFS=1".
 	 */
 	.transaction_prepare = debug_transaction_prepare,
+	.transaction_prepare_extended = debug_transaction_prepare_extended,
 	.transaction_finish = debug_transaction_finish,
+	.transaction_finish_extended = debug_transaction_finish_extended,
 	.transaction_abort = debug_transaction_abort,
 	.initial_transaction_commit = debug_initial_transaction_commit,
 

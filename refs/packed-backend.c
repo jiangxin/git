@@ -1411,9 +1411,10 @@ static void packed_transaction_cleanup(struct packed_ref_store *refs,
 	transaction->state = REF_TRANSACTION_CLOSED;
 }
 
-static int packed_transaction_prepare(struct ref_store *ref_store,
-				      struct ref_transaction *transaction,
-				      struct strbuf *err)
+static int packed_transaction_prepare_extended(struct ref_store *ref_store,
+					       struct ref_transaction *transaction,
+					       struct strbuf *err,
+					       int direct_to_packed_refs)
 {
 	struct packed_ref_store *refs = packed_downcast(
 			ref_store,
@@ -1471,6 +1472,13 @@ failure:
 	return ret;
 }
 
+static int packed_transaction_prepare(struct ref_store *ref_store,
+				      struct ref_transaction *transaction,
+				      struct strbuf *err)
+{
+	return packed_transaction_prepare_extended(ref_store, transaction, err, 0);
+}
+
 static int packed_transaction_abort(struct ref_store *ref_store,
 				    struct ref_transaction *transaction,
 				    struct strbuf *err)
@@ -1484,9 +1492,10 @@ static int packed_transaction_abort(struct ref_store *ref_store,
 	return 0;
 }
 
-static int packed_transaction_finish(struct ref_store *ref_store,
-				     struct ref_transaction *transaction,
-				     struct strbuf *err)
+static int packed_transaction_finish_extended(struct ref_store *ref_store,
+					      struct ref_transaction *transaction,
+					      struct strbuf *err,
+					      int direct_to_packed_refs)
 {
 	struct packed_ref_store *refs = packed_downcast(
 			ref_store,
@@ -1510,6 +1519,13 @@ cleanup:
 	free(packed_refs_path);
 	packed_transaction_cleanup(refs, transaction);
 	return ret;
+}
+
+static int packed_transaction_finish(struct ref_store *ref_store,
+				     struct ref_transaction *transaction,
+				     struct strbuf *err)
+{
+	return packed_transaction_finish_extended(ref_store, transaction, err, 0);
 }
 
 static int packed_initial_transaction_commit(struct ref_store *ref_store,
@@ -1540,7 +1556,9 @@ struct ref_storage_be refs_be_packed = {
 	.init = packed_ref_store_create,
 	.init_db = packed_init_db,
 	.transaction_prepare = packed_transaction_prepare,
+	.transaction_prepare_extended = packed_transaction_prepare_extended,
 	.transaction_finish = packed_transaction_finish,
+	.transaction_finish_extended = packed_transaction_finish_extended,
 	.transaction_abort = packed_transaction_abort,
 	.initial_transaction_commit = packed_initial_transaction_commit,
 

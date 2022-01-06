@@ -2190,8 +2190,17 @@ static int run_transaction_hook(struct ref_transaction *transaction,
 	return ret;
 }
 
-int ref_transaction_prepare(struct ref_transaction *transaction,
-			    struct strbuf *err)
+/*
+ * The extended version of ref_transaction_prepare will prepare transaction
+ * for the main ref-store or for the packed ref-store * according to the
+ * argument "direct_to_packed_refs".
+ *
+ * We should use ref_transaction_prepare* and ref_transaction_commit* in
+ * pairs.
+ */
+int ref_transaction_prepare_extended(struct ref_transaction *transaction,
+				     struct strbuf *err,
+				     int direct_to_packed_refs)
 {
 	struct ref_store *refs = transaction->ref_store;
 	int ret;
@@ -2217,7 +2226,8 @@ int ref_transaction_prepare(struct ref_transaction *transaction,
 		return -1;
 	}
 
-	ret = refs->be->transaction_prepare(refs, transaction, err);
+	ret = refs->be->transaction_prepare_extended(refs, transaction, err,
+						     direct_to_packed_refs);
 	if (ret)
 		return ret;
 
@@ -2228,6 +2238,13 @@ int ref_transaction_prepare(struct ref_transaction *transaction,
 	}
 
 	return 0;
+}
+
+int ref_transaction_prepare(struct ref_transaction *transaction,
+			    struct strbuf *err)
+{
+
+	return ref_transaction_prepare_extended(transaction, err, 0);
 }
 
 int ref_transaction_abort(struct ref_transaction *transaction,
@@ -2257,8 +2274,17 @@ int ref_transaction_abort(struct ref_transaction *transaction,
 	return ret;
 }
 
-int ref_transaction_commit(struct ref_transaction *transaction,
-			   struct strbuf *err)
+/*
+ * The extended version of ref_transaction_commit can write changes
+ * of references directly to "packed-refs" if the given argument
+ * "direct_to_packed_refs" is set to 1.
+ *
+ * We should use ref_transaction_prepare* and ref_transaction_commit* in
+ * pairs.
+ */
+int ref_transaction_commit_extended(struct ref_transaction *transaction,
+				    struct strbuf *err,
+				    int direct_to_packed_refs)
 {
 	struct ref_store *refs = transaction->ref_store;
 	int ret;
@@ -2266,7 +2292,8 @@ int ref_transaction_commit(struct ref_transaction *transaction,
 	switch (transaction->state) {
 	case REF_TRANSACTION_OPEN:
 		/* Need to prepare first. */
-		ret = ref_transaction_prepare(transaction, err);
+		ret = ref_transaction_prepare_extended(
+				transaction, err, direct_to_packed_refs);
 		if (ret)
 			return ret;
 		break;
@@ -2281,10 +2308,19 @@ int ref_transaction_commit(struct ref_transaction *transaction,
 		break;
 	}
 
-	ret = refs->be->transaction_finish(refs, transaction, err);
+	ret = refs->be->transaction_finish_extended(refs,
+						    transaction,
+						    err,
+						    direct_to_packed_refs);
 	if (!ret)
 		run_transaction_hook(transaction, "committed");
 	return ret;
+}
+
+int ref_transaction_commit(struct ref_transaction *transaction,
+			   struct strbuf *err)
+{
+	return ref_transaction_commit_extended(transaction, err, 0);
 }
 
 int refs_verify_refname_available(struct ref_store *refs,
