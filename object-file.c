@@ -2001,11 +2001,20 @@ static int write_loose_object(const struct object_id *oid, char *hdr,
 		die(_("deflateEnd on object %s failed (%d)"), oid_to_hex(oid),
 		    ret);
 	the_hash_algo->final_oid_fn(&parano_oid, &c);
+
+	/*
+	 * We already did a write_buffer() to the "fd", let's fsync()
+	 * and close().
+	 *
+	 * We might still die() on a subsequent sanity check, but
+	 * let's not add to that confusion by not flushing any
+	 * outstanding writes to disk first.
+	 */
+	close_loose_object(fd);
+
 	if (!oideq(oid, &parano_oid))
 		die(_("confused by unstable object source data for %s"),
 		    oid_to_hex(oid));
-
-	close_loose_object(fd);
 
 	if (mtime) {
 		struct utimbuf utb;
