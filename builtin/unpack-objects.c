@@ -338,15 +338,6 @@ static void added_object(unsigned nr, enum object_type type,
 	}
 }
 
-static void unpack_non_delta_entry(enum object_type type, unsigned long size,
-				   unsigned nr)
-{
-	void *buf = get_data(size);
-
-	if (buf)
-		write_object(nr, type, buf, size);
-}
-
 static int resolve_against_held(unsigned nr, const struct object_id *base,
 				void *delta_data, unsigned long delta_size)
 {
@@ -479,12 +470,17 @@ static void unpack_one(unsigned nr)
 	}
 
 	switch (type) {
+	case OBJ_BLOB:
 	case OBJ_COMMIT:
 	case OBJ_TREE:
-	case OBJ_BLOB:
 	case OBJ_TAG:
-		unpack_non_delta_entry(type, size, nr);
+	{
+		void *buf = get_data(size);
+
+		if (buf)
+			write_object(nr, type, buf, size);
 		return;
+	}
 	case OBJ_REF_DELTA:
 	case OBJ_OFS_DELTA:
 		unpack_delta_entry(type, size, nr);
