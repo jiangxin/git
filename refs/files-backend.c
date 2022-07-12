@@ -2566,6 +2566,15 @@ static int lock_ref_for_update(struct files_ref_store *refs,
 		}
 
 		/*
+		 * Propagate old_oid from the lock to the update entry, so we can
+		 * provide a real old-oid of to the "reference-transaction" hook.
+		 */
+		if (!(update->flags & REF_HAVE_OLD)) {
+			oidcpy(&update->old_oid, &lock->old_oid);
+			update->flags |= REF_HAVE_OLD;
+		}
+
+		/*
 		 * If this update is happening indirectly because of a
 		 * symref update, record the old OID in the parent
 		 * update:

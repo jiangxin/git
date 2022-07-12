@@ -53,7 +53,7 @@ test_expect_success 'hook gets all queued updates in prepared state' '
 	EOF
 	cat >expect <<-EOF &&
 		$ZERO_OID $POST_OID HEAD
-		$ZERO_OID $POST_OID refs/heads/main
+		$PRE_OID $POST_OID refs/heads/main
 	EOF
 	git update-ref HEAD POST <<-EOF &&
 		update HEAD $ZERO_OID $POST_OID
@@ -76,7 +76,7 @@ test_expect_success 'hook gets all queued updates in committed state' '
 	EOF
 	cat >expect <<-EOF &&
 		$ZERO_OID $POST_OID HEAD
-		$ZERO_OID $POST_OID refs/heads/main
+		$PRE_OID $POST_OID refs/heads/main
 	EOF
 	git update-ref HEAD POST &&
 	test_cmp expect actual
@@ -320,7 +320,7 @@ test_expect_success "update-ref: create new refs" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "update-ref: update HEAD, a symbolic-ref" '
+test_expect_success "update-ref: update HEAD, a symbolic-ref" '
 	test_when_finished "git switch main; rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -364,7 +364,7 @@ test_expect_failure "update-ref: call git-pack-refs to create packed_ref_store" 
 	test_path_is_missing $HOOK_OUTPUT
 '
 
-test_expect_failure "update-ref: update refs already packed to .git/packed-refs" '
+test_expect_success "update-ref: update refs already packed to .git/packed-refs" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -484,7 +484,7 @@ test_expect_success "update-ref --stdin: create new refs" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "update-ref --stdin: update refs" '
+test_expect_success "update-ref --stdin: update refs" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -638,7 +638,7 @@ test_expect_failure "branch: call git-gc to create packed_ref_store" '
 	test_path_is_missing $HOOK_OUTPUT
 '
 
-test_expect_failure "branch: update refs to create loose refs" '
+test_expect_success "branch: update refs to create loose refs" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
