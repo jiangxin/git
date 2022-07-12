@@ -406,7 +406,7 @@ test_expect_success "update-ref: update refs already packed to .git/packed-refs"
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "update-ref: remove refs with mixed ref_stores" '
+test_expect_success "update-ref: remove refs with mixed ref_stores" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -522,7 +522,7 @@ test_expect_success "update-ref --stdin: update refs" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "update-ref --stdin: delete refs" '
+test_expect_success "update-ref --stdin: delete refs" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -1022,7 +1022,7 @@ test_expect_success "worktree: topic2: merge" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "worktree: topic3: cherry-pick" '
+test_expect_success "worktree: topic3: cherry-pick" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -1066,7 +1066,7 @@ test_expect_failure "worktree: topic3: cherry-pick" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "worktree: topic4: rebase" '
+test_expect_success "worktree: topic4: rebase" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -1118,7 +1118,7 @@ test_expect_failure "worktree: topic4: rebase" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "worktree: topic5: revert" '
+test_expect_success "worktree: topic5: revert" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
