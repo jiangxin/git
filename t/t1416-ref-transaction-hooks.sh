@@ -392,9 +392,7 @@ test_expect_success "update-ref: update HEAD" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Failed because the reference-transaction hook was executed even
-# though no refs were changed by running git-pack-refs.
-test_expect_failure "update-ref: prepare packed_ref_store using pack-refs" '
+test_expect_success "update-ref: prepare packed_ref_store using pack-refs" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 	git -C workdir pack-refs --all &&
 	test_path_is_file workdir/.git/packed-refs &&
@@ -737,9 +735,7 @@ test_expect_success "branch: create new branches" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Failed because the reference-transaction hook was executed even
-# though no refs were changed by running git-gc.
-test_expect_failure "branch: prepare packed_ref_store using gc" '
+test_expect_success "branch: prepare packed_ref_store using gc" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 	git -C workdir gc &&
 	test_path_is_file workdir/.git/packed-refs &&
@@ -1014,9 +1010,7 @@ test_expect_success "tag: create new tags" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Failed because the reference-transaction hook was executed even
-# though no refs were changed by running git-pack-refs.
-test_expect_failure "tag: prepare packed_ref_store using pack-refs" '
+test_expect_success "tag: prepare packed_ref_store using pack-refs" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 	git -C workdir pack-refs --all &&
 	test_path_is_file workdir/.git/packed-refs &&
