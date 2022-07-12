@@ -52,8 +52,8 @@ test_expect_success 'hook gets all queued updates in prepared state' '
 		fi
 	EOF
 	cat >expect <<-EOF &&
-		$ZERO_OID $POST_OID HEAD
-		$ZERO_OID $POST_OID refs/heads/main
+		$PRE_OID $POST_OID HEAD
+		$PRE_OID $POST_OID refs/heads/main
 	EOF
 	git update-ref HEAD POST <<-EOF &&
 		update HEAD $ZERO_OID $POST_OID
@@ -75,8 +75,8 @@ test_expect_success 'hook gets all queued updates in committed state' '
 		fi
 	EOF
 	cat >expect <<-EOF &&
-		$ZERO_OID $POST_OID HEAD
-		$ZERO_OID $POST_OID refs/heads/main
+		$PRE_OID $POST_OID HEAD
+		$PRE_OID $POST_OID refs/heads/main
 	EOF
 	git update-ref HEAD POST &&
 	test_cmp expect actual
@@ -320,26 +320,7 @@ test_expect_success "update-ref: create new refs" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Failed because the old-oids for the default branch and
-# HEAD which points to the default branch were not the
-# expected old-oids, but <ZERO-OID>.
-#
-# The differences are as follows:
-#
-#     @@ -5,8 +5,8 @@
-#      <COMMIT-A> <COMMIT-B> refs/heads/topic1
-#      <COMMIT-A> <COMMIT-B> HEAD
-#      ## Call hook: reference-transaction  prepared ##
-#     -<COMMIT-B> <COMMIT-A> refs/heads/topic1
-#     -<COMMIT-B> <COMMIT-A> HEAD
-#     +<ZERO-OID> <COMMIT-A> refs/heads/topic1
-#     +<ZERO-OID> <COMMIT-A> HEAD
-#      ## Call hook: reference-transaction committed ##
-#     -<COMMIT-B> <COMMIT-A> refs/heads/topic1
-#     -<COMMIT-B> <COMMIT-A> HEAD
-#     +<ZERO-OID> <COMMIT-A> refs/heads/topic1
-#     +<ZERO-OID> <COMMIT-A> HEAD
-test_expect_failure "update-ref: update default branch" '
+test_expect_success "update-ref: update default branch" '
 	test_when_finished "git switch main; rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -375,25 +356,7 @@ test_expect_failure "update-ref: update default branch" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Failed because the old-oids for HEAD and the ref that the HEAD points
-# to were not the expected old-oids, but <ZERO-OID>.
-#
-# The differences are as follows:
-#
-#     @@ -5,8 +5,8 @@
-#      <COMMIT-A> <COMMIT-B> HEAD
-#      <COMMIT-A> <COMMIT-B> refs/heads/topic1
-#      ## Call hook: reference-transaction  prepared ##
-#     -<COMMIT-B> <COMMIT-A> HEAD
-#     -<COMMIT-B> <COMMIT-A> refs/heads/topic1
-#     +<ZERO-OID> <COMMIT-A> HEAD
-#     +<ZERO-OID> <COMMIT-A> refs/heads/topic1
-#      ## Call hook: reference-transaction committed ##
-#     -<COMMIT-B> <COMMIT-A> HEAD
-#     -<COMMIT-B> <COMMIT-A> refs/heads/topic1
-#     +<ZERO-OID> <COMMIT-A> HEAD
-#     +<ZERO-OID> <COMMIT-A> refs/heads/topic1
-test_expect_failure "update-ref: update HEAD" '
+test_expect_success "update-ref: update HEAD" '
 	test_when_finished "git switch main; rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -438,32 +401,7 @@ test_expect_failure "update-ref: prepare packed_ref_store using pack-refs" '
 	test_path_is_missing $HOOK_OUTPUT
 '
 
-# Failed because the old-oid was not the expected old-oid, but
-# <ZERO-OID> for updating a reference using git-update-refs
-# command without providing the old-oid parameter.
-#
-# The differences are as follows:
-#
-#     @@ -3,14 +3,14 @@
-#      ## Call hook: reference-transaction committed ##
-#      <COMMIT-A> <COMMIT-B> refs/heads/topic2
-#      ## Call hook: reference-transaction  prepared ##
-#     -<COMMIT-A> <COMMIT-C> refs/heads/topic3
-#     +<ZERO-OID> <COMMIT-C> refs/heads/topic3
-#      ## Call hook: reference-transaction committed ##
-#     -<COMMIT-A> <COMMIT-C> refs/heads/topic3
-#     +<ZERO-OID> <COMMIT-C> refs/heads/topic3
-#      ## Call hook: reference-transaction  prepared ##
-#      <ZERO-OID> <COMMIT-A> refs/heads/topic4
-#      ## Call hook: reference-transaction committed ##
-#      <ZERO-OID> <COMMIT-A> refs/heads/topic4
-#      ## Call hook: reference-transaction  prepared ##
-#     -<COMMIT-A> <COMMIT-C> refs/heads/topic4
-#     +<ZERO-OID> <COMMIT-C> refs/heads/topic4
-#      ## Call hook: reference-transaction committed ##
-#     -<COMMIT-A> <COMMIT-C> refs/heads/topic4
-#     +<ZERO-OID> <COMMIT-C> refs/heads/topic4
-test_expect_failure "update-ref: update refs already in packed_ref_store" '
+test_expect_success "update-ref: update refs already in packed_ref_store" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -510,9 +448,6 @@ test_expect_failure "update-ref: update refs already in packed_ref_store" '
 #  * The "reference-transaction committed" command was executed twice,
 #    once for packed ref-store, and once for loose ref-store.
 #
-#  * The old-oid was not the expected old-oid, but <ZERO-OID> when
-#    deleting a reference without providing the old-oid parameter.
-#
 #  * Unexpected execution of the "reference-transaction abort" command.
 #
 # The differences are as follows:
@@ -526,7 +461,7 @@ test_expect_failure "update-ref: update refs already in packed_ref_store" '
 #      <COMMIT-A> <ZERO-OID> refs/heads/topic1
 #      <COMMIT-A> <ZERO-OID> HEAD
 #      ## Call hook: reference-transaction  prepared ##
-#     @@ -11,14 +13,20 @@
+#     @@ -11,13 +13,19 @@
 #      ## Call hook: reference-transaction  prepared ##
 #      <COMMIT-B> <ZERO-OID> refs/heads/topic2
 #      ## Call hook: reference-transaction committed ##
@@ -536,21 +471,16 @@ test_expect_failure "update-ref: update refs already in packed_ref_store" '
 #      ## Call hook: reference-transaction  prepared ##
 #      <ZERO-OID> <ZERO-OID> refs/heads/topic3
 #      ## Call hook: reference-transaction  prepared ##
-#     -<COMMIT-C> <ZERO-OID> refs/heads/topic3
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
+#      <COMMIT-C> <ZERO-OID> refs/heads/topic3
 #      ## Call hook: reference-transaction committed ##
-#     -<COMMIT-C> <ZERO-OID> refs/heads/topic3
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
 #     +## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
+#      <COMMIT-C> <ZERO-OID> refs/heads/topic3
 #     +## Call hook: reference-transaction   aborted ##
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic4
 #      ## Call hook: reference-transaction  prepared ##
-#     -<COMMIT-C> <ZERO-OID> refs/heads/topic4
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic4
+#      <COMMIT-C> <ZERO-OID> refs/heads/topic4
 #      ## Call hook: reference-transaction committed ##
-#     -<COMMIT-C> <ZERO-OID> refs/heads/topic4
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic4
 test_expect_failure "update-ref: remove refs with mixed ref_stores" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
@@ -638,24 +568,7 @@ test_expect_success "update-ref --stdin: prepare packed_ref_store using pack-ref
 	git -C workdir pack-refs --all
 '
 
-# Failed because the old-oid was not the expected old-oid, but
-# <ZERO-OID> when running "git update-ref --stdin" to update a
-# reference without providing an old-oid.
-#
-# The differences are as follows:
-#
-#     @@ -1,8 +1,8 @@
-#      ## Call hook: reference-transaction  prepared ##
-#      <COMMIT-A> <COMMIT-B> refs/heads/topic2
-#     -<COMMIT-A> <COMMIT-C> refs/heads/topic3
-#     +<ZERO-OID> <COMMIT-C> refs/heads/topic3
-#      <ZERO-OID> <COMMIT-C> refs/heads/topic4
-#      ## Call hook: reference-transaction committed ##
-#      <COMMIT-A> <COMMIT-B> refs/heads/topic2
-#     -<COMMIT-A> <COMMIT-C> refs/heads/topic3
-#     +<ZERO-OID> <COMMIT-C> refs/heads/topic3
-#      <ZERO-OID> <COMMIT-C> refs/heads/topic4
-test_expect_failure "update-ref --stdin: update refs" '
+test_expect_success "update-ref --stdin: update refs" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -699,39 +612,20 @@ test_expect_failure "update-ref --stdin: update refs" '
 #  * The "reference-transaction committed" command was executed twice,
 #    once for packed ref-store, and once for loose ref-store.
 #
-#  * The old-oid was not the expected old-oid, but <ZERO-OID> when
-#    deleting a ref without providing the old-oid parameter.
-#
 # The differences are as follows:
 #
-#     @@ -4,14 +4,19 @@
-#      <ZERO-OID> <ZERO-OID> refs/heads/topic3
-#      <ZERO-OID> <ZERO-OID> refs/heads/topic4
-#      ## Call hook: reference-transaction  prepared ##
-#     -<COMMIT-A> <ZERO-OID> refs/heads/topic1
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
-#      <COMMIT-B> <ZERO-OID> refs/heads/topic2
-#     -<COMMIT-C> <ZERO-OID> refs/heads/topic3
-#     -<COMMIT-C> <ZERO-OID> refs/heads/topic4
-#     -<COMMIT-A> <ZERO-OID> HEAD
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic4
-#     +<ZERO-OID> <ZERO-OID> HEAD
+#     @@ -10,6 +10,11 @@
+#      <COMMIT-C> <ZERO-OID> refs/heads/topic4
+#      <COMMIT-A> <ZERO-OID> HEAD
 #      ## Call hook: reference-transaction committed ##
-#     -<COMMIT-A> <ZERO-OID> refs/heads/topic1
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic2
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic4
 #     +## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
+#      <COMMIT-A> <ZERO-OID> refs/heads/topic1
 #      <COMMIT-B> <ZERO-OID> refs/heads/topic2
-#     -<COMMIT-C> <ZERO-OID> refs/heads/topic3
-#     -<COMMIT-C> <ZERO-OID> refs/heads/topic4
-#     -<COMMIT-A> <ZERO-OID> HEAD
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic4
-#     +<ZERO-OID> <ZERO-OID> HEAD
+#      <COMMIT-C> <ZERO-OID> refs/heads/topic3
 test_expect_failure "update-ref --stdin: delete refs" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
@@ -852,23 +746,7 @@ test_expect_failure "branch: prepare packed_ref_store using gc" '
 	test_path_is_missing $HOOK_OUTPUT
 '
 
-# Failed because the old-oid was not the expected old-oid, but
-# <ZERO-OID> when running git-branch to update a branch without
-# providing an old-oid.
-#
-# The differences are as follows:
-#
-#     @@ -1,7 +1,7 @@
-#      ## Call hook: reference-transaction  prepared ##
-#     -<COMMIT-A> <COMMIT-B> refs/heads/topic2
-#     +<ZERO-OID> <COMMIT-B> refs/heads/topic2
-#      ## Call hook: reference-transaction committed ##
-#     -<COMMIT-A> <COMMIT-B> refs/heads/topic2
-#     +<ZERO-OID> <COMMIT-B> refs/heads/topic2
-#      ## Call hook: reference-transaction  prepared ##
-#      <ZERO-OID> <COMMIT-C> refs/heads/topic3
-#      ## Call hook: reference-transaction committed ##
-test_expect_failure "branch: update branch without old-oid" '
+test_expect_success "branch: update branch without old-oid" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -1007,9 +885,6 @@ test_expect_failure "branch: rename branches" '
 
 # Mismatched hook output for "git branch -d":
 #
-#  * The old-oid was not the expected old-oid, but <ZERO-OID> when
-#    deleting a branch without providing the old-oid parameter.
-#
 #  * The delete branches operation should be treated as one transaction,
 #    but was splitted into several transactions on loose references,
 #    and the "reference-transaction committed" command was executed
@@ -1029,28 +904,25 @@ test_expect_failure "branch: rename branches" '
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
 #     +## Call hook: reference-transaction   aborted ##
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
+#     +## Call hook: reference-transaction  prepared ##
+#     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
+#     +## Call hook: reference-transaction committed ##
+#     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
+#     +## Call hook: reference-transaction   aborted ##
+#     +<ZERO-OID> <ZERO-OID> refs/heads/topic2
 #      ## Call hook: reference-transaction  prepared ##
 #     -<COMMIT-A> <ZERO-OID> refs/heads/topic1
-#     -<COMMIT-B> <ZERO-OID> refs/heads/topic2
+#      <COMMIT-B> <ZERO-OID> refs/heads/topic2
 #     -<COMMIT-C> <ZERO-OID> refs/heads/topic3
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
 #      ## Call hook: reference-transaction committed ##
 #     -<COMMIT-A> <ZERO-OID> refs/heads/topic1
-#     -<COMMIT-B> <ZERO-OID> refs/heads/topic2
-#     -<COMMIT-C> <ZERO-OID> refs/heads/topic3
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic2
-#     +## Call hook: reference-transaction  prepared ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic2
-#     +## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic2
+#      <COMMIT-B> <ZERO-OID> refs/heads/topic2
 #     +## Call hook: reference-transaction   aborted ##
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
 #     +## Call hook: reference-transaction  prepared ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
+#     +<COMMIT-C> <ZERO-OID> refs/heads/topic3
 #     +## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
+#      <COMMIT-C> <ZERO-OID> refs/heads/topic3
 test_expect_failure "branch: remove branches" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
@@ -1184,9 +1056,6 @@ test_expect_success "tag: update refs to create loose refs" '
 
 # Mismatched hook output for "git tag -d":
 #
-#  * The old-oid was not the expected old-oid, but <ZERO-OID> when
-#    deleting a tag without providing the old-oid parameter.
-#
 #  * The delete tags operation should be treated as one transaction,
 #    but was splitted into several transactions on loose references,
 #    and the "reference-transaction committed" command was executed
@@ -1206,28 +1075,25 @@ test_expect_success "tag: update refs to create loose refs" '
 #     +<ZERO-OID> <ZERO-OID> refs/tags/v3
 #     +## Call hook: reference-transaction   aborted ##
 #     +<ZERO-OID> <ZERO-OID> refs/tags/v1
+#     +## Call hook: reference-transaction  prepared ##
+#     +<ZERO-OID> <ZERO-OID> refs/tags/v1
+#     +## Call hook: reference-transaction committed ##
+#     +<ZERO-OID> <ZERO-OID> refs/tags/v1
+#     +## Call hook: reference-transaction   aborted ##
+#     +<ZERO-OID> <ZERO-OID> refs/tags/v2
 #      ## Call hook: reference-transaction  prepared ##
 #     -<COMMIT-A> <ZERO-OID> refs/tags/v1
-#     -<COMMIT-B> <ZERO-OID> refs/tags/v2
+#      <COMMIT-B> <ZERO-OID> refs/tags/v2
 #     -<COMMIT-C> <ZERO-OID> refs/tags/v3
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v1
 #      ## Call hook: reference-transaction committed ##
 #     -<COMMIT-A> <ZERO-OID> refs/tags/v1
-#     -<COMMIT-B> <ZERO-OID> refs/tags/v2
-#     -<COMMIT-C> <ZERO-OID> refs/tags/v3
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v1
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v2
-#     +## Call hook: reference-transaction  prepared ##
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v2
-#     +## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v2
+#      <COMMIT-B> <ZERO-OID> refs/tags/v2
 #     +## Call hook: reference-transaction   aborted ##
 #     +<ZERO-OID> <ZERO-OID> refs/tags/v3
 #     +## Call hook: reference-transaction  prepared ##
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v3
+#     +<COMMIT-C> <ZERO-OID> refs/tags/v3
 #     +## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v3
+#      <COMMIT-C> <ZERO-OID> refs/tags/v3
 test_expect_failure "tag: remove tags with mixed ref_stores" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
@@ -1374,24 +1240,19 @@ test_expect_success "worktree: topic2: merge" '
 
 # Mismatched hook output for git-cherry-pick:
 #
-#  * The old-oid was not the expected old-oid, but <ZERO-OID>.
-#
 #  * Unexpected execution of the "reference-transaction abort" command.
 #
 # The differences are as follows:
 #
-#     @@ -12,7 +12,9 @@
+#     @@ -12,6 +12,8 @@
 #      ## Call hook: reference-transaction committed ##
 #      <COMMIT-A> <COMMIT-F> HEAD
 #      <COMMIT-A> <COMMIT-F> refs/heads/topic3
 #     +## Call hook: reference-transaction   aborted ##
 #     +<ZERO-OID> <ZERO-OID> CHERRY_PICK_HEAD
 #      ## Call hook: reference-transaction  prepared ##
-#     -<COMMIT-C> <ZERO-OID> CHERRY_PICK_HEAD
-#     +<ZERO-OID> <ZERO-OID> CHERRY_PICK_HEAD
+#      <COMMIT-C> <ZERO-OID> CHERRY_PICK_HEAD
 #      ## Call hook: reference-transaction committed ##
-#     -<COMMIT-C> <ZERO-OID> CHERRY_PICK_HEAD
-#     +<ZERO-OID> <ZERO-OID> CHERRY_PICK_HEAD
 test_expect_failure "worktree: topic3: cherry-pick" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
@@ -1438,8 +1299,6 @@ test_expect_failure "worktree: topic3: cherry-pick" '
 
 # Mismatched hook output for git-rebase:
 #
-#  * The old-oid was not the expected old-oid, but <ZERO-OID>.
-#
 #  * Unexpected execution of the "reference-transaction abort" command.
 #
 # The differences are as follows:
@@ -1453,20 +1312,14 @@ test_expect_failure "worktree: topic3: cherry-pick" '
 #      ## Call hook: reference-transaction  prepared ##
 #      <ZERO-OID> <ZERO-OID> REBASE_HEAD
 #      ## Call hook: reference-transaction committed ##
-#     @@ -18,10 +20,12 @@
+#     @@ -18,6 +20,8 @@
 #      <COMMIT-C> <COMMIT-H> HEAD
 #      ## Call hook: reference-transaction committed ##
 #      <COMMIT-C> <COMMIT-H> HEAD
 #     +## Call hook: reference-transaction   aborted ##
 #     +<ZERO-OID> <ZERO-OID> CHERRY_PICK_HEAD
 #      ## Call hook: reference-transaction  prepared ##
-#     -<COMMIT-G> <ZERO-OID> CHERRY_PICK_HEAD
-#     +<ZERO-OID> <ZERO-OID> CHERRY_PICK_HEAD
-#      ## Call hook: reference-transaction committed ##
-#     -<COMMIT-G> <ZERO-OID> CHERRY_PICK_HEAD
-#     +<ZERO-OID> <ZERO-OID> CHERRY_PICK_HEAD
-#      ## Call hook: reference-transaction  prepared ##
-#      <COMMIT-G> <COMMIT-H> refs/heads/topic4
+#      <COMMIT-G> <ZERO-OID> CHERRY_PICK_HEAD
 #      ## Call hook: reference-transaction committed ##
 test_expect_failure "worktree: topic4: rebase" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
