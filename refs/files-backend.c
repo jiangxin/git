@@ -1136,7 +1136,8 @@ static void prune_ref(struct files_ref_store *refs, struct ref_to_prune *r)
 	if (check_refname_format(r->name, 0))
 		return;
 
-	transaction = ref_store_transaction_begin(&refs->base, &err);
+	/* Called by "files_pack_refs()" and should not run any hooks. */
+	transaction = ref_store_transaction_begin_extended(&refs->base, 0, &err);
 	if (!transaction)
 		goto cleanup;
 	ref_transaction_add_update(
@@ -1207,7 +1208,12 @@ static int files_pack_refs(struct ref_store *ref_store, unsigned int flags)
 	struct strbuf err = STRBUF_INIT;
 	struct ref_transaction *transaction;
 
-	transaction = ref_store_transaction_begin(refs->packed_ref_store, &err);
+	/*
+	 * No real changes have occurred to the repository and no hooks
+	 * should be run for this transaction.
+	 */
+	transaction = ref_store_transaction_begin_extended(refs->packed_ref_store,
+							   0, &err);
 	if (!transaction)
 		return -1;
 
