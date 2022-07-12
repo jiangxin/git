@@ -201,6 +201,13 @@ enum ref_transaction_state {
 	REF_TRANSACTION_CLOSED   = 2
 };
 
+#define REF_TRANSACTION_RUN_PREPARED_HOOK (1 << 0)
+#define REF_TRANSACTION_RUN_COMMITTED_HOOK (1 << 1)
+#define REF_TRANSACTION_RUN_ABORTED_HOOK (1 << 2)
+#define REF_TRANSACTION_RUN_ALL_HOOKS         \
+	(REF_TRANSACTION_RUN_PREPARED_HOOK  | \
+	 REF_TRANSACTION_RUN_COMMITTED_HOOK | \
+	 REF_TRANSACTION_RUN_ABORTED_HOOK)
 /*
  * Data structure for holding a reference transaction, which can
  * consist of checks and updates to multiple references, carried out
@@ -212,6 +219,7 @@ struct ref_transaction {
 	size_t alloc;
 	size_t nr;
 	enum ref_transaction_state state;
+	unsigned int hook_flags;
 	void *backend_data;
 };
 

@@ -998,15 +998,25 @@ int read_ref_at(struct ref_store *refs, const char *refname,
 	return 1;
 }
 
-struct ref_transaction *ref_store_transaction_begin(struct ref_store *refs,
-						    struct strbuf *err)
+struct ref_transaction *ref_store_transaction_begin_extended(struct ref_store *refs,
+							     unsigned int hook_flags,
+							     struct strbuf *err)
 {
 	struct ref_transaction *tr;
 	assert(err);
 
 	CALLOC_ARRAY(tr, 1);
 	tr->ref_store = refs;
+	tr->hook_flags = hook_flags;
 	return tr;
+}
+
+struct ref_transaction *ref_store_transaction_begin(struct ref_store *refs,
+						    struct strbuf *err)
+{
+	return ref_store_transaction_begin_extended(refs,
+						    REF_TRANSACTION_RUN_ALL_HOOKS,
+						    err);
 }
 
 struct ref_transaction *ref_transaction_begin(struct strbuf *err)
@@ -2071,6 +2081,17 @@ static int run_transaction_hook(struct ref_transaction *transaction,
 	struct strbuf buf = STRBUF_INIT;
 	const char *hook;
 	int ret = 0, i;
+
+	if (!strcmp(state, "prepared")) {
+		if (!(transaction->hook_flags & REF_TRANSACTION_RUN_PREPARED_HOOK))
+			return 0;
+	} else if (!strcmp(state, "committed")) {
+		if (!(transaction->hook_flags & REF_TRANSACTION_RUN_COMMITTED_HOOK))
+			return 0;
+	} else if (!strcmp(state, "aborted")) {
+		if (!(transaction->hook_flags & REF_TRANSACTION_RUN_ABORTED_HOOK))
+			return 0;
+	}
 
 	hook = find_hook("reference-transaction");
 	if (!hook)
