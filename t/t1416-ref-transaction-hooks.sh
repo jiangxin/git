@@ -441,45 +441,7 @@ test_expect_success "update-ref: update refs already in packed_ref_store" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Mismatched hook output when deleting refs using "git update-refs -d":
-#
-#  * The "reference-transaction committed" command was executed twice,
-#    once for packed ref-store, and once for loose ref-store.
-#
-#  * Unexpected execution of the "reference-transaction abort" command.
-#
-# The differences are as follows:
-#
-#     @@ -4,6 +4,8 @@
-#      <COMMIT-A> <ZERO-OID> refs/heads/topic1
-#      <COMMIT-A> <ZERO-OID> HEAD
-#      ## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
-#     +## Call hook: reference-transaction committed ##
-#      <COMMIT-A> <ZERO-OID> refs/heads/topic1
-#      <COMMIT-A> <ZERO-OID> HEAD
-#      ## Call hook: reference-transaction  prepared ##
-#     @@ -11,13 +13,19 @@
-#      ## Call hook: reference-transaction  prepared ##
-#      <COMMIT-B> <ZERO-OID> refs/heads/topic2
-#      ## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic2
-#     +## Call hook: reference-transaction committed ##
-#      <COMMIT-B> <ZERO-OID> refs/heads/topic2
-#      ## Call hook: reference-transaction  prepared ##
-#      <ZERO-OID> <ZERO-OID> refs/heads/topic3
-#      ## Call hook: reference-transaction  prepared ##
-#      <COMMIT-C> <ZERO-OID> refs/heads/topic3
-#      ## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
-#     +## Call hook: reference-transaction committed ##
-#      <COMMIT-C> <ZERO-OID> refs/heads/topic3
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic4
-#      ## Call hook: reference-transaction  prepared ##
-#      <COMMIT-C> <ZERO-OID> refs/heads/topic4
-#      ## Call hook: reference-transaction committed ##
-test_expect_failure "update-ref: remove refs with mixed ref_stores" '
+test_expect_success "update-ref: remove refs with mixed ref_stores" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -604,27 +566,7 @@ test_expect_success "update-ref --stdin: update refs" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Mismatched hook output when deleting refs using "git update-refs
-# --stdin":
-#
-#  * The "reference-transaction committed" command was executed twice,
-#    once for packed ref-store, and once for loose ref-store.
-#
-# The differences are as follows:
-#
-#     @@ -10,6 +10,11 @@
-#      <COMMIT-C> <ZERO-OID> refs/heads/topic4
-#      <COMMIT-A> <ZERO-OID> HEAD
-#      ## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic2
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic4
-#     +## Call hook: reference-transaction committed ##
-#      <COMMIT-A> <ZERO-OID> refs/heads/topic1
-#      <COMMIT-B> <ZERO-OID> refs/heads/topic2
-#      <COMMIT-C> <ZERO-OID> refs/heads/topic3
-test_expect_failure "update-ref --stdin: delete refs" '
+test_expect_success "update-ref --stdin: delete refs" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -813,24 +755,16 @@ test_expect_failure "branch: copy branches" '
 #  * The "reference-transaction committed" command was not executed
 #    for the target branch.
 #
-#  * Unexpected execution of the "reference-transaction abort" command.
-#
 # The differences are as follows:
 #
-#     @@ -1,16 +1,12 @@
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic4
-#      ## Call hook: reference-transaction  prepared ##
-#      <COMMIT-B> <ZERO-OID> refs/heads/topic4
+#     @@ -3,14 +3,6 @@
 #      ## Call hook: reference-transaction committed ##
 #      <COMMIT-B> <ZERO-OID> refs/heads/topic4
-#     -## Call hook: reference-transaction  prepared ##
+#      ## Call hook: reference-transaction  prepared ##
 #     -<ZERO-OID> <COMMIT-B> refs/heads/topic6
 #     -## Call hook: reference-transaction committed ##
 #     -<ZERO-OID> <COMMIT-B> refs/heads/topic6
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic5
-#      ## Call hook: reference-transaction  prepared ##
+#     -## Call hook: reference-transaction  prepared ##
 #      <COMMIT-C> <ZERO-OID> refs/heads/topic5
 #      ## Call hook: reference-transaction committed ##
 #      <COMMIT-C> <ZERO-OID> refs/heads/topic5
@@ -886,11 +820,9 @@ test_expect_failure "branch: rename branches" '
 #    and the "reference-transaction committed" command was executed
 #    redundantly on the packed-ref-store.
 #
-#  * Unexpected execution of the "reference-transaction abort" command.
-#
 # The differences are as follows:
 #
-#     @@ -2,11 +2,25 @@
+#     @@ -2,11 +2,19 @@
 #      <ZERO-OID> <ZERO-OID> refs/heads/topic1
 #      <ZERO-OID> <ZERO-OID> refs/heads/topic2
 #      <ZERO-OID> <ZERO-OID> refs/heads/topic3
@@ -898,14 +830,10 @@ test_expect_failure "branch: rename branches" '
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic2
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
 #     +## Call hook: reference-transaction  prepared ##
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
 #     +## Call hook: reference-transaction committed ##
 #     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic2
 #      ## Call hook: reference-transaction  prepared ##
 #     -<COMMIT-A> <ZERO-OID> refs/heads/topic1
 #      <COMMIT-B> <ZERO-OID> refs/heads/topic2
@@ -913,8 +841,6 @@ test_expect_failure "branch: rename branches" '
 #      ## Call hook: reference-transaction committed ##
 #     -<COMMIT-A> <ZERO-OID> refs/heads/topic1
 #      <COMMIT-B> <ZERO-OID> refs/heads/topic2
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
 #     +## Call hook: reference-transaction  prepared ##
 #     +<COMMIT-C> <ZERO-OID> refs/heads/topic3
 #     +## Call hook: reference-transaction committed ##
@@ -1055,11 +981,9 @@ test_expect_success "tag: update refs to create loose refs" '
 #    and the "reference-transaction committed" command was executed
 #    redundantly on the packed-ref-store.
 #
-#  * Unexpected execution of the "reference-transaction abort" command.
-#
 # The differences are as follows:
 #
-#     @@ -2,11 +2,25 @@
+#     @@ -2,11 +2,19 @@
 #      <ZERO-OID> <ZERO-OID> refs/tags/v1
 #      <ZERO-OID> <ZERO-OID> refs/tags/v2
 #      <ZERO-OID> <ZERO-OID> refs/tags/v3
@@ -1067,14 +991,10 @@ test_expect_success "tag: update refs to create loose refs" '
 #     +<ZERO-OID> <ZERO-OID> refs/tags/v1
 #     +<ZERO-OID> <ZERO-OID> refs/tags/v2
 #     +<ZERO-OID> <ZERO-OID> refs/tags/v3
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v1
 #     +## Call hook: reference-transaction  prepared ##
 #     +<ZERO-OID> <ZERO-OID> refs/tags/v1
 #     +## Call hook: reference-transaction committed ##
 #     +<ZERO-OID> <ZERO-OID> refs/tags/v1
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v2
 #      ## Call hook: reference-transaction  prepared ##
 #     -<COMMIT-A> <ZERO-OID> refs/tags/v1
 #      <COMMIT-B> <ZERO-OID> refs/tags/v2
@@ -1082,8 +1002,6 @@ test_expect_success "tag: update refs to create loose refs" '
 #      ## Call hook: reference-transaction committed ##
 #     -<COMMIT-A> <ZERO-OID> refs/tags/v1
 #      <COMMIT-B> <ZERO-OID> refs/tags/v2
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v3
 #     +## Call hook: reference-transaction  prepared ##
 #     +<COMMIT-C> <ZERO-OID> refs/tags/v3
 #     +## Call hook: reference-transaction committed ##
@@ -1232,22 +1150,7 @@ test_expect_success "worktree: topic2: merge" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Mismatched hook output for git-cherry-pick:
-#
-#  * Unexpected execution of the "reference-transaction abort" command.
-#
-# The differences are as follows:
-#
-#     @@ -12,6 +12,8 @@
-#      ## Call hook: reference-transaction committed ##
-#      <COMMIT-A> <COMMIT-F> HEAD
-#      <COMMIT-A> <COMMIT-F> refs/heads/topic3
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> CHERRY_PICK_HEAD
-#      ## Call hook: reference-transaction  prepared ##
-#      <COMMIT-C> <ZERO-OID> CHERRY_PICK_HEAD
-#      ## Call hook: reference-transaction committed ##
-test_expect_failure "worktree: topic3: cherry-pick" '
+test_expect_success "worktree: topic3: cherry-pick" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -1291,31 +1194,7 @@ test_expect_failure "worktree: topic3: cherry-pick" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Mismatched hook output for git-rebase:
-#
-#  * Unexpected execution of the "reference-transaction abort" command.
-#
-# The differences are as follows:
-#
-#     @@ -6,6 +6,8 @@
-#      <COMMIT-G> <COMMIT-C> HEAD
-#      ## Call hook: reference-transaction committed ##
-#      <COMMIT-G> <COMMIT-C> HEAD
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> REBASE_HEAD
-#      ## Call hook: reference-transaction  prepared ##
-#      <ZERO-OID> <ZERO-OID> REBASE_HEAD
-#      ## Call hook: reference-transaction committed ##
-#     @@ -18,6 +20,8 @@
-#      <COMMIT-C> <COMMIT-H> HEAD
-#      ## Call hook: reference-transaction committed ##
-#      <COMMIT-C> <COMMIT-H> HEAD
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> CHERRY_PICK_HEAD
-#      ## Call hook: reference-transaction  prepared ##
-#      <COMMIT-G> <ZERO-OID> CHERRY_PICK_HEAD
-#      ## Call hook: reference-transaction committed ##
-test_expect_failure "worktree: topic4: rebase" '
+test_expect_success "worktree: topic4: rebase" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -1367,22 +1246,7 @@ test_expect_failure "worktree: topic4: rebase" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Mismatched hook output for git-revert:
-#
-#  * Unexpected execution of the "reference-transaction abort" command.
-#
-# The differences are as follows:
-#
-#     @@ -8,6 +8,8 @@
-#      ## Call hook: reference-transaction committed ##
-#      <COMMIT-C> <COMMIT-I> HEAD
-#      <COMMIT-C> <COMMIT-I> refs/heads/topic5
-#     +## Call hook: reference-transaction   aborted ##
-#     +<ZERO-OID> <ZERO-OID> CHERRY_PICK_HEAD
-#      ## Call hook: reference-transaction  prepared ##
-#      <ZERO-OID> <ZERO-OID> CHERRY_PICK_HEAD
-#      ## Call hook: reference-transaction committed ##
-test_expect_failure "worktree: topic5: revert" '
+test_expect_success "worktree: topic5: revert" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
