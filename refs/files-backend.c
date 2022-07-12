@@ -2797,8 +2797,11 @@ static int files_transaction_prepare(struct ref_store *ref_store,
 			 * packed-refs if it exists there.
 			 */
 			if (!packed_transaction) {
-				packed_transaction = ref_store_transaction_begin(
-						refs->packed_ref_store, err);
+				packed_transaction = ref_store_transaction_begin_extended(
+						refs->packed_ref_store,
+						transaction->hook_flags &
+							REF_TRANSACTION_RUN_PREPARED_HOOK,
+						err);
 				if (!packed_transaction) {
 					ret = TRANSACTION_GENERIC_ERROR;
 					goto cleanup;
