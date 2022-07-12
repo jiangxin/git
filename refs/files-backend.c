@@ -2523,15 +2523,24 @@ static int lock_ref_for_update(struct files_ref_store *refs,
 	update->backend_data = lock;
 
 	if (update->type & REF_ISSYMREF) {
+		const char *ref;
+
+		/*
+		 * Read the referent even though we won't use it as part
+		 * of the transaction, because we want to set a proper
+		 * old_oid for this symref using the oid we got.
+		 */
+		ref = refs_resolve_ref_unsafe(&refs->base,
+					      referent.buf, 0,
+					      &lock->old_oid, NULL);
+
 		if (update->flags & REF_NO_DEREF) {
 			/*
 			 * We won't be reading the referent as part of
-			 * the transaction, so we have to read it here
-			 * to record and possibly check old_oid:
+			 * the transaction, so we may need to check
+			 * old_oid here:
 			 */
-			if (!refs_resolve_ref_unsafe(&refs->base,
-						     referent.buf, 0,
-						     &lock->old_oid, NULL)) {
+			if (!ref) {
 				if (update->flags & REF_HAVE_OLD) {
 					strbuf_addf(err, "cannot lock ref '%s': "
 						    "error reading reference",
@@ -2576,6 +2585,15 @@ static int lock_ref_for_update(struct files_ref_store *refs,
 			struct ref_lock *parent_lock = parent_update->backend_data;
 			oidcpy(&parent_lock->old_oid, &lock->old_oid);
 		}
+	}
+
+	/*
+	 * Propagate old_oid from the lock to the update entry, so we can
+	 * provide a proper old-oid of to the "reference-transaction" hook.
+	 */
+	if (!(update->flags & REF_HAVE_OLD) && !is_null_oid(&lock->old_oid)) {
+		oidcpy(&update->old_oid, &lock->old_oid);
+		update->flags |= REF_HAVE_OLD;
 	}
 
 	if ((update->flags & REF_HAVE_NEW) &&
