@@ -357,7 +357,7 @@ test_expect_success "update-ref: update HEAD, a symbolic-ref" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "update-ref: call git-pack-refs to create packed_ref_store" '
+test_expect_success "update-ref: call git-pack-refs to create packed_ref_store" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 	git -C workdir pack-refs --all &&
 	test_path_is_file workdir/.git/packed-refs &&
@@ -631,7 +631,7 @@ test_expect_success "branch: create new branches" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "branch: call git-gc to create packed_ref_store" '
+test_expect_success "branch: call git-gc to create packed_ref_store" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 	git -C workdir gc &&
 	test_path_is_file workdir/.git/packed-refs &&
@@ -834,7 +834,7 @@ test_expect_success "tag: create new tags" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "tag: call git-pack-refs to create packed_ref_store" '
+test_expect_success "tag: call git-pack-refs to create packed_ref_store" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 	git -C workdir pack-refs --all &&
 	test_path_is_file workdir/.git/packed-refs &&
