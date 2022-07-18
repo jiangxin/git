@@ -104,6 +104,19 @@ enum peel_status {
  */
 enum peel_status peel_object(const struct object_id *name, struct object_id *oid);
 
+/*
+ * When using refs_update_ref() to copy or rename a branch, the old-oid
+ * for the new created branch is null_oid, but the old_oid for the new
+ * appended log entry for the reflog file which is copied from the
+ * original reflog should be the same as the new_oid for the target
+ * branch. Use "reflog_info" to hold log message and old_oid for the
+ * new reflog entry.
+ */
+struct reflog_info {
+	struct object_id *old_oid;
+	char *msg;
+};
+
 /**
  * Information needed for a single ref update. Set new_oid to the new
  * value or to null_oid to delete the ref. To check the old value
@@ -133,7 +146,7 @@ struct ref_update {
 
 	void *backend_data;
 	unsigned int type;
-	char *msg;
+	struct reflog_info *reflog_info;
 
 	/*
 	 * If this ref_update was split off of a symref update via
@@ -174,7 +187,7 @@ struct ref_update *ref_transaction_add_update(
 		const char *refname, unsigned int flags,
 		const struct object_id *new_oid,
 		const struct object_id *old_oid,
-		const char *msg);
+		const struct reflog_info *reflog_info);
 
 /*
  * Transaction states.

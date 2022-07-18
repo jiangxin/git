@@ -79,7 +79,7 @@ static void print_transaction(struct ref_transaction *transaction)
 	for (i = 0; i < transaction->nr; i++) {
 		struct ref_update *u = transaction->updates[i];
 		print_update(i, u->refname, &u->old_oid, &u->new_oid, u->flags,
-			     u->type, u->msg);
+			     u->type, u->reflog_info? u->reflog_info->msg : NULL);
 	}
 	trace_printf_key(&trace_refs, "}\n");
 }

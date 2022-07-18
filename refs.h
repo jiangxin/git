@@ -10,6 +10,7 @@ struct strbuf;
 struct string_list;
 struct string_list_item;
 struct worktree;
+struct reflog_info;
 
 /*
  * Resolve a reference, recursively following symbolic refererences.
@@ -677,6 +678,18 @@ int ref_transaction_update(struct ref_transaction *transaction,
 			   const struct object_id *old_oid,
 			   unsigned int flags, const char *msg,
 			   struct strbuf *err);
+/*
+ * Extended version of ref_transaction_update() that allows us to
+ * provide more fields (in reflog_info) to custom reflog, such
+ * as msg and old_oid.
+ */
+int ref_transaction_update_extended(struct ref_transaction *transaction,
+				    const char *refname,
+				    const struct object_id *new_oid,
+				    const struct object_id *old_oid,
+				    unsigned int flags,
+				    const struct reflog_info *reflog_info,
+				    struct strbuf *err);
 
 /*
  * Add a reference creation to transaction. new_oid is the value that
@@ -806,6 +819,13 @@ void ref_transaction_free(struct ref_transaction *transaction);
 int refs_update_ref(struct ref_store *refs, const char *msg, const char *refname,
 		    const struct object_id *new_oid, const struct object_id *old_oid,
 		    unsigned int flags, enum action_on_err onerr);
+int refs_update_ref_extended(struct ref_store *refs,
+			     const char *refname,
+			     const struct object_id *new_oid,
+			     const struct object_id *old_oid,
+			     unsigned int flags,
+			     const struct reflog_info *reflog_info,
+			     enum action_on_err onerr);
 int update_ref(const char *msg, const char *refname,
 	       const struct object_id *new_oid, const struct object_id *old_oid,
 	       unsigned int flags, enum action_on_err onerr);

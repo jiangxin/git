@@ -2340,7 +2340,7 @@ static int split_head_update(struct ref_update *update,
 			transaction, "HEAD",
 			update->flags | REF_LOG_ONLY | REF_NO_DEREF,
 			&update->new_oid, &update->old_oid,
-			update->msg);
+			update->reflog_info);
 
 	/*
 	 * Add "HEAD". This insertion is O(N) in the transaction
@@ -2403,7 +2403,7 @@ static int split_symref_update(struct ref_update *update,
 	new_update = ref_transaction_add_update(
 			transaction, referent, new_flags,
 			&update->new_oid, &update->old_oid,
-			update->msg);
+			update->reflog_info);
 
 	new_update->parent_update = update;
 
@@ -2902,9 +2902,15 @@ static int files_transaction_finish(struct ref_store *ref_store,
 		    update->flags & REF_LOG_ONLY) {
 			if (files_log_ref_write(refs,
 						lock->ref_name,
-						&lock->old_oid,
+						update->reflog_info &&
+						update->reflog_info->old_oid ?
+							update->reflog_info->old_oid :
+							&lock->old_oid,
 						&update->new_oid,
-						update->msg, update->flags,
+						update->reflog_info ?
+							update->reflog_info->msg :
+							NULL,
+						update->flags,
 						err)) {
 				char *old_msg = strbuf_detach(err, NULL);
 
