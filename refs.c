@@ -1045,7 +1045,11 @@ void ref_transaction_free(struct ref_transaction *transaction)
 	}
 
 	for (i = 0; i < transaction->nr; i++) {
-		free(transaction->updates[i]->msg);
+		if (transaction->updates[i]->reflog_info) {
+			free(transaction->updates[i]->reflog_info->msg);
+			free(transaction->updates[i]->reflog_info->old_oid);
+			free(transaction->updates[i]->reflog_info);
+		}
 		free(transaction->updates[i]);
 	}
 	free(transaction->updates);
@@ -1057,7 +1061,7 @@ struct ref_update *ref_transaction_add_update(
 		const char *refname, unsigned int flags,
 		const struct object_id *new_oid,
 		const struct object_id *old_oid,
-		const char *msg)
+		const struct reflog_info *reflog_info)
 {
 	struct ref_update *update;
 
@@ -1074,7 +1078,12 @@ struct ref_update *ref_transaction_add_update(
 		oidcpy(&update->new_oid, new_oid);
 	if (flags & REF_HAVE_OLD)
 		oidcpy(&update->old_oid, old_oid);
-	update->msg = normalize_reflog_message(msg);
+	if (reflog_info) {
+		update->reflog_info = xcalloc(1, sizeof(*reflog_info));
+		update->reflog_info->msg = normalize_reflog_message(reflog_info->msg);
+		if (reflog_info->old_oid)
+			update->reflog_info->old_oid = oiddup(reflog_info->old_oid);
+	}
 	return update;
 }
 
@@ -1084,6 +1093,23 @@ int ref_transaction_update(struct ref_transaction *transaction,
 			   const struct object_id *old_oid,
 			   unsigned int flags, const char *msg,
 			   struct strbuf *err)
+{
+	struct reflog_info reflog_info;
+
+	reflog_info.msg = (char *)msg;
+	reflog_info.old_oid = NULL;
+	return ref_transaction_update_extended(transaction,
+					       refname, new_oid, old_oid,
+					       flags, &reflog_info, err);
+}
+
+int ref_transaction_update_extended(struct ref_transaction *transaction,
+				    const char *refname,
+				    const struct object_id *new_oid,
+				    const struct object_id *old_oid,
+				    unsigned int flags,
+				    const struct reflog_info *reflog_info,
+				    struct strbuf *err)
 {
 	assert(err);
 
@@ -1109,7 +1135,7 @@ int ref_transaction_update(struct ref_transaction *transaction,
 	flags |= (new_oid ? REF_HAVE_NEW : 0) | (old_oid ? REF_HAVE_OLD : 0);
 
 	ref_transaction_add_update(transaction, refname, flags,
-				   new_oid, old_oid, msg);
+				   new_oid, old_oid, reflog_info);
 	return 0;
 }
 
@@ -1156,14 +1182,30 @@ int refs_update_ref(struct ref_store *refs, const char *msg,
 		    const struct object_id *old_oid, unsigned int flags,
 		    enum action_on_err onerr)
 {
+	struct reflog_info reflog_info;
+
+	reflog_info.msg = (char *)msg;
+	reflog_info.old_oid = NULL;
+	return refs_update_ref_extended(refs, refname, new_oid, old_oid,
+					flags, &reflog_info, onerr);
+}
+
+int refs_update_ref_extended(struct ref_store *refs,
+			     const char *refname,
+			     const struct object_id *new_oid,
+			     const struct object_id *old_oid,
+			     unsigned int flags,
+			     const struct reflog_info *reflog_info,
+			     enum action_on_err onerr)
+{
 	struct ref_transaction *t = NULL;
 	struct strbuf err = STRBUF_INIT;
 	int ret = 0;
 
 	t = ref_store_transaction_begin(refs, &err);
 	if (!t ||
-	    ref_transaction_update(t, refname, new_oid, old_oid, flags, msg,
-				   &err) ||
+	    ref_transaction_update_extended(t, refname, new_oid, old_oid,
+					    flags, reflog_info, &err) ||
 	    ref_transaction_commit(t, &err)) {
 		ret = 1;
 		ref_transaction_free(t);
