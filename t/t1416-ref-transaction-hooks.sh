@@ -743,7 +743,7 @@ test_expect_success "branch: rename branches" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "branch: remove branches" '
+test_expect_success "branch: remove branches" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -872,7 +872,7 @@ test_expect_success "tag: update refs to create loose refs" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "tag: remove tags with mixed ref_stores" '
+test_expect_success "tag: remove tags with mixed ref_stores" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
