@@ -789,39 +789,7 @@ test_expect_success "branch: rename branches" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Mismatched hook output for "git branch -d":
-#
-#  * The delete branches operation should be treated as one transaction,
-#    but was splitted into several transactions on loose references,
-#    and the "reference-transaction committed" command was executed
-#    redundantly on the packed-ref-store.
-#
-# The differences are as follows:
-#
-#     @@ -2,11 +2,19 @@
-#      <ZERO-OID> <ZERO-OID> refs/heads/topic1
-#      <ZERO-OID> <ZERO-OID> refs/heads/topic2
-#      <ZERO-OID> <ZERO-OID> refs/heads/topic3
-#     +## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic2
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic3
-#     +## Call hook: reference-transaction  prepared ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
-#     +## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/heads/topic1
-#      ## Call hook: reference-transaction  prepared ##
-#     -<COMMIT-A> <ZERO-OID> refs/heads/topic1
-#      <COMMIT-B> <ZERO-OID> refs/heads/topic2
-#     -<COMMIT-C> <ZERO-OID> refs/heads/topic3
-#      ## Call hook: reference-transaction committed ##
-#     -<COMMIT-A> <ZERO-OID> refs/heads/topic1
-#      <COMMIT-B> <ZERO-OID> refs/heads/topic2
-#     +## Call hook: reference-transaction  prepared ##
-#     +<COMMIT-C> <ZERO-OID> refs/heads/topic3
-#     +## Call hook: reference-transaction committed ##
-#      <COMMIT-C> <ZERO-OID> refs/heads/topic3
-test_expect_failure "branch: remove branches" '
+test_expect_success "branch: remove branches" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -950,39 +918,7 @@ test_expect_success "tag: update refs to create loose refs" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Mismatched hook output for "git tag -d":
-#
-#  * The delete tags operation should be treated as one transaction,
-#    but was splitted into several transactions on loose references,
-#    and the "reference-transaction committed" command was executed
-#    redundantly on the packed-ref-store.
-#
-# The differences are as follows:
-#
-#     @@ -2,11 +2,19 @@
-#      <ZERO-OID> <ZERO-OID> refs/tags/v1
-#      <ZERO-OID> <ZERO-OID> refs/tags/v2
-#      <ZERO-OID> <ZERO-OID> refs/tags/v3
-#     +## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v1
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v2
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v3
-#     +## Call hook: reference-transaction  prepared ##
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v1
-#     +## Call hook: reference-transaction committed ##
-#     +<ZERO-OID> <ZERO-OID> refs/tags/v1
-#      ## Call hook: reference-transaction  prepared ##
-#     -<COMMIT-A> <ZERO-OID> refs/tags/v1
-#      <COMMIT-B> <ZERO-OID> refs/tags/v2
-#     -<COMMIT-C> <ZERO-OID> refs/tags/v3
-#      ## Call hook: reference-transaction committed ##
-#     -<COMMIT-A> <ZERO-OID> refs/tags/v1
-#      <COMMIT-B> <ZERO-OID> refs/tags/v2
-#     +## Call hook: reference-transaction  prepared ##
-#     +<COMMIT-C> <ZERO-OID> refs/tags/v3
-#     +## Call hook: reference-transaction committed ##
-#      <COMMIT-C> <ZERO-OID> refs/tags/v3
-test_expect_failure "tag: remove tags with mixed ref_stores" '
+test_expect_success "tag: remove tags with mixed ref_stores" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&

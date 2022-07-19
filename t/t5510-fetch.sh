@@ -168,11 +168,27 @@ test_expect_success REFFILES 'fetch --prune fails to delete branches' '
 	cd "$D" &&
 	git clone . prune-fail &&
 	cd prune-fail &&
+	git update-ref refs/remotes/origin/extrabranch main~ &&
+	git pack-refs --all &&
 	git update-ref refs/remotes/origin/extrabranch main &&
 	: this will prevent --prune from locking packed-refs for deleting refs, but adding loose refs still succeeds  &&
 	>.git/packed-refs.new &&
 
 	test_must_fail git fetch --prune origin
+'
+
+test_expect_success REFFILES 'fetch --prune ok for loose refs not in locked packed-refs' '
+	cd "$D" &&
+	git clone . prune-ok-ref-not-packed &&
+	(
+		cd prune-ok-ref-not-packed &&
+		git update-ref refs/remotes/origin/extrabranch main &&
+		: for loose refs not in packed-refs, we can delete them even the packed-refs is locked &&
+		:>.git/packed-refs.new &&
+
+		git fetch --prune origin &&
+		test_must_fail git rev-parse refs/remotes/origin/extrabranch --
+	)
 '
 
 test_expect_success 'fetch --atomic works with a single branch' '
