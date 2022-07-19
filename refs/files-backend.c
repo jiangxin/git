@@ -1268,31 +1268,27 @@ static int files_pack_refs(struct ref_store *ref_store, unsigned int flags)
 static int files_delete_refs(struct ref_store *ref_store, const char *msg,
 			     struct string_list *refnames, unsigned int flags)
 {
-	struct files_ref_store *refs =
-		files_downcast(ref_store, REF_STORE_WRITE, "delete_refs");
+	struct ref_transaction *transaction;
 	struct strbuf err = STRBUF_INIT;
 	int i, result = 0;
 
 	if (!refnames->nr)
 		return 0;
 
-	if (packed_refs_lock(refs->packed_ref_store, 0, &err))
+	transaction = ref_store_transaction_begin(ref_store, &err);
+	if (!transaction)
 		goto error;
-
-	if (refs_delete_refs(refs->packed_ref_store, msg, refnames, flags)) {
-		packed_refs_unlock(refs->packed_ref_store);
-		goto error;
-	}
-
-	packed_refs_unlock(refs->packed_ref_store);
 
 	for (i = 0; i < refnames->nr; i++) {
 		const char *refname = refnames->items[i].string;
-
-		if (refs_delete_ref(&refs->base, msg, refname, NULL, flags))
+		if (ref_transaction_delete(transaction, refname, NULL,
+					   flags, msg, &err))
 			result |= error(_("could not remove reference %s"), refname);
 	}
+	if (ref_transaction_commit(transaction, &err))
+		goto error;
 
+	ref_transaction_free(transaction);
 	strbuf_release(&err);
 	return result;
 
@@ -1309,6 +1305,7 @@ error:
 	else
 		error(_("could not delete references: %s"), err.buf);
 
+	ref_transaction_free(transaction);
 	strbuf_release(&err);
 	return -1;
 }
