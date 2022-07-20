@@ -715,9 +715,7 @@ test_expect_success "branch: update branch without old-oid" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Failed because the reference-transaction hook was not executed at all
-# when copying a branch using "git branch -c".
-test_expect_failure "branch: copy branches" '
+test_expect_success "branch: copy branches" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -750,29 +748,7 @@ test_expect_failure "branch: copy branches" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-# Mismatched hook output for "git branch -m":
-#
-#  * The "reference-transaction committed" command was not executed
-#    for the target branch.
-#
-# The differences are as follows:
-#
-#     @@ -3,14 +3,6 @@
-#      ## Call hook: reference-transaction committed ##
-#      <COMMIT-B> <ZERO-OID> refs/heads/topic4
-#      ## Call hook: reference-transaction  prepared ##
-#     -<ZERO-OID> <COMMIT-B> refs/heads/topic6
-#     -## Call hook: reference-transaction committed ##
-#     -<ZERO-OID> <COMMIT-B> refs/heads/topic6
-#     -## Call hook: reference-transaction  prepared ##
-#      <COMMIT-C> <ZERO-OID> refs/heads/topic5
-#      ## Call hook: reference-transaction committed ##
-#      <COMMIT-C> <ZERO-OID> refs/heads/topic5
-#     -## Call hook: reference-transaction  prepared ##
-#     -<ZERO-OID> <COMMIT-C> refs/heads/topic7
-#     -## Call hook: reference-transaction committed ##
-#     -<ZERO-OID> <COMMIT-C> refs/heads/topic7
-test_expect_failure "branch: rename branches" '
+test_expect_success "branch: rename branches" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
