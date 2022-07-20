@@ -1183,33 +1183,13 @@ int refs_update_ref(struct ref_store *refs, const char *msg,
 		    enum action_on_err onerr)
 {
 	struct reflog_info reflog_info;
+	struct strbuf err = STRBUF_INIT;
+	int ret;
 
 	reflog_info.msg = (char *)msg;
 	reflog_info.old_oid = NULL;
-	return refs_update_ref_extended(refs, refname, new_oid, old_oid,
-					flags, &reflog_info, onerr);
-}
-
-int refs_update_ref_extended(struct ref_store *refs,
-			     const char *refname,
-			     const struct object_id *new_oid,
-			     const struct object_id *old_oid,
-			     unsigned int flags,
-			     const struct reflog_info *reflog_info,
-			     enum action_on_err onerr)
-{
-	struct ref_transaction *t = NULL;
-	struct strbuf err = STRBUF_INIT;
-	int ret = 0;
-
-	t = ref_store_transaction_begin(refs, &err);
-	if (!t ||
-	    ref_transaction_update_extended(t, refname, new_oid, old_oid,
-					    flags, reflog_info, &err) ||
-	    ref_transaction_commit(t, &err)) {
-		ret = 1;
-		ref_transaction_free(t);
-	}
+	ret = refs_update_ref_extended(refs, refname, new_oid, old_oid,
+				       flags, &reflog_info, &err);
 	if (ret) {
 		const char *str = _("update_ref failed for ref '%s': %s");
 
@@ -1223,10 +1203,30 @@ int refs_update_ref_extended(struct ref_store *refs,
 		case UPDATE_REFS_QUIET_ON_ERR:
 			break;
 		}
-		strbuf_release(&err);
-		return 1;
 	}
 	strbuf_release(&err);
+	return ret;
+}
+
+int refs_update_ref_extended(struct ref_store *refs,
+			     const char *refname,
+			     const struct object_id *new_oid,
+			     const struct object_id *old_oid,
+			     unsigned int flags,
+			     const struct reflog_info *reflog_info,
+			     struct strbuf *err)
+{
+	struct ref_transaction *t = NULL;
+
+	t = ref_store_transaction_begin(refs, err);
+	if (!t ||
+	    ref_transaction_update_extended(t, refname, new_oid, old_oid,
+					    flags, reflog_info, err) ||
+	    ref_transaction_commit(t, err)) {
+		ref_transaction_free(t);
+		return 1;
+	}
+
 	if (t)
 		ref_transaction_free(t);
 	return 0;
