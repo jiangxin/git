@@ -825,7 +825,7 @@ int refs_update_ref_extended(struct ref_store *refs,
 			     const struct object_id *old_oid,
 			     unsigned int flags,
 			     const struct reflog_info *reflog_info,
-			     enum action_on_err onerr);
+			     struct strbuf *err);
 int update_ref(const char *msg, const char *refname,
 	       const struct object_id *new_oid, const struct object_id *old_oid,
 	       unsigned int flags, enum action_on_err onerr);
