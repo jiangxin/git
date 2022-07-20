@@ -669,7 +669,7 @@ test_expect_success "branch: update refs to create loose refs" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "branch: copy branches" '
+test_expect_success "branch: copy branches" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&
@@ -702,7 +702,7 @@ test_expect_failure "branch: copy branches" '
 	test_cmp_heads_and_tags -C workdir expect
 '
 
-test_expect_failure "branch: rename branches" '
+test_expect_success "branch: rename branches" '
 	test_when_finished "rm -f $HOOK_OUTPUT" &&
 
 	cat >expect <<-\EOF &&

@@ -1376,10 +1376,6 @@ static int rename_tmp_log(struct files_ref_store *refs, const char *newrefname)
 static int write_ref_to_lockfile(struct ref_lock *lock,
 				 const struct object_id *oid,
 				 int skip_oid_verification, struct strbuf *err);
-static int commit_ref_update(struct files_ref_store *refs,
-			     struct ref_lock *lock,
-			     const struct object_id *oid, const char *logmsg,
-			     struct strbuf *err);
 
 /*
  * Emit a better error message than lockfile.c's
@@ -1418,13 +1414,13 @@ static int files_copy_or_rename_ref(struct ref_store *ref_store,
 		files_downcast(ref_store, REF_STORE_WRITE, "rename_ref");
 	struct object_id orig_oid;
 	int flag = 0, logmoved = 0;
-	struct ref_lock *lock;
 	struct stat loginfo;
 	struct strbuf sb_oldref = STRBUF_INIT;
 	struct strbuf sb_newref = STRBUF_INIT;
 	struct strbuf tmp_renamed_log = STRBUF_INIT;
 	int log, ret;
 	struct strbuf err = STRBUF_INIT;
+	struct reflog_info reflog_info;
 
 	files_reflog_path(refs, &sb_oldref, oldrefname);
 	files_reflog_path(refs, &sb_newref, newrefname);
@@ -1510,20 +1506,14 @@ static int files_copy_or_rename_ref(struct ref_store *ref_store,
 
 	logmoved = log;
 
-	lock = lock_ref_oid_basic(refs, newrefname, &err);
-	if (!lock) {
+	reflog_info.msg = (char *)logmsg;
+	reflog_info.old_oid = &orig_oid;
+	if (refs_update_ref_extended(ref_store, newrefname, &orig_oid, NULL,
+				     REF_NO_DEREF, &reflog_info, &err)) {
 		if (copy)
 			error("unable to copy '%s' to '%s': %s", oldrefname, newrefname, err.buf);
 		else
 			error("unable to rename '%s' to '%s': %s", oldrefname, newrefname, err.buf);
-		strbuf_release(&err);
-		goto rollback;
-	}
-	oidcpy(&lock->old_oid, &orig_oid);
-
-	if (write_ref_to_lockfile(lock, &orig_oid, 0, &err) ||
-	    commit_ref_update(refs, lock, &orig_oid, logmsg, &err)) {
-		error("unable to write current sha1 into %s: %s", newrefname, err.buf);
 		strbuf_release(&err);
 		goto rollback;
 	}
@@ -1532,23 +1522,15 @@ static int files_copy_or_rename_ref(struct ref_store *ref_store,
 	goto out;
 
  rollback:
-	lock = lock_ref_oid_basic(refs, oldrefname, &err);
-	if (!lock) {
-		error("unable to lock %s for rollback: %s", oldrefname, err.buf);
-		strbuf_release(&err);
-		goto rollbacklog;
-	}
-
 	flag = log_all_ref_updates;
 	log_all_ref_updates = LOG_REFS_NONE;
-	if (write_ref_to_lockfile(lock, &orig_oid, 0, &err) ||
-	    commit_ref_update(refs, lock, &orig_oid, NULL, &err)) {
+	if (refs_update_ref_extended(ref_store, oldrefname, &orig_oid, NULL,
+				     REF_NO_DEREF, NULL, &err)) {
 		error("unable to write current sha1 into %s: %s", oldrefname, err.buf);
 		strbuf_release(&err);
 	}
 	log_all_ref_updates = flag;
 
- rollbacklog:
 	if (logmoved && rename(sb_newref.buf, sb_oldref.buf))
 		error("unable to restore logfile %s from %s: %s",
 			oldrefname, newrefname, strerror(errno));
@@ -1812,71 +1794,6 @@ static int write_ref_to_lockfile(struct ref_lock *lock,
 		unlock_ref(lock);
 		return -1;
 	}
-	return 0;
-}
-
-/*
- * Commit a change to a loose reference that has already been written
- * to the loose reference lockfile. Also update the reflogs if
- * necessary, using the specified lockmsg (which can be NULL).
- */
-static int commit_ref_update(struct files_ref_store *refs,
-			     struct ref_lock *lock,
-			     const struct object_id *oid, const char *logmsg,
-			     struct strbuf *err)
-{
-	files_assert_main_repository(refs, "commit_ref_update");
-
-	clear_loose_ref_cache(refs);
-	if (files_log_ref_write(refs, lock->ref_name,
-				&lock->old_oid, oid,
-				logmsg, 0, err)) {
-		char *old_msg = strbuf_detach(err, NULL);
-		strbuf_addf(err, "cannot update the ref '%s': %s",
-			    lock->ref_name, old_msg);
-		free(old_msg);
-		unlock_ref(lock);
-		return -1;
-	}
-
-	if (strcmp(lock->ref_name, "HEAD") != 0) {
-		/*
-		 * Special hack: If a branch is updated directly and HEAD
-		 * points to it (may happen on the remote side of a push
-		 * for example) then logically the HEAD reflog should be
-		 * updated too.
-		 * A generic solution implies reverse symref information,
-		 * but finding all symrefs pointing to the given branch
-		 * would be rather costly for this rare event (the direct
-		 * update of a branch) to be worth it.  So let's cheat and
-		 * check with HEAD only which should cover 99% of all usage
-		 * scenarios (even 100% of the default ones).
-		 */
-		int head_flag;
-		const char *head_ref;
-
-		head_ref = refs_resolve_ref_unsafe(&refs->base, "HEAD",
-						   RESOLVE_REF_READING,
-						   NULL, &head_flag);
-		if (head_ref && (head_flag & REF_ISSYMREF) &&
-		    !strcmp(head_ref, lock->ref_name)) {
-			struct strbuf log_err = STRBUF_INIT;
-			if (files_log_ref_write(refs, "HEAD",
-						&lock->old_oid, oid,
-						logmsg, 0, &log_err)) {
-				error("%s", log_err.buf);
-				strbuf_release(&log_err);
-			}
-		}
-	}
-
-	if (commit_ref(lock)) {
-		strbuf_addf(err, "couldn't set '%s'", lock->ref_name);
-		unlock_ref(lock);
-		return -1;
-	}
-
-	unlock_ref(lock);
 	return 0;
 }
 
