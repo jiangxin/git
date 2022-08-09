@@ -5,3 +5,7 @@ init.templateDir::
 init.defaultBranch::
 	Allows overriding the default branch name e.g. when initializing
 	a new repository.
+
+init.checksum::
+	Call "git checksum --init" to create initial checksum file for
+	the new repository.

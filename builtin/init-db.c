@@ -10,6 +10,7 @@
 #include "exec-cmd.h"
 #include "parse-options.h"
 #include "worktree.h"
+#include "run-command.h"
 
 #ifndef DEFAULT_GIT_TEMPLATE_DIR
 #define DEFAULT_GIT_TEMPLATE_DIR "/usr/share/git-core/templates"
@@ -468,6 +469,22 @@ int init_db(const char *git_dir, const char *real_git_dir,
 			       ? _("Initialized empty shared Git repository in %s%s\n")
 			       : _("Initialized empty Git repository in %s%s\n"),
 			       git_dir, len && git_dir[len-1] != '/' ? "/" : "");
+	}
+
+	if (!reinit) {
+		/* Call "git-checksum --init" to create checksum file */
+		struct child_process proc = CHILD_PROCESS_INIT;
+		int init_checksum = 1;
+
+		git_config_get_bool("init.checksum", &init_checksum);
+		if (init_checksum) {
+			strvec_pushl(&proc.args, "git-checksum", "--init", NULL);
+			proc.git_cmd = 0;
+			proc.use_shell = 0;
+			proc.dir = git_dir;
+			proc.silent_exec_failure = 1;
+			run_command(&proc);
+		}
 	}
 
 	free(original_git_dir);

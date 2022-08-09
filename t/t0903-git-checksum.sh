@@ -135,6 +135,21 @@ test_cmp_heads_and_tags () {
 	test_cmp "$expect" "$actual"
 }
 
+test_expect_success GIT_CHECKSUM "create initial checksum file with -c init.checksum=true" '
+	git -c init.checksum=true init --bare init-1.git &&
+	test_path_is_file init-1.git/info/checksum
+'
+
+test_expect_success GIT_CHECKSUM "no initial checksum file with -c init.checksum=false" '
+	git -c init.checksum=false init --bare init-2.git &&
+	test_path_is_missing init-2.git/info/checksum
+'
+
+test_expect_success GIT_CHECKSUM "init with default init.checksum=true" '
+	git init --bare init-3.git &&
+	test_path_is_file init-3.git/info/checksum
+'
+
 test_expect_success GIT_CHECKSUM "create an empty checksum before commit" '
 	test_when_finished "rm -rf bare.git" &&
 	if ! test -z "$test_tick"
@@ -142,8 +157,7 @@ test_expect_success GIT_CHECKSUM "create an empty checksum before commit" '
 		unset test_tick
 	fi &&
 	create_bare_repo bare.git &&
-	test_path_is_missing bare.git/$checksum &&
-	touch bare.git/$checksum &&
+	test_path_is_file bare.git/$checksum &&
 	create_commits_in_bare_repo bare.git A B C D E F &&
 	git -C bare.git checksum >actual &&
 	cat >expect<<-\EOF &&
@@ -159,7 +173,8 @@ test_expect_success GIT_CHECKSUM "re-create bare repo, no initial checksum, won'
 	fi &&
 	create_bare_repo bare.git &&
 	create_commits_in_bare_repo bare.git A B C D E F &&
-	test_path_is_missing "bare.git/$checksum" &&
+	test_path_is_file "bare.git/$checksum" &&
+	rm "bare.git/$checksum" &&
 	test_must_fail git -C bare.git checksum >actual 2>&1 &&
 	cat >expect<<-\EOF &&
 		ERROR: checksum file does not exist, please run `git-checksum --init` to create one
@@ -300,7 +315,6 @@ test_expect_success GIT_CHECKSUM "setup git config and test_tick" '
 
 test_expect_success GIT_CHECKSUM "setup base repository" '
 	git init base &&
-	git -C base checksum --init &&
 	create_commits_in base A B C &&
 	git -C base checksum --verify &&
 
@@ -312,7 +326,6 @@ test_expect_success GIT_CHECKSUM "setup base repository" '
 
 test_expect_success GIT_CHECKSUM "update-ref: setup workdir using git-clone" '
 	git clone base workdir &&
-	git -C workdir checksum --init &&
 	git -C workdir checksum --verify &&
 
 	cat >expect <<-\EOF &&
@@ -480,7 +493,6 @@ test_expect_success GIT_CHECKSUM "update-ref --stdin: delete refs" '
 test_expect_success GIT_CHECKSUM "branch: setup workdir using git-fetch" '
 	rm -rf workdir &&
 	git init workdir &&
-	git -C workdir checksum --init &&
 	git -C workdir remote add origin ../base &&
 	git -C workdir fetch origin &&
 	git -C workdir checksum --verify &&
@@ -589,7 +601,6 @@ test_expect_success GIT_CHECKSUM "branch: remove branches" '
 test_expect_success GIT_CHECKSUM "tag: setup workdir using git-push" '
 	rm -rf workdir &&
 	git init workdir &&
-	git -C workdir checksum --init &&
 	git -C workdir config receive.denyCurrentBranch ignore &&
 	git -C base push ../workdir "+refs/heads/*:refs/heads/*" &&
 	git -C workdir checksum --verify &&
@@ -660,12 +671,10 @@ test_expect_success GIT_CHECKSUM "tag: remove tags with mixed ref_stores" '
 test_expect_success GIT_CHECKSUM "worktree: setup workdir using push --atomic" '
 	rm -rf workdir &&
 	git init --bare repo.git &&
-	git -C repo.git checksum --init &&
 	git -C base push --atomic --mirror ../repo.git &&
 	git -C repo.git checksum --verify &&
 
 	git clone --no-local repo.git workdir &&
-	git -C workdir checksum --init &&
 	git -C workdir checksum --verify &&
 
 	cat >expect <<-\EOF &&
