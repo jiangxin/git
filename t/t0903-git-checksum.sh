@@ -288,4 +288,504 @@ test_expect_success GIT_CHECKSUM "recreate checksum" '
 	git -C bare.git checksum -V
 '
 
+## The following testcases are copied from t1416.
+
+test_expect_success GIT_CHECKSUM "setup git config and test_tick" '
+	git config --global core.abbrev 7 &&
+	if ! test -z "$test_tick"
+	then
+		unset test_tick
+	fi
+'
+
+test_expect_success GIT_CHECKSUM "setup base repository" '
+	git init base &&
+	git -C base checksum --init &&
+	create_commits_in base A B C &&
+	git -C base checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+	EOF
+	test_cmp_heads_and_tags -C base expect
+'
+
+test_expect_success GIT_CHECKSUM "update-ref: setup workdir using git-clone" '
+	git clone base workdir &&
+	git -C workdir checksum --init &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "update-ref: create new refs" '
+	(
+		cd workdir &&
+		git update-ref refs/heads/topic1 $A &&
+		git update-ref refs/heads/topic2 $A &&
+		git update-ref refs/heads/topic3 $A
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-A> refs/heads/topic1
+		<COMMIT-A> refs/heads/topic2
+		<COMMIT-A> refs/heads/topic3
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "update-ref: update HEAD, a symbolic-ref" '
+	test_when_finished "git -C workdir switch main" &&
+	(
+		cd workdir &&
+		git switch topic1 &&
+		git update-ref HEAD $B $A &&
+		git update-ref HEAD $A &&
+		git switch main
+	) &&
+	git -C workdir checksum --verify &&
+	git -C workdir checksum >actual &&
+	cat >expect <<-\EOF &&
+		62d089191391ac5bbbda866ff3e0ca10
+	EOF
+	test_cmp expect actual &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-A> refs/heads/topic1
+		<COMMIT-A> refs/heads/topic2
+		<COMMIT-A> refs/heads/topic3
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "update-ref: call git-pack-refs to create packed_ref_store" '
+	git -C workdir pack-refs --all &&
+	git -C workdir checksum --verify &&
+	git -C workdir checksum >actual &&
+	cat >expect <<-\EOF &&
+		62d089191391ac5bbbda866ff3e0ca10
+	EOF
+	test_cmp expect actual
+'
+
+test_expect_success GIT_CHECKSUM "update-ref: update refs already packed to .git/packed-refs" '
+	(
+		cd workdir &&
+		git update-ref refs/heads/topic2 $B $A &&
+		git update-ref refs/heads/topic3 $C &&
+		git update-ref refs/heads/topic4 $A &&
+		git update-ref refs/heads/topic4 $C
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-A> refs/heads/topic1
+		<COMMIT-B> refs/heads/topic2
+		<COMMIT-C> refs/heads/topic3
+		<COMMIT-C> refs/heads/topic4
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "update-ref: remove refs with mixed ref_stores" '
+	(
+		cd workdir &&
+		git update-ref -d refs/heads/topic1 $A &&
+		git update-ref -d refs/heads/topic2 $B &&
+		git update-ref -d refs/heads/topic3 &&
+		git update-ref -d refs/heads/topic4
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "update-ref --stdin: create new refs" '
+	test_when_finished "git -C workdir pack-refs --all" &&
+
+	(
+		cd workdir &&
+		git update-ref --stdin <<-EOF
+			create refs/heads/topic1 $A
+			create refs/heads/topic2 $A
+			create refs/heads/topic3 $A
+		EOF
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-A> refs/heads/topic1
+		<COMMIT-A> refs/heads/topic2
+		<COMMIT-A> refs/heads/topic3
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "update-ref --stdin: update refs" '
+	(
+		cd workdir &&
+		git update-ref --stdin <<-EOF
+			start
+			update refs/heads/topic2 $B $A
+			update refs/heads/topic3 $C
+			create refs/heads/topic4 $C
+			prepare
+			commit
+		EOF
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-A> refs/heads/topic1
+		<COMMIT-B> refs/heads/topic2
+		<COMMIT-C> refs/heads/topic3
+		<COMMIT-C> refs/heads/topic4
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "update-ref --stdin: delete refs" '
+	(
+		cd workdir &&
+		git update-ref --stdin <<-EOF
+			start
+			delete refs/heads/topic1
+			delete refs/heads/topic2 $B
+			delete refs/heads/topic3
+			delete refs/heads/topic4
+			prepare
+			commit
+		EOF
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "branch: setup workdir using git-fetch" '
+	rm -rf workdir &&
+	git init workdir &&
+	git -C workdir checksum --init &&
+	git -C workdir remote add origin ../base &&
+	git -C workdir fetch origin &&
+	git -C workdir checksum --verify &&
+
+	git -C workdir switch -c main origin/main &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "branch: create new branches" '
+	(
+		cd workdir &&
+		git branch topic1 $A &&
+		git branch topic2 $A
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-A> refs/heads/topic1
+		<COMMIT-A> refs/heads/topic2
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "branch: call git-gc to create packed_ref_store" '
+	git -C workdir gc &&
+	test_path_is_file workdir/.git/packed-refs &&
+	git -C workdir checksum --verify
+'
+
+test_expect_success GIT_CHECKSUM "branch: update refs to create loose refs" '
+	(
+		cd workdir &&
+		git branch -f topic2 $B &&
+		git branch topic3 $C
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-A> refs/heads/topic1
+		<COMMIT-B> refs/heads/topic2
+		<COMMIT-C> refs/heads/topic3
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "branch: copy branches" '
+	(
+		cd workdir &&
+		git branch -c topic2 topic4 &&
+		git branch -c topic3 topic5
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-A> refs/heads/topic1
+		<COMMIT-B> refs/heads/topic2
+		<COMMIT-C> refs/heads/topic3
+		<COMMIT-B> refs/heads/topic4
+		<COMMIT-C> refs/heads/topic5
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "branch: rename branches" '
+	(
+		cd workdir &&
+		git branch -m topic4 topic6 &&
+		git branch -m topic5 topic7
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-A> refs/heads/topic1
+		<COMMIT-B> refs/heads/topic2
+		<COMMIT-C> refs/heads/topic3
+		<COMMIT-B> refs/heads/topic6
+		<COMMIT-C> refs/heads/topic7
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "branch: remove branches" '
+	(
+		cd workdir &&
+		git branch -d topic1 topic2 topic3
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-B> refs/heads/topic6
+		<COMMIT-C> refs/heads/topic7
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "tag: setup workdir using git-push" '
+	rm -rf workdir &&
+	git init workdir &&
+	git -C workdir checksum --init &&
+	git -C workdir config receive.denyCurrentBranch ignore &&
+	git -C base push ../workdir "+refs/heads/*:refs/heads/*" &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+	EOF
+	test_cmp_heads_and_tags -C workdir expect &&
+
+	git -C workdir restore --staged -- . &&
+	git -C workdir restore -- .
+'
+
+test_expect_success GIT_CHECKSUM "tag: create new tags" '
+	(
+		cd workdir &&
+		git tag v1 $A &&
+		git tag v2 $A
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-A> refs/tags/v1
+		<COMMIT-A> refs/tags/v2
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "tag: call git-pack-refs to create packed_ref_store" '
+	git -C workdir pack-refs --all &&
+	test_path_is_file workdir/.git/packed-refs &&
+	git -C workdir checksum --verify
+'
+
+test_expect_success GIT_CHECKSUM "tag: update refs to create loose refs" '
+	(
+		cd workdir &&
+		git tag -f v2 $B &&
+		git tag v3 $C
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-A> refs/tags/v1
+		<COMMIT-B> refs/tags/v2
+		<COMMIT-C> refs/tags/v3
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "tag: remove tags with mixed ref_stores" '
+	(
+		cd workdir &&
+		git tag -d v1 &&
+		git tag -d v2 &&
+		git tag -d v3
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "worktree: setup workdir using push --atomic" '
+	rm -rf workdir &&
+	git init --bare repo.git &&
+	git -C repo.git checksum --init &&
+	git -C base push --atomic --mirror ../repo.git &&
+	git -C repo.git checksum --verify &&
+
+	git clone --no-local repo.git workdir &&
+	git -C workdir checksum --init &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "worktree: topic1: commit --amend" '
+	(
+		cd workdir &&
+		git checkout -b topic1 &&
+		git commit --amend -m "C (amend)"
+	) &&
+	D=$(git -C workdir rev-parse HEAD) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-D> refs/heads/topic1
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "worktree: topic2: merge" '
+	(
+		cd workdir &&
+		git checkout -b topic2 $A &&
+		git merge --no-ff main &&
+		test_path_is_file B.t &&
+		test_path_is_file C.t
+	) &&
+	E=$(git -C workdir rev-parse HEAD) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-D> refs/heads/topic1
+		<COMMIT-E> refs/heads/topic2
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "worktree: topic3: cherry-pick" '
+	(
+		cd workdir &&
+		git checkout -b topic3 $A &&
+		git cherry-pick $C &&
+		test_path_is_file C.t &&
+		test_path_is_missing B.t
+	) &&
+	F=$(git -C workdir rev-parse HEAD) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-D> refs/heads/topic1
+		<COMMIT-E> refs/heads/topic2
+		<COMMIT-F> refs/heads/topic3
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "worktree: topic4: rebase" '
+	git -C workdir checkout -b topic4 $A &&
+	create_commits_in workdir G &&
+	git -C workdir rebase main &&
+	H=$(git -C workdir rev-parse HEAD) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-D> refs/heads/topic1
+		<COMMIT-E> refs/heads/topic2
+		<COMMIT-F> refs/heads/topic3
+		<COMMIT-H> refs/heads/topic4
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "worktree: topic5: revert" '
+	(
+		cd workdir &&
+		git checkout -b topic5 $C &&
+		git revert HEAD &&
+		test_path_is_file B.t &&
+		test_path_is_missing C.t
+	) &&
+	I=$(git -C workdir rev-parse HEAD) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-D> refs/heads/topic1
+		<COMMIT-E> refs/heads/topic2
+		<COMMIT-F> refs/heads/topic3
+		<COMMIT-H> refs/heads/topic4
+		<COMMIT-I> refs/heads/topic5
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
+test_expect_success GIT_CHECKSUM "worktree: topic6: reset" '
+	(
+		cd workdir &&
+		git checkout -b topic6 $C &&
+		git reset --hard $B
+	) &&
+	git -C workdir checksum --verify &&
+
+	cat >expect <<-\EOF &&
+		<COMMIT-C> refs/heads/main
+		<COMMIT-D> refs/heads/topic1
+		<COMMIT-E> refs/heads/topic2
+		<COMMIT-F> refs/heads/topic3
+		<COMMIT-H> refs/heads/topic4
+		<COMMIT-I> refs/heads/topic5
+		<COMMIT-B> refs/heads/topic6
+	EOF
+	test_cmp_heads_and_tags -C workdir expect
+'
+
 test_done
