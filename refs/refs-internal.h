@@ -221,6 +221,9 @@ enum ref_transaction_state {
 	(REF_TRANSACTION_RUN_PREPARED_HOOK  | \
 	 REF_TRANSACTION_RUN_COMMITTED_HOOK | \
 	 REF_TRANSACTION_RUN_ABORTED_HOOK)
+
+#define REF_TRANSACTION_DIRECT_TO_PACKED_REFS (1 << 3)
+
 /*
  * Data structure for holding a reference transaction, which can
  * consist of checks and updates to multiple references, carried out
@@ -233,6 +236,7 @@ struct ref_transaction {
 	size_t nr;
 	enum ref_transaction_state state;
 	unsigned int hook_flags;
+	unsigned int flags;
 	void *backend_data;
 };
 
@@ -566,11 +570,6 @@ typedef int ref_transaction_finish_fn(struct ref_store *refs,
 				      struct ref_transaction *transaction,
 				      struct strbuf *err);
 
-typedef int ref_transaction_finish_extended_fn(struct ref_store *refs,
-					       struct ref_transaction *transaction,
-					       struct strbuf *err,
-					       int direct_to_packed_refs);
-
 typedef int ref_transaction_abort_fn(struct ref_store *refs,
 				     struct ref_transaction *transaction,
 				     struct strbuf *err);
@@ -703,7 +702,6 @@ struct ref_storage_be {
 	ref_transaction_prepare_fn *transaction_prepare;
 	ref_transaction_prepare_extended_fn *transaction_prepare_extended;
 	ref_transaction_finish_fn *transaction_finish;
-	ref_transaction_finish_extended_fn *transaction_finish_extended;
 	ref_transaction_abort_fn *transaction_abort;
 	ref_transaction_commit_fn *initial_transaction_commit;
 

@@ -2308,10 +2308,7 @@ int ref_transaction_commit_extended(struct ref_transaction *transaction,
 		break;
 	}
 
-	ret = refs->be->transaction_finish_extended(refs,
-						    transaction,
-						    err,
-						    direct_to_packed_refs);
+	ret = refs->be->transaction_finish(refs, transaction, err);
 	if (!ret)
 		run_transaction_hook(transaction, "committed");
 	return ret;

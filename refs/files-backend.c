@@ -2629,6 +2629,11 @@ static int files_transaction_prepare_extended(struct ref_store *ref_store,
 	if (!transaction->nr)
 		goto cleanup;
 
+	if (direct_to_packed_refs)
+		transaction->flags |= REF_TRANSACTION_DIRECT_TO_PACKED_REFS;
+	else
+		transaction->flags &= ~REF_TRANSACTION_DIRECT_TO_PACKED_REFS;
+
 	CALLOC_ARRAY(backend_data, 1);
 	transaction->backend_data = backend_data;
 
@@ -2704,28 +2709,64 @@ static int files_transaction_prepare_extended(struct ref_store *ref_store,
 		if (ret)
 			goto cleanup;
 
-		if (update->flags & REF_DELETING &&
-		    !(update->flags & REF_LOG_ONLY) &&
-		    !(update->flags & REF_IS_PRUNING)) {
+		/*
+		 * Bypass entries with no real changes that should not make change
+		 * in the "packed-refs" file.
+		 */
+		if ((update->flags & REF_LOG_ONLY) ||
+		    (update->flags & REF_IS_PRUNING)) {
+			continue;
+		} else if (!direct_to_packed_refs) {
 			/*
-			 * This reference has to be deleted from
-			 * packed-refs if it exists there.
+			 * For normal process, only need to update packed-refs
+			 * for deleting operations.
 			 */
-			if (!packed_transaction) {
-				packed_transaction = ref_store_transaction_begin_extended(
-						refs->packed_ref_store,
-						transaction->hook_flags &
-							REF_TRANSACTION_RUN_PREPARED_HOOK,
-						err);
-				if (!packed_transaction) {
-					ret = TRANSACTION_GENERIC_ERROR;
-					goto cleanup;
-				}
+			if (!(update->flags & REF_DELETING))
+			    continue;
+		} else {
+			/*
+			 * For direct to packed-refs case, we should update the
+			 * "packed-refs" file when there are any changed refs,
+			 * including: deleted refs, new refs or changed refs.
+			 * And we should ignore other cases.
+			 */
+			if (!(update->flags & REF_DELETING) &&
+			    !(update->flags & REF_NEEDS_COMMIT))
+			    continue;
+		}
 
-				backend_data->packed_transaction =
-					packed_transaction;
+		/*
+		 * This reference has to be deleted from
+		 * packed-refs if it exists there.
+		 */
+		if (!packed_transaction) {
+			packed_transaction = ref_store_transaction_begin_extended(
+					refs->packed_ref_store,
+					transaction->hook_flags &
+						REF_TRANSACTION_RUN_PREPARED_HOOK,
+					err);
+			if (!packed_transaction) {
+				ret = TRANSACTION_GENERIC_ERROR;
+				goto cleanup;
 			}
 
+			backend_data->packed_transaction =
+				packed_transaction;
+		}
+
+		/* For normal process, add delete reference job to packed_transaction */
+		if (update->flags & REF_DELETING) {
+			ref_transaction_add_update(
+					packed_transaction, update->refname,
+					REF_HAVE_NEW | REF_NO_DEREF,
+					&update->new_oid, NULL,
+					NULL);
+		} else if (direct_to_packed_refs &&
+			   (update->flags & REF_NEEDS_COMMIT)) {
+			/*
+			 * Only save changed references (not deleting) to
+			 * packed_transaction for direct_to_packed_refs case.
+			 */
 			ref_transaction_add_update(
 					packed_transaction, update->refname,
 					REF_HAVE_NEW | REF_NO_DEREF,
@@ -2849,10 +2890,9 @@ static int files_transaction_prepare(struct ref_store *ref_store,
  *
  *   * Do not commit but delete refereces which marked as REF_NEEDS_COMMIT.
  */
-static int files_transaction_finish_extended(struct ref_store *ref_store,
-					     struct ref_transaction *transaction,
-					     struct strbuf *err,
-					     int direct_to_packed_refs)
+static int files_transaction_finish(struct ref_store *ref_store,
+				    struct ref_transaction *transaction,
+				    struct strbuf *err)
 {
 	struct files_ref_store *refs =
 		files_downcast(ref_store, 0, "ref_transaction_finish");
@@ -2861,7 +2901,7 @@ static int files_transaction_finish_extended(struct ref_store *ref_store,
 	struct strbuf sb = STRBUF_INIT;
 	struct files_transaction_backend_data *backend_data;
 	struct ref_transaction *packed_transaction;
-
+	int direct_to_packed_refs;
 
 	assert(err);
 
@@ -2870,6 +2910,7 @@ static int files_transaction_finish_extended(struct ref_store *ref_store,
 		return 0;
 	}
 
+	direct_to_packed_refs = transaction->flags & REF_TRANSACTION_DIRECT_TO_PACKED_REFS;
 	backend_data = transaction->backend_data;
 	packed_transaction = backend_data->packed_transaction;
 
@@ -2903,7 +2944,11 @@ static int files_transaction_finish_extended(struct ref_store *ref_store,
 				goto cleanup;
 			}
 		}
-		if (update->flags & REF_NEEDS_COMMIT) {
+		/*
+		 * If direct_to_packed_refs is true, we should delete the reference
+		 * instead of commit it.
+		 */
+		if (!direct_to_packed_refs && (update->flags & REF_NEEDS_COMMIT)) {
 			clear_loose_ref_cache(refs);
 			if (commit_ref(lock)) {
 				strbuf_addf(err, "couldn't set '%s'", lock->ref_name);
@@ -2956,8 +3001,10 @@ static int files_transaction_finish_extended(struct ref_store *ref_store,
 		struct ref_update *update = transaction->updates[i];
 		struct ref_lock *lock = update->backend_data;
 
-		if (update->flags & REF_DELETING &&
-		    !(update->flags & REF_LOG_ONLY)) {
+		if ((update->flags & REF_DELETING &&
+		    !(update->flags & REF_LOG_ONLY)) ||
+		    /* Remove loose reference, if we save ref directly into packed-refs */
+		    (direct_to_packed_refs && (update->flags & REF_NEEDS_COMMIT))) {
 			update->flags |= REF_DELETED_RMDIR;
 			if (!(update->type & REF_ISPACKED) ||
 			    update->type & REF_ISSYMREF) {
@@ -2994,13 +3041,6 @@ cleanup:
 
 	strbuf_release(&sb);
 	return ret;
-}
-
-static int files_transaction_finish(struct ref_store *ref_store,
-				    struct ref_transaction *transaction,
-				    struct strbuf *err)
-{
-	return files_transaction_finish_extended(ref_store, transaction, err, 0);
 }
 
 static int files_transaction_abort(struct ref_store *ref_store,
@@ -3307,7 +3347,6 @@ struct ref_storage_be refs_be_files = {
 	.transaction_prepare = files_transaction_prepare,
 	.transaction_prepare_extended = files_transaction_prepare_extended,
 	.transaction_finish = files_transaction_finish,
-	.transaction_finish_extended = files_transaction_finish_extended,
 	.transaction_abort = files_transaction_abort,
 	.initial_transaction_commit = files_initial_transaction_commit,
 
