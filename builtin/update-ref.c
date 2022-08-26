@@ -5,6 +5,7 @@
 #include "parse-options.h"
 #include "quote.h"
 #include "strvec.h"
+#include "refs/refs-internal.h"
 
 static const char * const git_update_ref_usage[] = {
 	N_("git update-ref [<options>] -d <refname> [<old-val>]"),
@@ -13,11 +14,35 @@ static const char * const git_update_ref_usage[] = {
 	NULL
 };
 
+#define DEFAULT_PACK_REF_STORE_THRESHOLD 10
+static int pack_ref_store_threshold = DEFAULT_PACK_REF_STORE_THRESHOLD;
+
 static char line_termination = '\n';
 static unsigned int update_flags;
 static unsigned int default_flags;
 static unsigned create_reflog_flag;
 static const char *msg;
+
+static int git_update_ref_config(const char *k, const char *v, void *cb)
+{
+	int is_bool;
+
+	if (!strcmp(k, "pack.refstorethreshold")) {
+		pack_ref_store_threshold = git_config_bool_or_int(k, v, &is_bool);
+		if (is_bool && pack_ref_store_threshold)
+			pack_ref_store_threshold = DEFAULT_PACK_REF_STORE_THRESHOLD;
+		return 0;
+	}
+
+	return git_default_config(k, v, cb);
+}
+
+static int should_write_to_packed_refs(struct ref_transaction *transaction)
+{
+	if (pack_ref_store_threshold && transaction->nr >= pack_ref_store_threshold)
+		return 1;
+	return 0;
+}
 
 /*
  * Parse one whitespace- or NUL-terminated, possibly C-quoted argument
@@ -330,9 +355,11 @@ static void parse_cmd_prepare(struct ref_transaction *transaction,
 			      const char *next, const char *end)
 {
 	struct strbuf error = STRBUF_INIT;
+	int direct_to_packed_refs = should_write_to_packed_refs(transaction);
 	if (*next != line_termination)
 		die("prepare: extra input: %s", next);
-	if (ref_transaction_prepare(transaction, &error))
+	if (ref_transaction_prepare_extended(transaction, &error,
+					     direct_to_packed_refs))
 		die("prepare: %s", error.buf);
 	report_ok("prepare");
 }
@@ -352,9 +379,11 @@ static void parse_cmd_commit(struct ref_transaction *transaction,
 			     const char *next, const char *end)
 {
 	struct strbuf error = STRBUF_INIT;
+	int direct_to_packed_refs = should_write_to_packed_refs(transaction);
 	if (*next != line_termination)
 		die("commit: extra input: %s", next);
-	if (ref_transaction_commit(transaction, &error))
+	if (ref_transaction_commit_extended(transaction, &error,
+					    direct_to_packed_refs))
 		die("commit: %s", error.buf);
 	report_ok("commit");
 	ref_transaction_free(transaction);
@@ -394,6 +423,7 @@ static void update_refs_stdin(void)
 	enum update_refs_state state = UPDATE_REFS_OPEN;
 	struct ref_transaction *transaction;
 	int i, j;
+	int direct_to_packed_refs;
 
 	transaction = ref_transaction_begin(&err);
 	if (!transaction)
@@ -475,8 +505,10 @@ static void update_refs_stdin(void)
 
 	switch (state) {
 	case UPDATE_REFS_OPEN:
+		direct_to_packed_refs = should_write_to_packed_refs(transaction);
 		/* Commit by default if no transaction was requested. */
-		if (ref_transaction_commit(transaction, &err))
+		if (ref_transaction_commit_extended(transaction, &err,
+						    direct_to_packed_refs))
 			die("%s", err.buf);
 		ref_transaction_free(transaction);
 		break;
@@ -512,7 +544,7 @@ int cmd_update_ref(int argc, const char **argv, const char *prefix)
 		OPT_END(),
 	};
 
-	git_config(git_default_config, NULL);
+	git_config(git_update_ref_config, NULL);
 	argc = parse_options(argc, argv, prefix, options, git_update_ref_usage,
 			     0);
 	if (msg && !*msg)
