@@ -293,7 +293,7 @@ test_expect_success 'fetch --atomic executes a single reference transaction only
 		( echo "$*" && cat ) >>actual
 	EOF
 
-	git -C atomic fetch --atomic origin &&
+	git -C atomic fetch --no-write-packed-refs --atomic origin &&
 	test_cmp expected atomic/actual
 '
 

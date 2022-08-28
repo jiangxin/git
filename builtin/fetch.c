@@ -29,6 +29,7 @@
 #include "commit-graph.h"
 #include "shallow.h"
 #include "worktree.h"
+#include "refs/refs-internal.h"
 
 #define FORCED_UPDATES_DELAY_WARNING_IN_MS (10 * 1000)
 
@@ -57,6 +58,9 @@ static int fetch_prune_tags_config = -1; /* unspecified */
 static int prune_tags = -1; /* unspecified */
 #define PRUNE_TAGS_BY_DEFAULT 0 /* do we prune tags by default? */
 
+#define DEFAULT_PACK_REF_STORE_THRESHOLD 10
+static int pack_ref_store_threshold = DEFAULT_PACK_REF_STORE_THRESHOLD;
+
 static int all, append, dry_run, force, keep, multiple, update_head_ok;
 static int write_fetch_head = 1;
 static int verbosity, deepen_relative, set_upstream, refetch;
@@ -84,12 +88,14 @@ static struct list_objects_filter_options filter_options;
 static struct string_list server_options = STRING_LIST_INIT_DUP;
 static struct string_list negotiation_tip = STRING_LIST_INIT_NODUP;
 static int fetch_write_commit_graph = -1;
-static int fetch_write_packed_refs;
+static int fetch_write_packed_refs = 1;
 static int stdin_refspecs = 0;
 static int negotiate_only;
 
 static int git_fetch_config(const char *k, const char *v, void *cb)
 {
+	int is_bool;
+
 	if (!strcmp(k, "fetch.prune")) {
 		fetch_prune_config = git_config_bool(k, v);
 		return 0;
@@ -97,6 +103,13 @@ static int git_fetch_config(const char *k, const char *v, void *cb)
 
 	if (!strcmp(k, "fetch.prunetags")) {
 		fetch_prune_tags_config = git_config_bool(k, v);
+		return 0;
+	}
+
+	if (!strcmp(k, "pack.refstorethreshold")) {
+		pack_ref_store_threshold = git_config_bool_or_int(k, v, &is_bool);
+		if (is_bool && pack_ref_store_threshold)
+			pack_ref_store_threshold = DEFAULT_PACK_REF_STORE_THRESHOLD;
 		return 0;
 	}
 
@@ -1725,8 +1738,12 @@ static int do_fetch(struct transport *transport,
 		if (retcode)
 			goto cleanup;
 
-		retcode = ref_transaction_commit_extended(transaction, &err,
-							  fetch_write_packed_refs);
+		if (fetch_write_packed_refs &&
+		    pack_ref_store_threshold > 0 &&
+		    transaction->nr >= pack_ref_store_threshold)
+			retcode = ref_transaction_commit_extended(transaction, &err, 1);
+		else
+			retcode = ref_transaction_commit(transaction, &err);
 		if (retcode) {
 			error("%s", err.buf);
 			ref_transaction_free(transaction);
@@ -1866,6 +1883,8 @@ static void add_options_to_argv(struct strvec *argv)
 		strvec_push(argv, "--force");
 	if (fetch_write_packed_refs)
 		strvec_push(argv, "--write-packed-refs");
+	else
+		strvec_push(argv, "--no-write-packed-refs");
 	if (keep)
 		strvec_push(argv, "--keep");
 	if (recurse_submodules == RECURSE_SUBMODULES_ON)

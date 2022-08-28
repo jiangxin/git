@@ -170,3 +170,13 @@ pack.writeReverseIndex::
 	for each new packfile that it writes in all places except for
 	linkgit:git-fast-import[1] and in the bulk checkin mechanism.
 	Defaults to false.
+
+pack.refStoreThreshold::
+	When calling "git fetch" and "git update-ref --stdin", if the
+	number of references is equal or greater than this threshold,
+	will save update of references directly to the "packed-refs"
+	file to improve performance.
++
+If the value is a boolean "true", will set a default number "10". If
+the value is false or number "0", will handle the references as normal.
+I.E.: save the references as loose references.

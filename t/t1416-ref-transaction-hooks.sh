@@ -8,6 +8,10 @@ export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
 . ./test-lib.sh
 
 test_expect_success setup '
+	# Use high threshold to prevent write directly to packed-refs.
+	git config --file "$TRASH_DIRECTORY/.gitconfig" \
+		pack.refStoreThreshold 100 &&
+
 	test_commit PRE &&
 	PRE_OID=$(git rev-parse PRE) &&
 	test_commit POST &&
