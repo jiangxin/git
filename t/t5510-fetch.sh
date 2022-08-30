@@ -1078,7 +1078,7 @@ test_expect_success 'fetch --prune prints the remotes url' '
 	test_cmp expect actual
 '
 
-test_expect_success 'branchname D/F conflict resolved by --prune' '
+test_expect_failure 'branchname D/F conflict resolved by --prune' '
 	git branch dir/file &&
 	git clone . prune-df-conflict &&
 	git branch -D dir/file &&
