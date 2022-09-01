@@ -89,7 +89,9 @@ jobs:
   windows-build:
     name: win build
     needs: ci-config
-    if: needs.ci-config.outputs.enabled == 'yes'
+    if: >-
+      needs.ci-config.outputs.enabled == 'yes' &&
+      contains(github.ref, 'windows')
     runs-on: windows-latest
     concurrency:
       group: windows-build-${{ github.ref }}
@@ -147,7 +149,10 @@ jobs:
   vs-build:
     name: win+VS build
     needs: ci-config
-    if: github.event.repository.owner.login == 'git-for-windows' && needs.ci-config.outputs.enabled == 'yes'
+    if: >-
+      github.event.repository.owner.login == 'git-for-windows' &&
+      needs.ci-config.outputs.enabled == 'yes' &&
+      contains(github.ref, 'windows')
     env:
       NO_PERL: 1
       GIT_CONFIG_PARAMETERS: "'user.name=CI' 'user.email=ci@git'"
@@ -238,7 +243,9 @@ jobs:
   regular:
     name: ${{matrix.vector.jobname}} (${{matrix.vector.pool}})
     needs: ci-config
-    if: needs.ci-config.outputs.enabled == 'yes'
+    if: >-
+      needs.ci-config.outputs.enabled == 'yes' &&
+      contains(github.ref, 'linux')
     concurrency:
       group: ${{ matrix.vector.jobname }}-${{ matrix.vector.pool }}-${{ github.ref }}
       cancel-in-progress: ${{ needs.ci-config.outputs.skip_concurrent == 'yes' }}
@@ -260,13 +267,6 @@ jobs:
             cc: gcc
             cc_package: gcc-8
             pool: ubuntu-20.04
-          - jobname: osx-clang
-            cc: clang
-            pool: macos-12
-          - jobname: osx-gcc
-            cc: gcc
-            cc_package: gcc-9
-            pool: macos-12
           - jobname: linux-gcc-default
             cc: gcc
             pool: ubuntu-latest
@@ -279,6 +279,42 @@ jobs:
           - jobname: linux-ubsan
             cc: gcc
             pool: ubuntu-latest
+    env:
+      CC: ${{matrix.vector.cc}}
+      CC_PACKAGE: ${{matrix.vector.cc_package}}
+      jobname: ${{matrix.vector.jobname}}
+      runs_on_pool: ${{matrix.vector.pool}}
+    runs-on: ${{matrix.vector.pool}}
+    steps:
+    - uses: actions/checkout@v3
+    - run: ci/install-dependencies.sh
+    - run: ci/run-build-and-tests.sh
+    - name: print test failures
+      if: failure() && env.FAILED_TEST_ARTIFACTS != ''
+      run: ci/print-test-failures.sh
+    - name: Upload failed tests' directories
+      if: failure() && env.FAILED_TEST_ARTIFACTS != ''
+      uses: actions/upload-artifact@v3
+      with:
+        name: failed-tests-${{matrix.vector.jobname}}
+        path: ${{env.FAILED_TEST_ARTIFACTS}}
+  regular-macos:
+    name: ${{matrix.vector.jobname}} (${{matrix.vector.pool}})
+    needs: ci-config
+    if: >-
+      needs.ci-config.outputs.enabled == 'yes' &&
+      contains(github.ref, 'macos')
+    strategy:
+      fail-fast: false
+      matrix:
+        vector:
+          - jobname: osx-clang
+            cc: clang
+            pool: macos-12
+          - jobname: osx-gcc
+            cc: gcc
+            cc_package: gcc-9
+            pool: macos-12
     env:
       CC: ${{matrix.vector.cc}}
       CC_PACKAGE: ${{matrix.vector.cc_package}}
