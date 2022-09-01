@@ -80,7 +80,9 @@ jobs:
   windows-build:
     name: win build
     needs: ci-config
-    if: needs.ci-config.outputs.enabled == 'yes'
+    if: >-
+      needs.ci-config.outputs.enabled == 'yes' &&
+      contains(github.ref, 'windows')
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v2
@@ -132,7 +134,9 @@ jobs:
   vs-build:
     name: win+VS build
     needs: ci-config
-    if: needs.ci-config.outputs.enabled == 'yes'
+    if: >-
+      needs.ci-config.outputs.enabled == 'yes' &&
+      contains(github.ref, 'windows')
     env:
       NO_PERL: 1
       GIT_CONFIG_PARAMETERS: "'user.name=CI' 'user.email=ci@git'"
@@ -217,7 +221,9 @@ jobs:
   regular:
     name: ${{matrix.vector.jobname}} (${{matrix.vector.pool}})
     needs: ci-config
-    if: needs.ci-config.outputs.enabled == 'yes'
+    if: >-
+      needs.ci-config.outputs.enabled == 'yes' &&
+      contains(github.ref, 'linux')
     strategy:
       fail-fast: false
       matrix:
@@ -276,6 +282,72 @@ jobs:
       uses: actions/upload-artifact@v2
       with:
         name: failed-tests-${{matrix.vector.jobname}}
+        path: ${{env.FAILED_TEST_ARTIFACTS}}
+  regular-linux-leaks:
+    name: linux-leak (ubuntu-latest)
+    needs: ci-config
+    if: >-
+      needs.ci-config.outputs.enabled == 'yes' &&
+      !contains(github.ref, 'linux')
+    strategy:
+      fail-fast: false
+      matrix:
+        vector:
+          - jobname: linux-leaks
+            cc: gcc
+            pool: ubuntu-latest
+    env:
+      CC: gcc
+      CC_PACKAGE:
+      jobname: linux-leaks
+      runs_on_pool: ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - run: ci/install-dependencies.sh
+    - run: ci/run-build-and-tests.sh
+    - run: ci/print-test-failures.sh
+      if: failure()
+    - name: Upload failed tests' directories
+      if: failure() && env.FAILED_TEST_ARTIFACTS != ''
+      uses: actions/upload-artifact@v2
+      with:
+        name: failed-tests-linux-leaks
+        path: ${{env.FAILED_TEST_ARTIFACTS}}
+  regular-macos:
+    name: ${{matrix.mac.jobname}} (${{matrix.mac.pool}})
+    needs: ci-config
+    if: >-
+      needs.ci-config.outputs.enabled == 'yes' &&
+      contains(github.ref, 'macos')
+    strategy:
+      fail-fast: false
+      matrix:
+        mac:
+          - jobname: osx-clang
+            cc: clang
+            pool: macos-latest
+          - jobname: osx-gcc
+            cc: gcc
+            cc_package: gcc-9
+            pool: macos-latest
+    env:
+      CC: ${{matrix.mac.cc}}
+      CC_PACKAGE: ${{matrix.mac.cc_package}}
+      jobname: ${{matrix.mac.jobname}}
+      runs_on_pool: ${{matrix.mac.pool}}
+    runs-on: ${{matrix.mac.pool}}
+    steps:
+    - uses: actions/checkout@v2
+    - run: ci/install-dependencies.sh
+    - run: ci/run-build-and-tests.sh
+    - run: ci/print-test-failures.sh
+      if: failure()
+    - name: Upload failed tests' directories
+      if: failure() && env.FAILED_TEST_ARTIFACTS != ''
+      uses: actions/upload-artifact@v2
+      with:
+        name: failed-tests-${{matrix.mac.jobname}}
         path: ${{env.FAILED_TEST_ARTIFACTS}}
   dockerized:
     name: ${{matrix.vector.jobname}} (${{matrix.vector.image}})
