@@ -80,7 +80,9 @@ jobs:
   windows-build:
     name: win build
     needs: ci-config
-    if: needs.ci-config.outputs.enabled == 'yes'
+    if: >-
+      needs.ci-config.outputs.enabled == 'yes' &&
+      contains(github.ref, 'windows')
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v2
@@ -132,7 +134,9 @@ jobs:
   vs-build:
     name: win+VS build
     needs: ci-config
-    if: needs.ci-config.outputs.enabled == 'yes'
+    if: >-
+      needs.ci-config.outputs.enabled == 'yes' &&
+      contains(github.ref, 'windows')
     env:
       NO_PERL: 1
       GIT_CONFIG_PARAMETERS: "'user.name=CI' 'user.email=ci@git'"
