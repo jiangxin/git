@@ -150,6 +150,7 @@ jobs:
     name: win+VS build
     needs: ci-config
     if: >-
+      false &&
       github.event.repository.owner.login == 'git-for-windows' &&
       needs.ci-config.outputs.enabled == 'yes' &&
       contains(github.ref, 'windows')
