@@ -21,7 +21,7 @@ extract_tar_to_dir () {
 
 test_expect_success 'setup' '
 	echo ignored >ignored &&
-	mkdir .git/info &&
+	mkdir -p .git/info &&
 	echo ignored export-ignore >>.git/info/attributes &&
 	git add ignored &&
 
@@ -49,7 +49,7 @@ test_expect_success 'setup' '
 	git commit -m. &&
 
 	git clone --template= --bare . bare &&
-	mkdir bare/info &&
+	mkdir -p bare/info &&
 	cp .git/info/attributes bare/info/attributes
 '
 

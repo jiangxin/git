@@ -57,7 +57,7 @@ test_expect_success POSIXPERM 'update-server-info honors core.sharedRepository' 
 	git add a1 &&
 	test_tick &&
 	git commit -m a1 &&
-	mkdir .git/info &&
+	mkdir -p .git/info &&
 	umask 0277 &&
 	git update-server-info &&
 	actual="$(ls -l .git/info/refs)" &&

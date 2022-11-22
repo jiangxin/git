@@ -54,7 +54,7 @@ test_expect_success 'read-tree without .git/info/sparse-checkout' '
 '
 
 test_expect_success 'read-tree with .git/info/sparse-checkout but disabled' '
-	mkdir .git/info &&
+	mkdir -p .git/info &&
 	echo >.git/info/sparse-checkout &&
 	read_tree_u_must_succeed -m -u HEAD &&
 	git ls-files -t >result &&

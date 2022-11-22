@@ -27,7 +27,7 @@ test_expect_success 'setup' '
 	git rm modify_delete &&
 	test_commit_this ours &&
 	git config core.sparseCheckout true &&
-	mkdir .git/info &&
+	mkdir -p .git/info &&
 	echo "/checked-out" >.git/info/sparse-checkout &&
 	git reset --hard &&
 	test_must_fail git merge theirs

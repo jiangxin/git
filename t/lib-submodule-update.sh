@@ -910,7 +910,7 @@ test_submodule_switch_recursing_with_args () {
 			cd submodule_update &&
 			git branch -t add_sub1 origin/add_sub1 &&
 			: >sub1 &&
-			mkdir .git/info &&
+			mkdir -p .git/info &&
 			echo sub1 >.git/info/exclude &&
 			$command add_sub1 &&
 			test_superproject_content origin/add_sub1 &&
@@ -955,7 +955,7 @@ test_submodule_switch_recursing_with_args () {
 			cd submodule_update &&
 			rm -rf .git/modules/sub1/info &&
 			git branch -t replace_sub1_with_file origin/replace_sub1_with_file &&
-			mkdir .git/modules/sub1/info &&
+			mkdir -p .git/modules/sub1/info &&
 			echo ignored >.git/modules/sub1/info/exclude &&
 			: >sub1/ignored &&
 			$command replace_sub1_with_file &&

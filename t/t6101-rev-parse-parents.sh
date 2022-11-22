@@ -27,7 +27,7 @@ test_expect_success 'setup' '
 	git merge -m next --allow-unrelated-histories start2 &&
 	test_commit final &&
 
-	mkdir .git/info &&
+	mkdir -p .git/info &&
 	test_seq 40 |
 	while read i
 	do

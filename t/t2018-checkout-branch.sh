@@ -263,7 +263,7 @@ test_expect_success 'checkout -b to a new branch preserves mergeable changes des
 	test_commit file2 &&
 
 	echo stuff >>file1 &&
-	mkdir .git/info &&
+	mkdir -p .git/info &&
 	echo file2 >.git/info/sparse-checkout &&
 	git config core.sparseCheckout true &&
 

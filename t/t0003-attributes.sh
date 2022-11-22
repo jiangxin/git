@@ -316,7 +316,7 @@ test_expect_success 'bare repository: check that --cached honors index' '
 test_expect_success 'bare repository: test info/attributes' '
 	(
 		cd bare.git &&
-		mkdir info &&
+		mkdir -p info &&
 		(
 			echo "f	test=f" &&
 			echo "a/i test=a/i"
@@ -362,7 +362,7 @@ test_expect_success SYMLINKS 'symlinks respected in core.attributesFile' '
 
 test_expect_success SYMLINKS 'symlinks respected in info/attributes' '
 	test_when_finished "rm .git/info/attributes" &&
-	mkdir .git/info &&
+	mkdir -p .git/info &&
 	ln -s ../../attr .git/info/attributes &&
 	attr_check file set
 '
