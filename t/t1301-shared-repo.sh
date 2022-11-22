@@ -140,7 +140,7 @@ test_expect_success POSIXPERM 'forced modes' '
 	(
 		cd new &&
 		umask 002 &&
-		git init --shared=0660 --template=templates &&
+		git init --shared=0660 --template=../templates &&
 		>frotz &&
 		git add frotz &&
 		git commit -a -m initial &&
