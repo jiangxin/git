@@ -94,7 +94,7 @@ test_expect_success 'setup' '
 	test-tool chmtime =-300 done dtwo dthree &&
 	test-tool chmtime =-300 . &&
 	git add one two done/one &&
-	mkdir .git/info &&
+	mkdir -p .git/info &&
 	: >.git/info/exclude &&
 	git update-index --untracked-cache &&
 	test_oid_cache <<-EOF

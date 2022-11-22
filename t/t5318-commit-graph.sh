@@ -368,7 +368,7 @@ test_expect_success 'commit grafts invalidate commit-graph' '
 		test_path_is_file .git/objects/info/commit-graph &&
 		H1=$(git rev-parse --verify HEAD~1) &&
 		H3=$(git rev-parse --verify HEAD~3) &&
-		mkdir .git/info &&
+		mkdir -p .git/info &&
 		echo "$H1 $H3" >.git/info/grafts &&
 		git -c core.commitGraph=false log >expect &&
 		git -c core.commitGraph=true log >actual &&

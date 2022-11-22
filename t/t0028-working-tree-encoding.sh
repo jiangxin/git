@@ -71,7 +71,7 @@ test_expect_success 'check $GIT_DIR/info/attributes support' '
 	test_when_finished "rm -f test.utf32.git" &&
 	test_when_finished "git reset --hard HEAD" &&
 
-	mkdir .git/info &&
+	mkdir -p .git/info &&
 	echo "*.utf32 text working-tree-encoding=utf-32" >.git/info/attributes &&
 	git add test.utf32 &&
 

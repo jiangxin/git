@@ -26,7 +26,7 @@ test_expect_success 'create feature branch' '
 
 test_expect_success 'perform sparse checkout of main' '
 	git config --local --bool core.sparsecheckout true &&
-	mkdir .git/info &&
+	mkdir -p .git/info &&
 	echo "!/*" >.git/info/sparse-checkout &&
 	echo "/a" >>.git/info/sparse-checkout &&
 	echo "/c" >>.git/info/sparse-checkout &&
@@ -87,7 +87,7 @@ test_expect_success 'in partial clone, sparse checkout only fetches needed blobs
 	git -C server commit -m message &&
 
 	test_config -C client core.sparsecheckout 1 &&
-	mkdir client/.git/info &&
+	mkdir -p client/.git/info &&
 	echo "!/*" >client/.git/info/sparse-checkout &&
 	echo "/a" >>client/.git/info/sparse-checkout &&
 	git -C client fetch --filter=blob:none origin &&

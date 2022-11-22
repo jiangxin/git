@@ -559,7 +559,7 @@ test_expect_success 'cherry-pick preserves sparse-checkout' '
 		echo \"/*\" >.git/info/sparse-checkout
 		git read-tree --reset -u HEAD
 		rm .git/info/sparse-checkout" &&
-	mkdir .git/info &&
+	mkdir -p .git/info &&
 	echo /unrelated >.git/info/sparse-checkout &&
 	git read-tree --reset -u HEAD &&
 	test_must_fail git cherry-pick -Xours picked>actual &&

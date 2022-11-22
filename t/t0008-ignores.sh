@@ -226,7 +226,7 @@ test_expect_success 'setup' '
 		!globaltwo
 		globalthree
 	EOF
-	mkdir .git/info &&
+	mkdir -p .git/info &&
 	cat <<-\EOF >.git/info/exclude
 		per-repo
 	EOF
