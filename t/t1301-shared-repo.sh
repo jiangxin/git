@@ -174,6 +174,7 @@ test_expect_success POSIXPERM 'forced modes' '
 	# COMMIT_EDITMSG does not matter---0mode is not about a
 	# repository with a work tree.
 	find new/.git -type f -name COMMIT_EDITMSG -prune -o -print |
+	grep -v ".git/info" |
 	xargs ls -ld >actual &&
 
 	# Everything must be unaccessible to others
