@@ -162,6 +162,7 @@ static int add(int argc, const char **argv, const char *prefix)
 	struct strbuf buf = STRBUF_INIT, buf2 = STRBUF_INIT;
 	const char *name, *url;
 	int i;
+	int ret = 0;
 
 	struct option options[] = {
 		OPT_BOOL('f', "fetch", &fetch, N_("fetch the remote branches")),
@@ -229,8 +230,10 @@ static int add(int argc, const char **argv, const char *prefix)
 			       fetch_tags == TAGS_SET ? "--tags" : "--no-tags");
 	}
 
-	if (fetch && fetch_remote(name))
-		return 1;
+	if (fetch && fetch_remote(name)) {
+		ret = 1;
+		goto cleanup;
+	}
 
 	if (master) {
 		strbuf_reset(&buf);
@@ -239,15 +242,18 @@ static int add(int argc, const char **argv, const char *prefix)
 		strbuf_reset(&buf2);
 		strbuf_addf(&buf2, "refs/remotes/%s/%s", name, master);
 
-		if (create_symref(buf.buf, buf2.buf, "remote add"))
-			return error(_("Could not setup master '%s'"), master);
+		if (create_symref(buf.buf, buf2.buf, "remote add")) {
+			ret = error(_("Could not setup master '%s'"), master);
+			goto cleanup;
+		}
 	}
 
+cleanup:
 	strbuf_release(&buf);
 	strbuf_release(&buf2);
 	string_list_clear(&track, 0);
 
-	return 0;
+	return ret;
 }
 
 struct branch_info {
