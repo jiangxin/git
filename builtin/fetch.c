@@ -1772,6 +1772,8 @@ cleanup:
 	if (retcode && transaction) {
 		ref_transaction_abort(transaction, &err);
 		error("%s", err.buf);
+	} else {
+		ref_transaction_free(transaction);
 	}
 
 	display_state_release(&display_state);
