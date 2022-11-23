@@ -2505,33 +2505,31 @@ static int update_submodule(struct update_data *update_data)
 				   update_data->displaypath);
 
 	if (update_data->remote) {
-		char *remote_name;
 		const char *branch;
-		char *remote_ref;
-		int code;
+		char *remote_name = NULL;
+		char *remote_ref = NULL;
 
-		code = get_default_remote_submodule(update_data->sm_path, &remote_name);
-		if (code)
-			return code;
-		code = remote_submodule_branch(update_data->sm_path, &branch);
-		if (code)
-			return code;
-		remote_ref = xstrfmt("refs/remotes/%s/%s", remote_name, branch);
+		ret = get_default_remote_submodule(update_data->sm_path, &remote_name);
+		if (!ret)
+			ret = remote_submodule_branch(update_data->sm_path, &branch);
+		if (!ret)
+			remote_ref = xstrfmt("refs/remotes/%s/%s", remote_name, branch);
 
-		free(remote_name);
-
-		if (!update_data->nofetch) {
+		if (!ret && !update_data->nofetch) {
 			if (fetch_in_submodule(update_data->sm_path, update_data->depth,
 					      0, NULL))
-				return die_message(_("Unable to fetch in submodule path '%s'"),
-						   update_data->sm_path);
+				ret = die_message(_("Unable to fetch in submodule path '%s'"),
+						  update_data->sm_path);
 		}
 
-		if (resolve_gitlink_ref(update_data->sm_path, remote_ref, &update_data->oid))
-			return die_message(_("Unable to find %s revision in submodule path '%s'"),
-					   remote_ref, update_data->sm_path);
+		if (!ret && resolve_gitlink_ref(update_data->sm_path, remote_ref, &update_data->oid))
+			ret = die_message(_("Unable to find %s revision in submodule path '%s'"),
+					  remote_ref, update_data->sm_path);
 
+		free(remote_name);
 		free(remote_ref);
+		if (ret)
+			return ret;
 	}
 
 	if (!oideq(&update_data->oid, &update_data->suboid) || update_data->force) {
