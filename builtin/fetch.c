@@ -1791,6 +1791,8 @@ cleanup:
 	if (retcode && transaction) {
 		ref_transaction_abort(transaction, &err);
 		error("%s", err.buf);
+	} else {
+		ref_transaction_free(transaction);
 	}
 
 	close_fetch_head(&fetch_head);
