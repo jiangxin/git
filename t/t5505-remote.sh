@@ -2,6 +2,7 @@
 
 test_description='git remote porcelain-ish'
 
+TEST_PASSES_SANITIZE_LEAK=true
 . ./test-lib.sh
 
 setup_repository () {
@@ -1490,6 +1491,11 @@ test_expect_success 'refs/remotes/* <src> refspec and unqualified <dst> DWIM and
 		test_must_fail git push origin refs/remotes/blobs-from-two/my-file-blob:dst-blob 2>err &&
 		test_i18ngrep "error: The destination you" err
 	)
+'
+
+test_expect_success SANITIZE_LEAK 'add and fetch non-exist remote' '
+	git clone one test2 &&
+	test_must_fail git -C test2 remote add -f second ../non-exist
 '
 
 test_done
