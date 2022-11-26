@@ -228,6 +228,9 @@ jobs:
           - jobname: linux-leaks
             cc: gcc
             pool: ubuntu-22.04
+          - jobname: linux-leaks-check
+            cc: gcc
+            pool: ubuntu-22.04
           - jobname: linux-asan
             cc: gcc
             pool: ubuntu-22.04

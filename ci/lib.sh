@@ -279,6 +279,11 @@ linux-leaks)
 	export GIT_TEST_PASSING_SANITIZE_LEAK=true
 	export GIT_TEST_SANITIZE_LEAK_LOG=true
 	;;
+linux-leaks-check)
+	export SANITIZE=leak
+	export GIT_TEST_PASSING_SANITIZE_LEAK=check
+	export GIT_TEST_SANITIZE_LEAK_LOG=true
+	;;
 linux-asan)
 	export SANITIZE=address
 	;;
