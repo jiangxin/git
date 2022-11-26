@@ -80,7 +80,7 @@ jobs:
   windows-build:
     name: win build
     needs: ci-config
-    if: needs.ci-config.outputs.enabled == 'yes'
+    if: false && needs.ci-config.outputs.enabled == 'yes'
     runs-on: windows-latest
     steps:
     - uses: actions/checkout@v2
@@ -132,7 +132,7 @@ jobs:
   vs-build:
     name: win+VS build
     needs: ci-config
-    if: needs.ci-config.outputs.enabled == 'yes'
+    if: false && needs.ci-config.outputs.enabled == 'yes'
     env:
       NO_PERL: 1
       GIT_CONFIG_PARAMETERS: "'user.name=CI' 'user.email=ci@git'"
@@ -222,27 +222,6 @@ jobs:
       fail-fast: false
       matrix:
         vector:
-          - jobname: linux-clang
-            cc: clang
-            pool: ubuntu-22.04
-          - jobname: linux-sha256
-            cc: clang
-            pool: ubuntu-22.04
-          - jobname: linux-gcc
-            cc: gcc
-            cc_package: gcc-8
-            pool: ubuntu-20.04
-          - jobname: linux-TEST-vars
-            cc: gcc
-            cc_package: gcc-8
-            pool: ubuntu-20.04
-          - jobname: osx-clang
-            cc: clang
-            pool: macos-latest
-          - jobname: osx-gcc
-            cc: gcc
-            cc_package: gcc-9
-            pool: macos-latest
           - jobname: linux-gcc-default
             cc: gcc
             pool: ubuntu-22.04
@@ -278,7 +257,7 @@ jobs:
   dockerized:
     name: ${{matrix.vector.jobname}} (${{matrix.vector.image}})
     needs: ci-config
-    if: needs.ci-config.outputs.enabled == 'yes'
+    if: false && needs.ci-config.outputs.enabled == 'yes'
     strategy:
       fail-fast: false
       matrix:
@@ -341,7 +320,7 @@ jobs:
   documentation:
     name: documentation
     needs: ci-config
-    if: needs.ci-config.outputs.enabled == 'yes'
+    if: false && needs.ci-config.outputs.enabled == 'yes'
     env:
       jobname: Documentation
     runs-on: ubuntu-22.04
