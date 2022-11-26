@@ -3,6 +3,7 @@
 test_description='git read-tree in partial clones'
 
 TEST_NO_CREATE_REPO=1
+TEST_PASSES_SANITIZE_LEAK=true
 
 . ./test-lib.sh
 
