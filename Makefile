@@ -1414,6 +1414,7 @@ GIT-SPATCH-DEFINES: FORCE
 
 include config.mak.uname
 -include config.mak.autogen
+include config.mak.fixup
 -include config.mak
 
 ifdef DEVELOPER
