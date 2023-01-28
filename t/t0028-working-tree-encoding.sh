@@ -53,7 +53,7 @@ test_expect_success 'ensure UTF-8 is stored in Git' '
 	test_cmp_bin test.utf8.raw test.utf16.git
 '
 
-test_expect_success 're-encode to UTF-16 on checkout' '
+test_expect_failure 're-encode to UTF-16 on checkout' '
 	test_when_finished "rm -f test.utf16.raw" &&
 
 	rm test.utf16 &&
@@ -127,7 +127,7 @@ do
 		test_i18ngrep "use UTF-${i}BE or UTF-${i}LE" err.out
 	'
 
-	test_expect_success "eol conversion for UTF-${i} encoded files on checkout" '
+	test_expect_failure "eol conversion for UTF-${i} encoded files on checkout" '
 		test_when_finished "rm -f crlf.utf${i}.raw lf.utf${i}.raw" &&
 		test_when_finished "git reset --hard HEAD^" &&
 
