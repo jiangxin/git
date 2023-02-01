@@ -1597,6 +1597,7 @@ else
 		# Try "-Wl,-rpath=$(CURLDIR)/$(lib)" in such a case.
 		CURL_CFLAGS = -I$(CURLDIR)/include
 		CURL_LIBCURL = -L$(CURLDIR)/$(lib) $(CC_LD_DYNPATH)$(CURLDIR)/$(lib)
+		CURL_CONFIG := $(CURLDIR)/bin/$(CURL_CONFIG)
 	else
 		CURL_CFLAGS =
 		CURL_LIBCURL =
