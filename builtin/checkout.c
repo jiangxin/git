@@ -1950,6 +1950,7 @@ int cmd_switch(int argc, const char **argv, const char *prefix)
 	ret = checkout_main(argc, argv, prefix, &opts,
 			    options, switch_branch_usage, &new_branch_info);
 	branch_info_release(&new_branch_info);
+	clear_pathspec(&opts.pathspec);
 	FREE_AND_NULL(options);
 	return ret;
 }
@@ -1989,6 +1990,7 @@ int cmd_restore(int argc, const char **argv, const char *prefix)
 	ret = checkout_main(argc, argv, prefix, &opts,
 			    options, restore_usage, &new_branch_info);
 	branch_info_release(&new_branch_info);
+	clear_pathspec(&opts.pathspec);
 	FREE_AND_NULL(options);
 	return ret;
 }
