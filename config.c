@@ -1531,6 +1531,7 @@ int git_config_string(const char **dest, const char *var, const char *value)
 	if (!value)
 		return config_error_nonbool(var);
 	*dest = xstrdup(value);
+	UNLEAK(*dest);
 	return 0;
 }
 
@@ -1541,6 +1542,7 @@ int git_config_pathname(const char **dest, const char *var, const char *value)
 	*dest = interpolate_path(value, 0);
 	if (!*dest)
 		die(_("failed to expand user dir in: '%s'"), value);
+	UNLEAK(*dest);
 	return 0;
 }
 
@@ -2163,6 +2165,8 @@ void git_global_config(char **user_out, char **xdg_out)
 		xdg_config = xdg_config_home("config");
 	}
 
+	UNLEAK(user_config);
+	UNLEAK(xdg_config);
 	*user_out = user_config;
 	*xdg_out = xdg_config;
 }
