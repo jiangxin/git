@@ -47,12 +47,15 @@ static int find_tracked_branch(struct remote *remote, void *priv)
 			/* fall through */
 		default:
 			string_list_append(&ftb->ambiguous_remotes, remote->name);
-			free(tracking->spec.src);
+			FREE_AND_NULL(tracking->spec.src);
 			string_list_clear(tracking->srcs, 0);
 		break;
 		}
-		/* remote_find_tracking() searches by src if present */
-		tracking->spec.src = NULL;
+		/*
+		 * src is the search result of remote_find_tracking(),
+		 * and it needs to be freed
+		 */
+		FREE_AND_NULL(tracking->spec.src);
 	}
 	return 0;
 }
