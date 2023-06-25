@@ -773,8 +773,7 @@ static void handle_duplicate(struct ref *ref1, struct ref *ref2)
 			BUG("Internal error");
 		}
 	}
-	free(ref2->peer_ref);
-	free(ref2);
+	free_one_ref(ref2);
 }
 
 struct ref *ref_remove_duplicates(struct ref *ref_map)
@@ -878,8 +877,7 @@ struct ref *apply_negative_refspecs(struct ref *ref_map, struct refspec *rs)
 
 		if (omit_name_by_refspec(ref->name, rs)) {
 			*tail = ref->next;
-			free(ref->peer_ref);
-			free(ref);
+			free_one_ref(ref);
 		} else
 			tail = &ref->next;
 	}
@@ -2111,8 +2109,7 @@ int get_fetch_map(const struct ref *remote_refs,
 				error(_("* Ignoring funny ref '%s' locally"),
 				      (*rmp)->peer_ref->name);
 				*rmp = (*rmp)->next;
-				free(ignore->peer_ref);
-				free(ignore);
+				free_one_ref(ignore);
 				continue;
 			}
 		}
