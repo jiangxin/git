@@ -1040,7 +1040,7 @@ struct ref *alloc_ref(const char *name)
 	return alloc_ref_with_prefix("", 0, name);
 }
 
-struct ref *copy_ref(const struct ref *ref)
+static struct ref *deep_copy_ref(const struct ref *ref, int deep)
 {
 	struct ref *cpy;
 	size_t len;
@@ -1052,8 +1052,14 @@ struct ref *copy_ref(const struct ref *ref)
 	cpy->next = NULL;
 	cpy->symref = xstrdup_or_null(ref->symref);
 	cpy->remote_status = xstrdup_or_null(ref->remote_status);
-	cpy->peer_ref = copy_ref(ref->peer_ref);
+	if (deep)
+		cpy->peer_ref = deep_copy_ref(ref->peer_ref, deep);
 	return cpy;
+}
+
+struct ref *copy_ref(const struct ref *ref)
+{
+	return deep_copy_ref(ref, 1);
 }
 
 struct ref *copy_ref_list(const struct ref *ref)
@@ -2012,7 +2018,7 @@ static struct ref *get_expanded_map(const struct ref *remote_refs,
 		if (match_name_with_pattern(refspec->src, ref->name,
 					    refspec->dst, &expn_name) &&
 		    !ignore_symref_update(expn_name, &scratch)) {
-			struct ref *cpy = copy_ref(ref);
+			struct ref *cpy = deep_copy_ref(ref, 0);
 
 			cpy->peer_ref = alloc_ref(expn_name);
 			if (refspec->force)
