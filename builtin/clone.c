@@ -507,6 +507,7 @@ static struct ref *wanted_peer_refs(const struct ref *refs,
 			local_refs = NULL;
 			tail = &local_refs;
 			remote_head = copy_ref(find_remote_branch(refs, option_branch));
+			free_one_ref(head);
 		}
 
 		if (!remote_head && option_branch)
