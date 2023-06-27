@@ -1005,8 +1005,10 @@ int run_command(struct child_process *cmd)
 		BUG("run_command with a pipe can cause deadlock");
 
 	code = start_command(cmd);
-	if (code)
+	if (code) {
+		child_process_clear(cmd);
 		return code;
+	}
 	return finish_command(cmd);
 }
 
