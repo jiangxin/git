@@ -1230,6 +1230,7 @@ cleanup:
 	string_list_clear(&names, 1);
 	string_list_clear(&existing_nonkept_packs, 0);
 	string_list_clear(&existing_kept_packs, 0);
+	string_list_clear(&keep_pack_list, 0);
 	clear_pack_geometry(geometry);
 
 	return ret;
