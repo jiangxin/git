@@ -4516,6 +4516,7 @@ int cmd_pack_objects(int argc, const char **argv, const char *prefix)
 cleanup:
 	list_objects_filter_release(&filter_options);
 	strvec_clear(&rp);
+	string_list_clear(&keep_pack_list, 0);
 
 	return 0;
 }
