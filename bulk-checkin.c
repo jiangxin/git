@@ -62,6 +62,7 @@ static void flush_bulk_checkin_packfile(struct bulk_checkin_packfile *state)
 	if (state->nr_written == 0) {
 		close(state->f->fd);
 		unlink(state->pack_tmp_name);
+		free_hashfile(state->f);
 		goto clear_exit;
 	} else if (state->nr_written == 1) {
 		finalize_hashfile(state->f, hash, FSYNC_COMPONENT_PACK,
@@ -84,6 +85,7 @@ static void flush_bulk_checkin_packfile(struct bulk_checkin_packfile *state)
 
 clear_exit:
 	free(state->written);
+	free(state->pack_tmp_name);
 	memset(state, 0, sizeof(*state));
 
 	strbuf_release(&packname);
