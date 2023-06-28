@@ -23,6 +23,7 @@ int cmd_upload_archive_writer(int argc, const char **argv, const char *prefix)
 	struct strvec sent_argv = STRVEC_INIT;
 	const char *arg_cmd = "argument ";
 
+	UNLEAK(*sent_argv.v);
 	if (argc != 2 || !strcmp(argv[1], "-h"))
 		usage(upload_archive_usage);
 
