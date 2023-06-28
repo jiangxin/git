@@ -501,6 +501,7 @@ int create_bundle(struct repository *r, const char *path,
 	int min_version = 2;
 	struct bundle_prerequisites_info bpi;
 	int i;
+	int ret = 0;
 
 	/* init revs to list objects for pack-objects later */
 	save_commit_buffer = 0;
@@ -604,10 +605,15 @@ int create_bundle(struct repository *r, const char *path,
 		if (commit_lock_file(&lock))
 			die_errno(_("cannot create '%s'"), path);
 	}
-	return 0;
+	goto cleanup;
+
 err:
 	rollback_lock_file(&lock);
-	return -1;
+	ret = -1;
+
+cleanup:
+	release_revisions(&revs);
+	return ret;
 }
 
 int unbundle(struct repository *r, struct bundle_header *header,
