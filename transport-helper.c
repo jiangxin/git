@@ -24,7 +24,7 @@
 static int debug;
 
 struct helper_data {
-	const char *name;
+	char *name;
 	struct child_process *helper;
 	FILE *out;
 	unsigned fetch : 1,
@@ -113,6 +113,10 @@ static void do_take_over(struct transport *transport)
 	data = (struct helper_data *)transport->data;
 	transport_take_over(transport, data->helper);
 	fclose(data->out);
+	refspec_clear(&data->rs);
+	free(data->name);
+	free(data->import_marks);
+	free(data->export_marks);
 	free(data);
 }
 
@@ -388,6 +392,9 @@ static int release_helper(struct transport *transport)
 	struct helper_data *data = transport->data;
 	refspec_clear(&data->rs);
 	res = disconnect_helper(transport);
+	free(data->name);
+	free(data->import_marks);
+	free(data->export_marks);
 	free(transport->data);
 	return res;
 }
@@ -1298,7 +1305,7 @@ static struct transport_vtable vtable = {
 int transport_helper_init(struct transport *transport, const char *name)
 {
 	struct helper_data *data = xcalloc(1, sizeof(*data));
-	data->name = name;
+	data->name = xstrdup(name);
 
 	transport_check_allowed(name);
 
