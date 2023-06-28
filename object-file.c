@@ -2791,6 +2791,7 @@ int read_loose_object(const char *path,
 	if (unpack_loose_header(&stream, map, mapsize, hdr, sizeof(hdr),
 				NULL) != ULHR_OK) {
 		error(_("unable to unpack header of %s"), path);
+		git_inflate_end(&stream);
 		goto out;
 	}
 
@@ -2801,8 +2802,10 @@ int read_loose_object(const char *path,
 	}
 
 	if (*oi->typep == OBJ_BLOB && *size > big_file_threshold) {
-		if (check_stream_oid(&stream, hdr, *size, path, expected_oid) < 0)
+		if (check_stream_oid(&stream, hdr, *size, path, expected_oid) < 0) {
+			git_inflate_end(&stream);
 			goto out;
+		}
 	} else {
 		*contents = unpack_loose_rest(&stream, hdr, *size, expected_oid);
 		if (!*contents) {
