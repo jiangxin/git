@@ -2938,4 +2938,6 @@ void cleanup_scoreboard(struct blame_scoreboard *sb)
 		trace2_data_intmax("blame", sb->repo,
 				   "bloom/response-no", bloom_count_no);
 	}
+	FREE_AND_NULL(sb->lineno);
+	clear_prio_queue(&sb->commits);
 }
