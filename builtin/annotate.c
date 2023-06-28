@@ -11,6 +11,7 @@ int cmd_annotate(int argc, const char **argv, const char *prefix)
 {
 	struct strvec args = STRVEC_INIT;
 	int i;
+	int ret;
 
 	strvec_pushl(&args, "annotate", "-c", NULL);
 
@@ -18,5 +19,7 @@ int cmd_annotate(int argc, const char **argv, const char *prefix)
 		strvec_push(&args, argv[i]);
 	}
 
-	return cmd_blame(args.nr, args.v, prefix);
+	UNLEAK(*args.v);
+	ret = cmd_blame(args.nr, args.v, prefix);
+	return ret;
 }
