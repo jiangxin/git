@@ -110,6 +110,10 @@ char *git_work_tree_cfg;
 
 static char *git_namespace;
 
+#ifdef GIT_TEST_AGIT_INFO_DIR
+static char *agit_info_dir;
+#endif
+
 /*
  * Repository-local GIT_* environment variables; see environment.h for details.
  */
@@ -193,6 +197,9 @@ void setup_git_env(const char *git_dir)
 
 	free(git_namespace);
 	git_namespace = expand_namespace(getenv(GIT_NAMESPACE_ENVIRONMENT));
+#ifdef GIT_TEST_AGIT_INFO_DIR
+	agit_info_dir = getenv(GIT_TEST_AGIT_INFO_DIR_ENVIRONMENT);
+#endif
 	shallow_file = getenv(GIT_SHALLOW_FILE_ENVIRONMENT);
 	if (shallow_file)
 		set_alternate_shallow_file(the_repository, shallow_file, 0);
@@ -230,6 +237,15 @@ const char *get_git_namespace(void)
 		BUG("git environment hasn't been setup");
 	return git_namespace;
 }
+
+#ifdef GIT_TEST_AGIT_INFO_DIR
+const char *get_agit_info_dir(void)
+{
+	if (!agit_info_dir || *agit_info_dir == '\0')
+		agit_info_dir = "info";
+	return agit_info_dir;
+}
+#endif
 
 const char *strip_namespace(const char *namespaced_ref)
 {

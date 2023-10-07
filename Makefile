@@ -1421,6 +1421,12 @@ ifdef DEVELOPER
 include config.mak.dev
 endif
 
+ifdef GIT_TEST_AGIT_INFO_DIR
+ifndef DEVELOPER
+$(error please use GIT_TEST_AGIT_INFO_DIR in DEVELOPER mode)
+endif
+endif
+
 # what 'all' will build and 'install' will install in gitexecdir,
 # excluding programs for built-in commands
 ALL_PROGRAMS = $(PROGRAMS) $(SCRIPTS)

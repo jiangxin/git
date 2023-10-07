@@ -100,3 +100,7 @@ DEVELOPER_CFLAGS += -Wno-error=stringop-overread
 endif
 
 GIT_TEST_PERL_FATAL_WARNINGS = YesPlease
+
+ifdef GIT_TEST_AGIT_INFO_DIR
+DEVELOPER_CFLAGS += -DGIT_TEST_AGIT_INFO_DIR=YesPlease
+endif

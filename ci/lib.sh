@@ -221,6 +221,7 @@ then
 fi
 
 export DEVELOPER=1
+export GIT_TEST_AGIT_INFO_DIR=agit-info
 export DEFAULT_TEST_TARGET=prove
 export GIT_TEST_CLONE_2GB=true
 export SKIP_DASHED_BUILT_INS=YesPlease

@@ -55,6 +55,7 @@ const char *getenv_safe(struct strvec *argv, const char *name);
 #define GIT_OPTIONAL_LOCKS_ENVIRONMENT "GIT_OPTIONAL_LOCKS"
 #define GIT_TEXT_DOMAIN_DIR_ENVIRONMENT "GIT_TEXTDOMAINDIR"
 #define GIT_ATTR_SOURCE_ENVIRONMENT "GIT_ATTR_SOURCE"
+#define GIT_TEST_AGIT_INFO_DIR_ENVIRONMENT "GIT_TEST_AGIT_INFO_DIR"
 
 /*
  * Environment variable used in handshaking the wire protocol.
@@ -228,5 +229,13 @@ extern const char *excludes_file;
  * when doing diff-raw output or indicating a detached HEAD?
  */
 int print_sha1_ellipsis(void);
+
+#ifdef GIT_TEST_AGIT_INFO_DIR
+const char *get_agit_info_dir(void);
+#else
+static inline const char *get_agit_info_dir(void) {
+	return "info";
+}
+#endif
 
 #endif
