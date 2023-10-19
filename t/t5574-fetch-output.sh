@@ -97,7 +97,7 @@ do
 		opt=
 		;;
 	esac
-	test_expect_failure "fetch porcelain output ${opt:+(atomic)}" '
+	test_expect_success "fetch porcelain output ${opt:+(atomic)}" '
 		test_when_finished "rm -rf porcelain" &&
 
 		# Clone and pre-seed the repositories. We fetch references into two

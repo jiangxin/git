@@ -1775,10 +1775,8 @@ static int do_fetch(struct transport *transport,
 	}
 
 cleanup:
-	if (retcode && transaction) {
-		ref_transaction_abort(transaction, &err);
+	if (retcode && transaction && ref_transaction_abort(transaction, &err))
 		error("%s", err.buf);
-	}
 
 	display_state_release(&display_state);
 	close_fetch_head(&fetch_head);
