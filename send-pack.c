@@ -631,6 +631,7 @@ int send_pack(struct send_pack_args *args,
 				error("atomic push failed for ref %s. status: %d",
 				      ref->name, ref->status);
 				ret = ERROR_SEND_PACK_BAD_REF_STATUS;
+				packet_flush(out);
 				goto out;
 			}
 			/* else fallthrough */
