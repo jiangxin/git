@@ -4,6 +4,9 @@
 #
 test_description='Test git push porcelain output'
 
+GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME=main
+export GIT_TEST_DEFAULT_INITIAL_BRANCH_NAME
+
 . ./test-lib.sh
 
 # Create commits in <repo> and assign each commit's oid to shell variables
@@ -135,6 +138,40 @@ run_git_push_porcelain_output_test() {
 	# Refs of upstream : main(B)  foo(A)  bar(A)  baz(A)
 	# Refs of workbench: main(A)                  baz(A)  next(A)
 	# git-push         : main(A)  NULL    (B)     baz(A)  next(A)
+	test_expect_success ".. git-push --porcelain ($PROTOCOL)" '
+		test_when_finished "setup_upstream \"$upstream\"" &&
+		test_must_fail git -C workbench push --porcelain origin \
+			main \
+			:refs/heads/foo \
+			$B:bar \
+			baz \
+			next >out &&
+		make_user_friendly_and_stable_output <out >actual &&
+		format_and_save_expect <<-EOF &&
+		> To <URL/of/upstream.git>
+		> =	refs/heads/baz:refs/heads/baz	[up to date]
+		>  	<COMMIT-B>:refs/heads/bar	<COMMIT-A>..<COMMIT-B>
+		> -	:refs/heads/foo	[deleted]
+		> *	refs/heads/next:refs/heads/next	[new branch]
+		> !	refs/heads/main:refs/heads/main	[rejected] (non-fast-forward)
+		> Done
+		EOF
+		test_cmp expect actual &&
+
+		git -C "$upstream" show-ref >out &&
+		make_user_friendly_and_stable_output <out >actual &&
+		cat >expect <<-EOF &&
+		<COMMIT-B> refs/heads/bar
+		<COMMIT-A> refs/heads/baz
+		<COMMIT-B> refs/heads/main
+		<COMMIT-A> refs/heads/next
+		EOF
+		test_cmp expect actual
+	'
+
+	# Refs of upstream : main(B)  foo(A)  bar(A)  baz(A)
+	# Refs of workbench: main(A)                  baz(A)  next(A)
+	# git-push         : main(A)  NULL    (B)     baz(A)  next(A)
 	test_expect_success ".. git-push --porcelain --force ($PROTOCOL)" '
 		test_when_finished "setup_upstream \"$upstream\"" &&
 		git -C workbench push --porcelain --force origin \
@@ -203,6 +240,40 @@ run_git_push_porcelain_output_test() {
 	# Refs of upstream : main(B)  foo(A)  bar(A)  baz(A)
 	# Refs of workbench: main(A)                  baz(A)  next(A)
 	# git-push         : main(A)  NULL    (B)     baz(A)  next(A)
+	test_expect_success ".. git push --porcelain --atomic --force ($PROTOCOL)" '
+		test_when_finished "setup_upstream \"$upstream\"" &&
+		git -C workbench push --porcelain --atomic --force origin \
+			main \
+			:refs/heads/foo \
+			$B:bar \
+			baz \
+			next >out &&
+		make_user_friendly_and_stable_output <out >actual &&
+		format_and_save_expect <<-EOF &&
+		> To <URL/of/upstream.git>
+		> =	refs/heads/baz:refs/heads/baz	[up to date]
+		>  	<COMMIT-B>:refs/heads/bar	<COMMIT-A>..<COMMIT-B>
+		> -	:refs/heads/foo	[deleted]
+		> +	refs/heads/main:refs/heads/main	<COMMIT-B>...<COMMIT-A> (forced update)
+		> *	refs/heads/next:refs/heads/next	[new branch]
+		> Done
+		EOF
+		test_cmp expect actual &&
+
+		git -C "$upstream" show-ref >out &&
+		make_user_friendly_and_stable_output <out >actual &&
+		cat >expect <<-EOF &&
+		<COMMIT-B> refs/heads/bar
+		<COMMIT-A> refs/heads/baz
+		<COMMIT-A> refs/heads/main
+		<COMMIT-A> refs/heads/next
+		EOF
+		test_cmp expect actual
+	'
+
+	# Refs of upstream : main(B)  foo(A)  bar(A)  baz(A)
+	# Refs of workbench: main(A)                  baz(A)  next(A)
+	# git-push         : main(A)  NULL    (B)     baz(A)  next(A)
 	test_expect_success ".. pre-receive hook declined ($PROTOCOL)" '
 		test_when_finished "rm -f \"$upstream/hooks/pre-receive\" &&
 			setup_upstream \"$upstream\"" &&
@@ -234,37 +305,6 @@ run_git_push_porcelain_output_test() {
 		<COMMIT-A> refs/heads/baz
 		<COMMIT-A> refs/heads/foo
 		<COMMIT-B> refs/heads/main
-		EOF
-		test_cmp expect actual
-	'
-
-	# Refs of upstream : main(B)  foo(A)  bar(A)  baz(A)
-	# Refs of workbench: main(A)                  baz(A)  next(A)
-	# git-push         : main(A)                          next(A)
-	test_expect_success ".. non-fastforward push ($PROTOCOL)" '
-		(
-			cd workbench &&
-			test_must_fail git push --porcelain origin \
-				main \
-				next
-		) >out &&
-		make_user_friendly_and_stable_output <out >actual &&
-		format_and_save_expect <<-EOF &&
-		> To <URL/of/upstream.git>
-		> *	refs/heads/next:refs/heads/next	[new branch]
-		> !	refs/heads/main:refs/heads/main	[rejected] (non-fast-forward)
-		> Done
-		EOF
-		test_cmp expect actual &&
-
-		git -C "$upstream" show-ref >out &&
-		make_user_friendly_and_stable_output <out >actual &&
-		cat >expect <<-EOF &&
-		<COMMIT-A> refs/heads/bar
-		<COMMIT-A> refs/heads/baz
-		<COMMIT-A> refs/heads/foo
-		<COMMIT-B> refs/heads/main
-		<COMMIT-A> refs/heads/next
 		EOF
 		test_cmp expect actual
 	'
