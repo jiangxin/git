@@ -12,6 +12,9 @@ struct ref;
 #define SEND_PACK_PUSH_CERT_IF_ASKED 1
 #define SEND_PACK_PUSH_CERT_ALWAYS 2
 
+/* Custom exit code from send_pack. */
+#define ERROR_SEND_PACK_BAD_REF_STATUS 1
+
 struct send_pack_args {
 	const char *url;
 	unsigned verbose:1,

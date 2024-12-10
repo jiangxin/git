@@ -630,7 +630,7 @@ int send_pack(struct send_pack_args *args,
 				reject_atomic_push(remote_refs, args->send_mirror);
 				error("atomic push failed for ref %s. status: %d",
 				      ref->name, ref->status);
-				ret = args->porcelain ? 0 : -1;
+				ret = ERROR_SEND_PACK_BAD_REF_STATUS;
 				goto out;
 			}
 			/* else fallthrough */
@@ -761,11 +761,6 @@ int send_pack(struct send_pack_args *args,
 	if (ret < 0)
 		goto out;
 
-	if (args->porcelain) {
-		ret = 0;
-		goto out;
-	}
-
 	for (ref = remote_refs; ref; ref = ref->next) {
 		switch (ref->status) {
 		case REF_STATUS_NONE:
@@ -773,7 +768,7 @@ int send_pack(struct send_pack_args *args,
 		case REF_STATUS_OK:
 			break;
 		default:
-			ret = -1;
+			ret = ERROR_SEND_PACK_BAD_REF_STATUS;
 			goto out;
 		}
 	}
