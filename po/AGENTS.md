@@ -72,6 +72,22 @@ The command will handle all necessary steps including file creation or
 update automatically.
 
 
+### Task 2: Updating po/XX.po
+
+When asked to "update po/XX.po" or given similar requests (where XX is a
+language code):
+
+1. **Directly execute** the command `make po-update PO_FILE=po/XX.po`
+   without reading or checking the file content beforehand.
+
+2. **Do not verify, translate, or review** the updated file after execution.
+   Simply run the command and consider the task complete.
+
+The command will handle all necessary steps including generating
+"po/git.pot" and merging new translatable strings into "po/XX.po"
+automatically.
+
+
 ## Human translators remain in control
 
 Git translation is human-driven; language team leaders and contributors are
