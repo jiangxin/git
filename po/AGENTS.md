@@ -10,6 +10,7 @@ most commonly used housekeeping tasks:
 1. Generating or updating po/git.pot
 2. Updating po/XX.po
 3. Translating po/XX.po
+4. Reviewing translation quality
 
 
 ## Background knowledge for localization workflows
@@ -731,6 +732,191 @@ and fuzzy entry; do not stop before the loop completes.
    ```
 
 
+### Task 4: Review translation quality
+
+Review may target the full `po/XX.po`, a specific commit, or changes since a
+commit. When asked to review, follow the steps below. **Note**: This task uses
+`git-po-helper compare`; if `git-po-helper` is not available, the task
+cannot be performed.
+
+1. **Check for existing review**: Evaluate the following in order:
+
+   - If `po/review-input.po` does **not** exist, proceed to step 2 regardless
+     of any other files (e.g., batch or JSON files).
+   - If both `po/review-input.po` and `po/review-result.json` exist, go
+     directly to step 5 (Merge and summary) and display the report.
+     Do **not** check for batch or other temporary files; no further review
+     steps are needed.
+   - If `po/review-input.po` exists but `po/review-result.json` does not,
+     go to step 4 (Process one batch) to continue the previous review.
+
+2. **Extract entries**: Run `git-po-helper compare` with the desired range and
+   redirect the output to `po/review-input.po`. Do not use `git show` or
+   `git diff`—they can fragment or lose PO context (see "Comparing PO files
+   for translation and review" under git-po-helper).
+
+3. **Prepare review batches**: Run the script below to clean up any leftover
+   files from previous reviews and split `po/review-input.po` into one or
+   more `po/review-input-<N>.json` files (dynamic batch sizing). Run as a
+   single script (define the function, then call it):
+
+   ```shell
+   review_split_batches () {
+       min_batch_size=${1:-50}
+       rm -f po/review-input-*.json
+       rm -f po/review-result-*.json
+       rm -f po/review-result.json
+       rm -f po/review-output.po
+
+       ENTRY_COUNT=$(grep -c '^msgid ' po/review-input.po 2>/dev/null || true)
+       ENTRY_COUNT=$((ENTRY_COUNT > 0 ? ENTRY_COUNT - 1 : 0))
+
+       if test "$ENTRY_COUNT" -gt $min_batch_size
+       then
+           if test "$ENTRY_COUNT" -gt $((min_batch_size * 8))
+           then
+               NUM=$((min_batch_size * 2))
+           elif test "$ENTRY_COUNT" -gt $((min_batch_size * 4))
+           then
+               NUM=$((min_batch_size + min_batch_size / 2))
+           else
+               NUM=$min_batch_size
+           fi
+           BATCH_COUNT=$(( (ENTRY_COUNT + NUM - 1) / NUM ))
+           for i in $(seq 1 "$BATCH_COUNT")
+           do
+               START=$(((i - 1) * NUM + 1))
+               END=$((i * NUM))
+               if test "$END" -gt "$ENTRY_COUNT"
+               then
+                   END=$ENTRY_COUNT
+               fi
+               if test "$i" -eq 1
+               then
+                   git-po-helper msg-select --json --range "-$NUM" \
+                       -o "po/review-input-$i.json" po/review-input.po
+               elif test "$END" -ge "$ENTRY_COUNT"
+               then
+                   git-po-helper msg-select --json --range "$START-" \
+                       -o "po/review-input-$i.json" po/review-input.po
+               else
+                   git-po-helper msg-select --json --range "$START-$END" \
+                       -o "po/review-input-$i.json" po/review-input.po
+               fi
+           done
+       else
+           git-po-helper msg-cat --json \
+               -o po/review-input-1.json po/review-input.po
+       fi
+   }
+   # Parameter controls batch size; reduce if the batch file is too large for
+   # the Agent to process.
+   review_split_batches 20
+   ```
+
+4. **Process one batch (repeat until none left)**:
+
+   a. If no `po/review-input-*.json` files exist, proceed to step 5.
+
+   b. Select the smallest remaining index N (e.g. `po/review-input-1.json`).
+      The current batch is `po/review-input-<N>.json`.
+
+   c. Review translation quality in the current batch: Read the current
+      batch file (`po/review-input-<N>.json`) and:
+      - Consult the "Background knowledge for localization workflows" section
+        for PO format, JSON format, placeholder rules, and terminology. If the
+        current batch file has a glossary in the `header_comment` field, add
+        it to your context for consistent terminology.
+      - Do not review or modify the header entry (in PO format: empty `msgid`
+        with metadata in `msgstr`; in JSON format: `header_comment` and
+        `header_meta`).
+      - For all other entries, check the quality of translations in `msgstr`
+        (singular form) and `msgstr_plural` (plural forms) against `msgid` and
+        `msgid_plural`. See the "Quality checklist" above for criteria.
+
+   d. After reviewing all entries in the current batch, write the issues you
+      found to `po/review-result-<N>.json` using the format described in the
+      "Review result JSON format" section below. If no issues are found, write
+      `{"issues": []}` to `po/review-result-<N>.json`. Always write this file;
+      it marks the batch as complete.
+
+   e. Delete the current batch file (`po/review-input-<N>.json`).
+
+   f. Return to step 4a.
+
+   This loop is resumable: remaining `po/review-input-*.json` files indicate
+   batches still to process.
+
+5. **Merge and summary**: Run the command below to merge all
+   `po/review-result-*.json` files into `po/review-result.json`, apply the
+   result to `po/review-output.po`, and display the report.
+
+   ```shell
+   git-po-helper agent-run report
+   ```
+
+   **Do not delete** `po/review-result.json`, `po/review-output.po`, or
+   `po/review-input.po`.
+
+**Review result JSON format**:
+
+The **Review result JSON** format defines the structure for translation
+review reports. For each entry with translation issues, create an issue
+object as follows:
+
+- Copy the original entry's `msgid`, `msgstr`, `msgid_plural` and
+  `msgstr_plural` (if present) to the corresponding fields in the
+  result issue object.
+- Write a summary of all issues found for this entry in `description`.
+- Set `score` according to the severity of issues found for this entry,
+  from 0 to 3 (3 = perfect, no issues; 0 = critical, 1 = major, 2 = minor).
+- Place the suggested translation in `suggest_msgstr` (singular) or
+  `suggest_msgstr_plural` (plural).
+- Include only entries with issues (score less than 3). When no issues are
+  found in the batch, write `{"issues": []}`.
+
+Example review result (with issues):
+
+```json
+{
+  "issues": [
+    {
+      "msgid": "commit",
+      "msgid_plural": "",
+      "msgstr": "委托",
+      "msgstr_plural": [],
+      "suggest_msgstr": "提交",
+      "suggest_msgstr_plural": [],
+      "score": 0,
+      "description": "Terminology error: 'commit' should be translated as '提交'"
+    },
+    {
+      "msgid": "repository",
+      "msgid_plural": "repositories",
+      "msgstr": "",
+      "msgstr_plural": ["版本库", "版本库"],
+      "suggest_msgstr": "",
+      "suggest_msgstr_plural": ["仓库", "仓库"],
+      "score": 2,
+      "description": "Consistency issue: '版本库' and '仓库' are used interchangeably; suggest using '仓库' consistently"
+    }
+  ]
+}
+```
+
+Field descriptions for each issue object (element of the `issues` array):
+
+- `msgid` (and `msgid_plural` for plural entries): Original source text.
+- `msgstr` (and `msgstr_plural` for plural entries): Original translation.
+- `suggest_msgstr`: Suggested translation for the singular form.
+- `suggest_msgstr_plural`: Array of suggested translations for plural forms;
+  `suggest_msgstr` is empty for plural-only entries.
+- `score`: 0–3 (see scale below).
+- `description`: Brief summary of the issue.
+- Score scale: 0 = critical (must fix before release), 1 = major (should fix),
+  2 = minor (improve later), 3 = perfect.
+
+
 ## Human translators remain in control
 
 Git translation is human-driven; language team leaders and contributors are
@@ -743,7 +929,13 @@ responsible for:
 - Building and maintaining language glossaries
 - Reviewing and approving all changes before submission
 
-AI tools, if used, only accelerate routine tasks.
+AI tools, if used, only accelerate routine tasks:
+
+- First-draft translations for new or updated messages
+- Finding untranslated or fuzzy entries
+- Checking consistency with glossary and existing translations
+- Detecting technical errors (placeholders, formatting)
+- Reviewing against quality criteria
 
 AI-generated output should always be treated as rough drafts requiring human
 review, editing, and approval by someone who understands both the technical
