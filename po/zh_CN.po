@@ -181,98 +181,6 @@ msgstr ""
 "Plural-Forms: nplurals=2; plural=(n != 1);\n"
 "X-Generator: Gtranslator 42.0\n"
 
-#: bisect.c
-#, c-format
-msgid ""
-"No testable commit found.\n"
-"Maybe you started with bad path arguments?\n"
-msgstr ""
-"未找到可测试的提交。\n"
-"可能是因为你开始时提供的路径参数有问题？\n"
-
-#: branch.c
-msgid ""
-"\n"
-"After fixing the error cause you may try to fix up\n"
-"the remote tracking information by invoking:"
-msgstr ""
-"\n"
-"修复错误原因后，你可以尝试通过调用以下命令来修复\n"
-"远程跟踪信息："
-
-#. TRANSLATORS: The second argument is a \n-delimited list of
-#. duplicate refspecs, composed above.
-#.
-#: branch.c
-#, c-format
-msgid ""
-"There are multiple remotes whose fetch refspecs map to the remote\n"
-"tracking ref '%s':\n"
-"%s\n"
-"This is typically a configuration error.\n"
-"\n"
-"To support setting up tracking branches, ensure that\n"
-"different remotes' fetch refspecs map into different\n"
-"tracking namespaces."
-msgstr ""
-"有多个远程仓库的获取引用规格映射到远程\n"
-"跟踪引用 '%s'：\n"
-"%s\n"
-"这通常是一个配置错误。\n"
-"\n"
-"为了支持设置跟踪分支，请确保\n"
-"不同远程仓库的获取引用规格映射到不同的\n"
-"跟踪命名空间。"
-
-#: add-interactive.c
-#, c-format
-msgid "updated %d path\n"
-msgid_plural "updated %d paths\n"
-msgstr[0] "更新了 %d 条路径\n"
-msgstr[1] "更新了 %d 条路径\n"
-
-#: add-interactive.c
-msgid "pick hunks and update selectively"
-msgstr "选择补丁块并进行选择性更新"
-
-#: add-patch.c
-msgid ""
-"y - stage this hunk\n"
-"n - do not stage this hunk\n"
-"q - quit; do not stage this hunk or any of the remaining ones\n"
-"a - stage this hunk and all later hunks in the file\n"
-"d - do not stage this hunk or any of the later hunks in the file\n"
-msgstr ""
-"y - 暂存此补丁块\n"
-"n - 不暂存此补丁块\n"
-"q - 退出；不暂存此补丁块及剩余的所有补丁块\n"
-"a - 暂存此补丁块及文件中的所有后续补丁块\n"
-"d - 不暂存此补丁块及文件中的所有后续补丁块\n"
-
-#: apply.c
-#, c-format
-msgid "git apply: bad git-diff - expected /dev/null, got %s on line %d"
-msgstr "git apply: 错误的 git-diff - 期望 /dev/null，第 %2$d 行得到 %1$s"
-
-#: bisect.c
-#, c-format
-msgid ""
-"the merge base between %s and [%s] must be skipped.\n"
-"So we cannot be sure the first %s commit is between %s and %s.\n"
-"We continue anyway."
-msgstr ""
-"%s 和 [%s] 之间的合并基必须跳过。\n"
-"所以我们无法确定第一个 %s 提交是否在 %s 和 %s 之间。\n"
-"但我们继续执行。"
-
-#: builtin/add.c
-msgid "could not read the index"
-msgstr "无法读取索引"
-
-#: builtin/add.c
-msgid "editing patch failed"
-msgstr "编辑补丁失败"
-
 #: add-interactive.c
 #, c-format
 msgid "%s cannot be negative"
@@ -311,6 +219,13 @@ msgstr "无法暂存 '%s'"
 #: add-interactive.c builtin/stash.c reset.c sequencer.c
 msgid "could not write index"
 msgstr "无法写入索引"
+
+#: add-interactive.c
+#, fuzzy, c-format
+msgid "updated %d path\n"
+msgid_plural "updated %d paths\n"
+msgstr[0] "增加了 %d 个路径\n"
+msgstr[1] "增加了 %d 个路径\n"
 
 #: add-interactive.c
 #, c-format
@@ -387,6 +302,11 @@ msgstr "将工作区状态添加到暂存区修改集中"
 #: add-interactive.c
 msgid "revert staged set of changes back to the HEAD version"
 msgstr "将暂存的修改集恢复为 HEAD 版本"
+
+#: add-interactive.c
+#, fuzzy
+msgid "pick hunks and update selectively"
+msgstr "挑选数据块并有选择地更新"
 
 #: add-interactive.c
 msgid "view diff between HEAD and index"
@@ -492,6 +412,21 @@ msgid ""
 "If the patch applies cleanly, the edited hunk will immediately be marked for "
 "staging."
 msgstr "如果补丁能正确地应用，编辑块将立即标记为暂存。"
+
+#: add-patch.c
+#, fuzzy
+msgid ""
+"y - stage this hunk\n"
+"n - do not stage this hunk\n"
+"q - quit; do not stage this hunk or any of the remaining ones\n"
+"a - stage this hunk and all later hunks in the file\n"
+"d - do not stage this hunk or any of the later hunks in the file\n"
+msgstr ""
+"y - 取消暂存该块\n"
+"n - 不要取消暂存该块\n"
+"q - 退出。不要取消暂存该块及后面的全部块\n"
+"a - 取消暂存该块和本文件中后面的全部块\n"
+"d - 不要取消暂存该块和本文件中后面的全部块\n"
 
 #: add-patch.c
 #, c-format
@@ -1199,6 +1134,11 @@ msgstr "regexec 返回 %d，输入为：%s"
 #, c-format
 msgid "unable to find filename in patch at line %d"
 msgstr "无法在补丁的第 %d 行找到文件名"
+
+#: apply.c
+#, fuzzy, c-format
+msgid "git apply: bad git-diff - expected /dev/null, got %s on line %d"
+msgstr "git apply：错误的 git-diff - 第 %d 行处应为 /dev/null"
 
 #: apply.c
 #, c-format
@@ -2114,6 +2054,16 @@ msgstr ""
 "您可能弄错了 %s 和 %s 版本？\n"
 
 #: bisect.c
+#, fuzzy, c-format
+msgid ""
+"the merge base between %s and [%s] must be skipped.\n"
+"So we cannot be sure the first %s commit is between %s and %s.\n"
+"We continue anyway."
+msgstr ""
+"合并基线 %s 是 %s。\n"
+"这意味着第一个 '%s' 提交位于 %s 和 [%s] 之间。\n"
+
+#: bisect.c
 #, c-format
 msgid "Bisecting: a merge base must be tested\n"
 msgstr "二分查找中：合并基线必须经过测试\n"
@@ -2146,6 +2096,13 @@ msgstr "读取二分查找引用失败"
 #, c-format
 msgid "%s was both %s and %s\n"
 msgstr "%s 同时为 %s 和 %s\n"
+
+#: bisect.c
+#, c-format
+msgid ""
+"No testable commit found.\n"
+"Maybe you started with bad path arguments?\n"
+msgstr ""
 
 #: bisect.c
 #, c-format
@@ -2224,6 +2181,13 @@ msgid "unable to write upstream branch configuration"
 msgstr "无法写入上游分支配置"
 
 #: branch.c
+msgid ""
+"\n"
+"After fixing the error cause you may try to fix up\n"
+"the remote tracking information by invoking:"
+msgstr ""
+
+#: branch.c
 #, c-format
 msgid "asked to inherit tracking from '%s', but no remote is set"
 msgstr "要求从 '%s' 继承跟踪信息，但是没有设置远程"
@@ -2254,6 +2218,22 @@ msgstr "未跟踪：引用 '%s' 的信息含糊不清"
 #, c-format
 msgid "  %s\n"
 msgstr "  %s\n"
+
+#. TRANSLATORS: The second argument is a \n-delimited list of
+#. duplicate refspecs, composed above.
+#.
+#: branch.c
+#, c-format
+msgid ""
+"There are multiple remotes whose fetch refspecs map to the remote\n"
+"tracking ref '%s':\n"
+"%s\n"
+"This is typically a configuration error.\n"
+"\n"
+"To support setting up tracking branches, ensure that\n"
+"different remotes' fetch refspecs map into different\n"
+"tracking namespaces."
+msgstr ""
 
 #: branch.c
 #, c-format
@@ -2353,6 +2333,16 @@ msgstr "无法 chmod %cx '%s'"
 #: builtin/add.c
 msgid "Unstaged changes after refreshing the index:"
 msgstr "刷新索引之后尚未被暂存的变更："
+
+#: builtin/add.c
+#, fuzzy
+msgid "could not read the index"
+msgstr "无法读取索引"
+
+#: builtin/add.c
+#, fuzzy
+msgid "editing patch failed"
+msgstr "编辑对象文件失败"
 
 #: builtin/add.c read-cache.c
 #, c-format
