@@ -1,0 +1,177 @@
+# Agent Configuration
+# This is the merged configuration from:
+# - User home directory: ~/.git-po-helper.yaml (lower priority)
+# - Repository root: <repo-root>/git-po-helper.yaml (higher priority)
+
+default_lang_code: zh_CN
+prompt:
+    update_pot: 
+    update_po: 
+    translate: 
+    review_since: 
+    review_commit:
+    review:
+agent-test:
+    runs: 1
+    pot_entries_before_update: 0
+    pot_entries_after_update: 6091
+    po_entries_before_update: 6083
+    po_entries_after_update: 6091
+    po_new_entries_after_update: 3
+    po_fuzzy_entries_after_update: 7
+agents:
+    claude-glm:
+        cmd:
+            - claude
+            - --dangerously-skip-permissions
+            - --settings
+            - /Users/jiangxin/.claude/settings-aliyun-i/settings.json-glm-5
+            - -p
+            - "{{.prompt}}"
+        kind: claude
+    claude-minimax:
+        cmd:
+            - claude
+            - --dangerously-skip-permissions
+            - --settings
+            - /Users/jiangxin/.claude/settings-aliyun-i/settings.json-MiniMax-M2.5
+            - -p
+            - "{{.prompt}}"
+        kind: claude
+    claude-qwen3:
+        cmd:
+            - claude
+            - --dangerously-skip-permissions
+            - --settings
+            - /Users/jiangxin/.claude/settings-aliyun-i/settings.json-qwen3-coder-plus
+            - -p
+            - "{{.prompt}}"
+        kind: claude
+    claude-qwen3.5:
+        cmd:
+            - claude
+            - --dangerously-skip-permissions
+            - --settings
+            - /Users/jiangxin/.claude/settings-aliyun-i/settings.json-qwen3.5-plus
+            - -p
+            - "{{.prompt}}"
+        kind: claude
+    claude-kimi:
+        cmd:
+            - claude
+            - --dangerously-skip-permissions
+            - --settings
+            - /Users/jiangxin/.claude/settings-aliyun-i/settings.json-kimi-k2.5
+            - -p
+            - "{{.prompt}}"
+        kind: claude
+    claude-glm-o:
+        cmd:
+            - claude
+            - --dangerously-skip-permissions
+            - --settings
+            - /Users/jiangxin/.claude/settings-aliyun-o/settings.json-glm-5
+            - -p
+            - "{{.prompt}}"
+        kind: claude
+    claude-minimax-o:
+        cmd:
+            - claude
+            - --dangerously-skip-permissions
+            - --settings
+            - /Users/jiangxin/.claude/settings-aliyun-o/settings.json-MiniMax-M2.5
+            - -p
+            - "{{.prompt}}"
+        kind: claude
+    claude-qwen3-o:
+        cmd:
+            - claude
+            - --dangerously-skip-permissions
+            - --output-format
+            - json
+            - --settings
+            - /Users/jiangxin/.claude/settings-aliyun-o/settings.json-qwen3-coder-plus
+            - -p
+            - "{{.prompt}}"
+        kind: claude
+    claude-qwen3.5-o:
+        cmd:
+            - claude
+            - --dangerously-skip-permissions
+            - --settings
+            - /Users/jiangxin/.claude/settings-aliyun-o/settings.json-qwen3.5-plus
+            - -p
+            - "{{.prompt}}"
+        kind: claude
+    claude-kimi-o:
+        cmd:
+            - claude
+            - --dangerously-skip-permissions
+            - --settings
+            - /Users/jiangxin/.claude/settings-aliyun-o/settings.json-kimi-k2.5
+            - -p
+            - "{{.prompt}}"
+        kind: claude
+    codex:
+        cmd:
+            - codex
+            - exec
+            - --yolo
+            - --profile
+            - minimax
+            - "{{.prompt}}"
+        kind: codex
+    opencode:
+        cmd:
+            - opencode
+            - run
+            - "{{.prompt}}"
+        kind: opencode
+    qwen:
+        cmd:
+            - qwen
+            - -y
+            - "{{.prompt}}"
+        kind: qwen
+    minimax:
+        cmd:
+            - codex
+            - exec
+            - --yolo
+            - --profile
+            - minimax
+            - "{{.prompt}}"
+        kind: codex
+    gemini:
+        cmd:
+            - qwen
+            - -y
+            - "{{.prompt}}"
+        kind: qwen
+    pot:
+        cmd:
+            - make
+            - pot
+        kind: echo
+    po:
+        cmd:
+            - make
+            - po-update
+            - PO_FILE={{.source}}
+        kind: echo
+    trans:
+        cmd:
+            - make
+            - po-update
+            - PO_FILE={{.source}}
+        kind: echo
+    review:
+        cmd:
+            - echo
+            - reviewed...
+        kind: echo
+    test:
+        cmd:
+            - echo
+            - '{{.prompt}}'
+        kind: echo

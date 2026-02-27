@@ -170,7 +170,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Git\n"
 "Report-Msgid-Bugs-To: Git Mailing List <git@vger.kernel.org>\n"
-"POT-Creation-Date: 2026-01-29 19:17+0800\n"
+"POT-Creation-Date: 2026-02-27 15:58+0800\n"
 "PO-Revision-Date: 2025-11-16 01:03+0800\n"
 "Last-Translator: Teng Long <dyroneteng@gmail.com>\n"
 "Language-Team: GitHub <https://github.com/dyrone/git/>\n"
@@ -219,13 +219,6 @@ msgstr "无法暂存 '%s'"
 #: add-interactive.c builtin/stash.c reset.c sequencer.c
 msgid "could not write index"
 msgstr "无法写入索引"
-
-#: add-interactive.c
-#, c-format
-msgid "updated %d path\n"
-msgid_plural "updated %d paths\n"
-msgstr[0] "更新了 %d 个路径\n"
-msgstr[1] "更新了 %d 个路径\n"
 
 #: add-interactive.c
 #, c-format
@@ -304,7 +297,7 @@ msgid "revert staged set of changes back to the HEAD version"
 msgstr "将暂存的修改集恢复为 HEAD 版本"
 
 #: add-interactive.c
-msgid "pick hunks and update selectively"
+msgid "pick hunk and update selectively"
 msgstr "挑选数据块并有选择地更新"
 
 #: add-interactive.c
@@ -418,7 +411,7 @@ msgid ""
 "n - do not stage this hunk\n"
 "q - quit; do not stage this hunk or any of the remaining ones\n"
 "a - stage this hunk and all later hunks in the file\n"
-"d - do not stage this hunk or any of the later hunks in the file\n"
+"d - do not stage this hunk or any of the later hunks\n"
 msgstr ""
 "y - 暂存该块\n"
 "n - 不要暂存该块\n"
@@ -1132,11 +1125,6 @@ msgstr "regexec 返回 %d，输入为：%s"
 #, c-format
 msgid "unable to find filename in patch at line %d"
 msgstr "无法在补丁的第 %d 行找到文件名"
-
-#: apply.c
-#, c-format
-msgid "git apply: bad git-diff - expected /dev/null, got %s on line %d"
-msgstr "git apply：错误的 git-diff - 应为 /dev/null，但在第 %2$d 行得到 %1$s"
 
 #: apply.c
 #, c-format
@@ -2053,17 +2041,6 @@ msgstr ""
 
 #: bisect.c
 #, c-format
-msgid ""
-"the merge base between %s and [%s] must be skipped.\n"
-"So we cannot be sure the first %s commit is between %s and %s.\n"
-"We continue anyway."
-msgstr ""
-"介于 %s 和 [%s] 的合并基线必须被跳过。\n"
-"所以我们无法确认第一个 %s 提交是否介于 %s 和 %s 之间。\n"
-"我们仍然继续。"
-
-#: bisect.c
-#, c-format
 msgid "Bisecting: a merge base must be tested\n"
 msgstr "二分查找中：合并基线必须经过测试\n"
 
@@ -2095,15 +2072,6 @@ msgstr "读取二分查找引用失败"
 #, c-format
 msgid "%s was both %s and %s\n"
 msgstr "%s 同时为 %s 和 %s\n"
-
-#: bisect.c
-#, c-format
-msgid ""
-"No testable commit found.\n"
-"Maybe you started with bad path arguments?\n"
-msgstr ""
-"没有发现可测试的提交。\n"
-"可能您在运行时使用了错误的路径参数？\n"
 
 #: bisect.c
 #, c-format
@@ -2182,15 +2150,6 @@ msgid "unable to write upstream branch configuration"
 msgstr "无法写入上游分支配置"
 
 #: branch.c
-msgid ""
-"\n"
-"After fixing the error cause you may try to fix up\n"
-"the remote tracking information by invoking:"
-msgstr ""
-"\n"
-"在修复错误后，您可以通过执行以下命令来尝试修复远程跟踪信息："
-
-#: branch.c
 #, c-format
 msgid "asked to inherit tracking from '%s', but no remote is set"
 msgstr "要求从 '%s' 继承跟踪信息，但是没有设置远程"
@@ -2221,28 +2180,6 @@ msgstr "未跟踪：引用 '%s' 的信息含糊不清"
 #, c-format
 msgid "  %s\n"
 msgstr "  %s\n"
-
-#. TRANSLATORS: The second argument is a \n-delimited list of
-#. duplicate refspecs, composed above.
-#.
-#: branch.c
-#, c-format
-msgid ""
-"There are multiple remotes whose fetch refspecs map to the remote\n"
-"tracking ref '%s':\n"
-"%s\n"
-"This is typically a configuration error.\n"
-"\n"
-"To support setting up tracking branches, ensure that\n"
-"different remotes' fetch refspecs map into different\n"
-"tracking namespaces."
-msgstr ""
-"有多个远程的获取引用规格映射到了跟踪引用 '%s'：\n"
-"%s\n"
-"这一般是个配置错误。\n"
-"\n"
-"如果要支持设置跟踪分支，请保证不同远程的获取引用规格映射至不同的跟踪命名空"
-"间。"
 
 #: branch.c
 #, c-format
@@ -2342,14 +2279,6 @@ msgstr "无法 chmod %cx '%s'"
 #: builtin/add.c
 msgid "Unstaged changes after refreshing the index:"
 msgstr "刷新索引之后尚未被暂存的变更："
-
-#: builtin/add.c
-msgid "could not read the index"
-msgstr "无法读取索引"
-
-#: builtin/add.c
-msgid "editing patch failed"
-msgstr "编辑补丁失败"
 
 #: builtin/add.c read-cache.c
 #, c-format
