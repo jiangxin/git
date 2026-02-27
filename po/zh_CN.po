@@ -221,6 +221,13 @@ msgid "could not write index"
 msgstr "无法写入索引"
 
 #: add-interactive.c
+#, fuzzy, c-format
+msgid "updated %d path\n"
+msgid_plural "updated %d paths\n"
+msgstr[0] "增加了 %d 个路径\n"
+msgstr[1] "增加了 %d 个路径\n"
+
+#: add-interactive.c
 #, c-format
 msgid "note: %s is untracked now.\n"
 msgstr "注意：%s 现在未被跟踪。\n"
@@ -297,7 +304,8 @@ msgid "revert staged set of changes back to the HEAD version"
 msgstr "将暂存的修改集恢复为 HEAD 版本"
 
 #: add-interactive.c
-msgid "pick hunk and update selectively"
+#, fuzzy
+msgid "pick hunks and update selectively"
 msgstr "挑选数据块并有选择地更新"
 
 #: add-interactive.c
@@ -406,18 +414,19 @@ msgid ""
 msgstr "如果补丁能正确地应用，编辑块将立即标记为暂存。"
 
 #: add-patch.c
+#, fuzzy
 msgid ""
 "y - stage this hunk\n"
 "n - do not stage this hunk\n"
 "q - quit; do not stage this hunk or any of the remaining ones\n"
 "a - stage this hunk and all later hunks in the file\n"
-"d - do not stage this hunk or any of the later hunks\n"
+"d - do not stage this hunk or any of the later hunks in the file\n"
 msgstr ""
-"y - 暂存该块\n"
-"n - 不要暂存该块\n"
-"q - 退出。不暂存该块及后面的全部块\n"
-"a - 暂存该块和本文件中后面的全部块\n"
-"d - 不暂存该块和本文件中后面的全部块\n"
+"y - 取消暂存该块\n"
+"n - 不要取消暂存该块\n"
+"q - 退出。不要取消暂存该块及后面的全部块\n"
+"a - 取消暂存该块和本文件中后面的全部块\n"
+"d - 不要取消暂存该块和本文件中后面的全部块\n"
 
 #: add-patch.c
 #, c-format
@@ -1125,6 +1134,11 @@ msgstr "regexec 返回 %d，输入为：%s"
 #, c-format
 msgid "unable to find filename in patch at line %d"
 msgstr "无法在补丁的第 %d 行找到文件名"
+
+#: apply.c
+#, fuzzy, c-format
+msgid "git apply: bad git-diff - expected /dev/null, got %s on line %d"
+msgstr "git apply：错误的 git-diff - 第 %d 行处应为 /dev/null"
 
 #: apply.c
 #, c-format
@@ -2040,6 +2054,16 @@ msgstr ""
 "您可能弄错了 %s 和 %s 版本？\n"
 
 #: bisect.c
+#, fuzzy, c-format
+msgid ""
+"the merge base between %s and [%s] must be skipped.\n"
+"So we cannot be sure the first %s commit is between %s and %s.\n"
+"We continue anyway."
+msgstr ""
+"合并基线 %s 是 %s。\n"
+"这意味着第一个 '%s' 提交位于 %s 和 [%s] 之间。\n"
+
+#: bisect.c
 #, c-format
 msgid "Bisecting: a merge base must be tested\n"
 msgstr "二分查找中：合并基线必须经过测试\n"
@@ -2072,6 +2096,13 @@ msgstr "读取二分查找引用失败"
 #, c-format
 msgid "%s was both %s and %s\n"
 msgstr "%s 同时为 %s 和 %s\n"
+
+#: bisect.c
+#, c-format
+msgid ""
+"No testable commit found.\n"
+"Maybe you started with bad path arguments?\n"
+msgstr ""
 
 #: bisect.c
 #, c-format
@@ -2150,6 +2181,13 @@ msgid "unable to write upstream branch configuration"
 msgstr "无法写入上游分支配置"
 
 #: branch.c
+msgid ""
+"\n"
+"After fixing the error cause you may try to fix up\n"
+"the remote tracking information by invoking:"
+msgstr ""
+
+#: branch.c
 #, c-format
 msgid "asked to inherit tracking from '%s', but no remote is set"
 msgstr "要求从 '%s' 继承跟踪信息，但是没有设置远程"
@@ -2180,6 +2218,22 @@ msgstr "未跟踪：引用 '%s' 的信息含糊不清"
 #, c-format
 msgid "  %s\n"
 msgstr "  %s\n"
+
+#. TRANSLATORS: The second argument is a \n-delimited list of
+#. duplicate refspecs, composed above.
+#.
+#: branch.c
+#, c-format
+msgid ""
+"There are multiple remotes whose fetch refspecs map to the remote\n"
+"tracking ref '%s':\n"
+"%s\n"
+"This is typically a configuration error.\n"
+"\n"
+"To support setting up tracking branches, ensure that\n"
+"different remotes' fetch refspecs map into different\n"
+"tracking namespaces."
+msgstr ""
 
 #: branch.c
 #, c-format
@@ -2279,6 +2333,16 @@ msgstr "无法 chmod %cx '%s'"
 #: builtin/add.c
 msgid "Unstaged changes after refreshing the index:"
 msgstr "刷新索引之后尚未被暂存的变更："
+
+#: builtin/add.c
+#, fuzzy
+msgid "could not read the index"
+msgstr "无法读取索引"
+
+#: builtin/add.c
+#, fuzzy
+msgid "editing patch failed"
+msgstr "编辑对象文件失败"
 
 #: builtin/add.c read-cache.c
 #, c-format
@@ -30329,3 +30393,16 @@ msgstr "略过 %s 含备份后缀 '%s'。\n"
 #, perl-format
 msgid "Do you really want to send %s? [y|N]: "
 msgstr "您真的要发送 %s？[y|N]："
+
+#~ msgid ""
+#~ "y - stage this hunk\n"
+#~ "n - do not stage this hunk\n"
+#~ "q - quit; do not stage this hunk or any of the remaining ones\n"
+#~ "a - stage this hunk and all later hunks in the file\n"
+#~ "d - do not stage this hunk or any of the later hunks\n"
+#~ msgstr ""
+#~ "y - 暂存该块\n"
+#~ "n - 不要暂存该块\n"
+#~ "q - 退出。不暂存该块及后面的全部块\n"
+#~ "a - 暂存该块和本文件中后面的全部块\n"
+#~ "d - 不暂存该块和本文件中后面的全部块\n"
