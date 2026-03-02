@@ -170,7 +170,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Git\n"
 "Report-Msgid-Bugs-To: Git Mailing List <git@vger.kernel.org>\n"
-"POT-Creation-Date: 2026-02-27 15:58+0800\n"
+"POT-Creation-Date: 2026-03-01 11:06+0800\n"
 "PO-Revision-Date: 2025-11-16 01:03+0800\n"
 "Last-Translator: Teng Long <dyroneteng@gmail.com>\n"
 "Language-Team: GitHub <https://github.com/dyrone/git/>\n"
@@ -29719,86 +29719,103 @@ msgstr "  （解决冲突并执行 \"git revert --continue\"）"
 
 #  译者：注意保持前导空格
 #: wt-status.c
+#, fuzzy
 msgid "  (run \"git revert --continue\" to continue)"
-msgstr "  （执行 \"git revert --continue\" 以继续）"
+msgstr "  （执行 \"git cherry-pick --continue\" 以继续）"
 
 #  译者：注意保持前导空格
 #: wt-status.c
+#, fuzzy
 msgid "  (all conflicts fixed: run \"git revert --continue\")"
-msgstr "  （所有冲突已解决：执行 \"git revert --continue\"）"
+msgstr "  （所有冲突已解决：运行 \"git rebase --continue\"）"
 
 #  译者：注意保持前导空格
 #: wt-status.c
+#, fuzzy
 msgid "  (use \"git revert --skip\" to skip this patch)"
-msgstr "  （使用 \"git revert --skip\" 跳过此补丁）"
+msgstr "  （使用 \"git rebase --skip\" 跳过此补丁）"
 
 #  译者：注意保持前导空格
 #: wt-status.c
+#, fuzzy
 msgid "  (use \"git revert --abort\" to cancel the revert operation)"
-msgstr "  （使用 \"git revert --abort\" 以取消还原操作）"
+msgstr "  （使用 \"git cherry-pick --abort\" 以取消拣选操作）"
 
 #: wt-status.c
-#, c-format
+#, fuzzy, c-format
 msgid "You are currently bisecting, started from branch '%s'."
-msgstr "您在执行从分支 '%s' 开始的二分查找操作。"
+msgstr "您在执行将分支 '%s' 变基到 '%s' 的操作。"
 
 #: wt-status.c
+#, fuzzy
 msgid "You are currently bisecting."
-msgstr "您在执行二分查找操作。"
+msgstr "您在执行变基操作。"
 
 #  译者：注意保持前导空格
 #: wt-status.c
+#, fuzzy
 msgid "  (use \"git bisect reset\" to get back to the original branch)"
-msgstr "  （使用 \"git bisect reset\" 以回到原有分支）"
+msgstr "  （使用 \"git rebase --abort\" 以检出原有分支）"
 
 #: wt-status.c
+#, fuzzy
 msgid "You are in a sparse checkout."
-msgstr "您处于稀疏检出状态。"
+msgstr "加载稀疏检出时出现问题"
 
 #: wt-status.c
-#, c-format
+#, fuzzy, c-format
 msgid "You are in a sparse checkout with %d%% of tracked files present."
-msgstr "您处于稀疏检出状态，已包含 %d%% 的跟踪文件。"
+msgstr "必须在稀疏检出中才能清理目录"
 
 #: wt-status.c
+#, fuzzy
 msgid "On branch "
-msgstr "位于分支 "
+msgstr "（非分支）"
 
 #: wt-status.c
+#, fuzzy
 msgid "interactive rebase in progress; onto "
-msgstr "交互式变基操作正在进行中；至 "
+msgstr "没有正在进行的变基"
 
 #: wt-status.c
+#, fuzzy
 msgid "rebase in progress; onto "
-msgstr "变基操作正在进行中；至 "
+msgstr "没有正在进行的变基"
 
 #: wt-status.c
+#, fuzzy
 msgid "HEAD detached at "
-msgstr "头指针分离于 "
+msgstr "（头指针在 %s 分离）"
 
 #: wt-status.c
+#, fuzzy
 msgid "HEAD detached from "
-msgstr "头指针分离自 "
+msgstr "（头指针自 %s 分离）"
 
 #: wt-status.c
+#, fuzzy
 msgid "Not currently on any branch."
-msgstr "当前不在任何分支上。"
+msgstr "您当前不在一个分支上。"
 
 #: wt-status.c
+#, fuzzy
 msgid "Initial commit"
-msgstr "初始提交"
+msgstr "不在一个提交中：%s"
 
 #: wt-status.c
+#, fuzzy
 msgid "No commits yet"
-msgstr "尚无提交"
+msgstr "没有解析提交。"
 
 #: wt-status.c
+#, fuzzy
 msgid "Untracked files"
-msgstr "未跟踪的文件"
+msgstr "没有未跟踪的文件。\n"
 
 #: wt-status.c
+#, fuzzy
 msgid "Ignored files"
-msgstr "忽略的文件"
+msgstr "包含忽略的文件"
 
 #: wt-status.c
 #, c-format
@@ -29806,229 +29823,239 @@ msgid ""
 "It took %.2f seconds to enumerate untracked files,\n"
 "but the results were cached, and subsequent runs may be faster."
 msgstr ""
-"枚举未跟踪的文件花了 %.2f 秒，\n"
-"结果已被缓存，后续的执行会更快。"
 
 #: wt-status.c
 #, c-format
 msgid "It took %.2f seconds to enumerate untracked files."
-msgstr "枚举未跟踪的文件花了 %.2f 秒。"
+msgstr ""
 
 #: wt-status.c
 msgid "See 'git help status' for information on how to improve this."
-msgstr "参见 'git help status' 了解如何改善。"
+msgstr ""
 
 #: wt-status.c
-#, c-format
+#, fuzzy, c-format
 msgid "Untracked files not listed%s"
-msgstr "未跟踪的文件未列出%s"
+msgstr "储藏中包含未跟踪文件"
 
-#  译者：中文字符串拼接，可删除前导空格
 #: wt-status.c
+#, fuzzy
 msgid " (use -u option to show untracked files)"
-msgstr "（使用 -u 参数显示未跟踪的文件）"
+msgstr "无法保存未跟踪文件"
 
 #: wt-status.c
+#, fuzzy
 msgid "No changes"
-msgstr "没有修改"
+msgstr "没有修改。"
 
 #: wt-status.c
 #, c-format
 msgid "no changes added to commit (use \"git add\" and/or \"git commit -a\")\n"
-msgstr "修改尚未加入提交（使用 \"git add\" 和/或 \"git commit -a\"）\n"
+msgstr ""
 
 #: wt-status.c
-#, c-format
+#, fuzzy, c-format
 msgid "no changes added to commit\n"
-msgstr "修改尚未加入提交\n"
+msgstr "尚未暂存以备提交的变更："
 
 #: wt-status.c
 #, c-format
 msgid ""
 "nothing added to commit but untracked files present (use \"git add\" to "
 "track)\n"
-msgstr "提交为空，但是存在尚未跟踪的文件（使用 \"git add\" 建立跟踪）\n"
+msgstr ""
 
 #: wt-status.c
 #, c-format
 msgid "nothing added to commit but untracked files present\n"
-msgstr "提交为空，但是存在尚未跟踪的文件\n"
+msgstr ""
 
 #: wt-status.c
 #, c-format
 msgid "nothing to commit (create/copy files and use \"git add\" to track)\n"
-msgstr "无文件要提交（创建/拷贝文件并使用 \"git add\" 建立跟踪）\n"
+msgstr ""
 
 #: wt-status.c
-#, c-format
+#, fuzzy, c-format
 msgid "nothing to commit\n"
-msgstr "无文件要提交\n"
+msgstr "无事可做"
 
 #: wt-status.c
-#, c-format
+#, fuzzy, c-format
 msgid "nothing to commit (use -u to show untracked files)\n"
-msgstr "无文件要提交（使用 -u 显示未跟踪的文件）\n"
+msgstr "无法保存未跟踪文件"
 
 #: wt-status.c
-#, c-format
+#, fuzzy, c-format
 msgid "nothing to commit, working tree clean\n"
-msgstr "无文件要提交，工作区干净\n"
+msgstr "无法检出工作区"
 
 #: wt-status.c
+#, fuzzy
 msgid "No commits yet on "
-msgstr "尚无提交于 "
+msgstr "没有命令被执行。"
 
 #: wt-status.c
+#, fuzzy
 msgid "HEAD (no branch)"
-msgstr "HEAD（非分支）"
+msgstr "（非分支）"
 
 #: wt-status.c
 msgid "different"
-msgstr "不同"
+msgstr ""
 
-#  译者：注意保持句尾空格
 #: wt-status.c
+#, fuzzy
 msgid "behind "
-msgstr "落后 "
+msgstr "落后 %d"
 
 #: wt-status.c
+#, fuzzy
 msgid "ahead "
-msgstr "领先 "
+msgstr "领先 %d"
 
 #. TRANSLATORS: the action is e.g. "pull with rebase"
 #: wt-status.c
-#, c-format
+#, fuzzy, c-format
 msgid "cannot %s: You have unstaged changes."
-msgstr "无法 %s：您有未暂存的变更。"
+msgstr "不能变基：您有未暂存的变更。"
 
 #: wt-status.c
 msgid "additionally, your index contains uncommitted changes."
-msgstr "另外，您的索引中包含未提交的变更。"
+msgstr ""
 
 #: wt-status.c
-#, c-format
+#, fuzzy, c-format
 msgid "cannot %s: Your index contains uncommitted changes."
-msgstr "不能 %s：您的索引中包含未提交的变更。"
+msgstr "不能变基：您有未暂存的变更。"
 
 #: xdiff-interface.c
-#, c-format
+#, fuzzy, c-format
 msgid "unknown style '%s' given for '%s'"
-msgstr "'%2$s' 的未知风格取值 '%1$s'"
+msgstr "键 '%2$s' 的未知取值 '%1$s'"
 
 #: git-merge-octopus.sh git-merge-resolve.sh
+#, fuzzy
 msgid ""
 "Error: Your local changes to the following files would be overwritten by "
 "merge"
-msgstr "错误：您对下列文件的本地修改将被合并操作覆盖"
+msgstr ""
+"您对下列文件的本地修改将被合并操作覆盖：\n"
+"%%s"
 
 #: git-merge-octopus.sh
 msgid "Automated merge did not work."
-msgstr "自动合并未成功。"
+msgstr ""
 
 #: git-merge-octopus.sh
+#, fuzzy
 msgid "Should not be doing an octopus."
-msgstr "不应该执行章鱼式合并。"
+msgstr "无法读取 `log` 的输出"
 
 #: git-merge-octopus.sh
 #, sh-format
 msgid "Unable to find common commit with $pretty_name"
-msgstr "无法找到和 $pretty_name 的基线提交"
+msgstr ""
 
 #: git-merge-octopus.sh
-#, sh-format
+#, fuzzy, sh-format
 msgid "Already up to date with $pretty_name"
-msgstr "已经和 $pretty_name 保持一致"
+msgstr "已经是最新的。"
 
 #: git-merge-octopus.sh
 #, sh-format
 msgid "Fast-forwarding to: $pretty_name"
-msgstr "快进至：$pretty_name"
+msgstr ""
 
 #: git-merge-octopus.sh
 #, sh-format
 msgid "Trying simple merge with $pretty_name"
-msgstr "尝试和 $pretty_name 的简单合并"
+msgstr ""
 
 #: git-merge-octopus.sh
 msgid "Simple merge did not work, trying automatic merge."
-msgstr "简单合并未生效，尝试自动合并。"
+msgstr ""
 
 #: git-sh-setup.sh
 #, sh-format
 msgid "usage: $dashless $USAGE"
-msgstr "用法：$dashless $USAGE"
+msgstr ""
 
 #: git-sh-setup.sh
-#, sh-format
+#, fuzzy, sh-format
 msgid "Cannot chdir to $cdup, the toplevel of the working tree"
-msgstr "无法切换到工作区的顶级目录 $cdup"
+msgstr "只能在工作区的顶级目录中使用相对路径"
 
 #: git-sh-setup.sh
-#, sh-format
+#, fuzzy, sh-format
 msgid "fatal: $program_name cannot be used without a working tree."
-msgstr "致命错误：$program_name 无法在没有工作区的情况下使用"
+msgstr "无法在工作区之外使用相对路径语法"
 
 #: git-sh-setup.sh
+#, fuzzy
 msgid "Cannot rewrite branches: You have unstaged changes."
-msgstr "无法重写分支：您有未暂存的变更。"
+msgstr "不能变基：您有未暂存的变更。"
 
 #: git-sh-setup.sh
-#, sh-format
+#, fuzzy, sh-format
 msgid "Cannot $action: You have unstaged changes."
-msgstr "无法 $action：您有未暂存的变更。"
+msgstr "不能变基：您有未暂存的变更。"
 
 #: git-sh-setup.sh
 #, sh-format
 msgid "Cannot $action: Your index contains uncommitted changes."
-msgstr "无法 $action：您的索引中包含未提交的变更。"
+msgstr ""
 
 #: git-sh-setup.sh
 msgid "Additionally, your index contains uncommitted changes."
-msgstr "而且您的索引中包含未提交的变更。"
+msgstr ""
 
 #: git-sh-setup.sh
+#, fuzzy
 msgid "You need to run this command from the toplevel of the working tree."
-msgstr "您需要在工作区的顶级目录中运行这个命令。"
+msgstr "只能在工作区的顶级目录中使用相对路径"
 
 #: git-sh-setup.sh
+#, fuzzy
 msgid "Unable to determine absolute path of git directory"
-msgstr "无法确定 Git 目录的绝对路径"
+msgstr "无法创建临时对象目录"
 
 #: git-send-email.perl
 msgid "local zone differs from GMT by a non-minute interval\n"
-msgstr "本地时间与 GMT 的偏移不是整数分钟\n"
+msgstr ""
 
 #: git-send-email.perl
 msgid "local time offset greater than or equal to 24 hours\n"
-msgstr "本地时间偏移量大于等于 24 小时\n"
+msgstr ""
 
 #: git-send-email.perl
 #, perl-format
 msgid "fatal: command '%s' died with exit code %d"
-msgstr "致命错误：命令 '%s' 已终止，退出代码为 %d"
+msgstr ""
 
 #: git-send-email.perl
 msgid "the editor exited uncleanly, aborting everything"
-msgstr "编辑器非正常退出，终止所有操作"
+msgstr ""
 
 #: git-send-email.perl
 #, perl-format
 msgid ""
 "'%s' contains an intermediate version of the email you were composing.\n"
-msgstr "'%s' 包含您正在编写的一个中间版本的邮件。\n"
+msgstr ""
 
 #: git-send-email.perl
 #, perl-format
 msgid "'%s.final' contains the composed email.\n"
-msgstr "'%s.final' 包含已撰写的邮件。\n"
+msgstr ""
 
 #: git-send-email.perl
+#, fuzzy
 msgid "--dump-aliases incompatible with other options\n"
-msgstr "--dump-aliases 和其他选项不兼容\n"
+msgstr "--trivial-merge 与其他所有选项不兼容"
 
 #: git-send-email.perl
 msgid "--dump-aliases and --translate-aliases are mutually exclusive\n"
-msgstr "--dump-aliases 和 --translate-aliases 是互斥的\n"
+msgstr ""
 
 #: git-send-email.perl
 msgid ""
@@ -30036,49 +30063,47 @@ msgid ""
 "git-send-email is configured with the sendemail.* options - note the 'e'.\n"
 "Set sendemail.forbidSendmailVariables to false to disable this check.\n"
 msgstr ""
-"致命错误：发现 'sendmail' 配置选项\n"
-"git-send-email 通过 sendemail.* 选项进行设置，注意字母 'e'。\n"
-"设置 sendemail.forbidSendmailVariables 为 false 来禁用这项检查。\n"
 
 #: git-send-email.perl
+#, fuzzy
 msgid "Cannot run git format-patch from outside a repository\n"
-msgstr "无法在仓库之外运行 git format-patch\n"
+msgstr "无法在仓库之外执行排队的对象检查"
 
 #: git-send-email.perl
 msgid ""
 "`batch-size` and `relogin` must be specified together (via command-line or "
 "configuration option)\n"
-msgstr "`batch-size` 和 `relogin` 必须同时定义（通过命令行或者配置选项）\n"
+msgstr ""
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "Unknown --suppress-cc field: '%s'\n"
-msgstr "未知的 --suppress-cc 字段：'%s'\n"
+msgstr "未知的首选包：'%s'"
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "Unknown --confirm setting: '%s'\n"
-msgstr "未知的 --confirm 设置：'%s'\n"
+msgstr "未知的冲突风格 '%s'"
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "warning: sendmail alias with quotes is not supported: %s\n"
-msgstr "警告：不支持带引号的 sendmail 别名：%s\n"
+msgstr "不支持在不带 -z 参数的情况下工作"
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "warning: `:include:` not supported: %s\n"
-msgstr "警告：不支持 `:include:`：%s\n"
+msgstr "不支持写到标准输入"
 
 #: git-send-email.perl
 #, perl-format
 msgid "warning: `/file` or `|pipe` redirection not supported: %s\n"
-msgstr "警告：不支持 `/file` 或 `|pipe` 重定向：%s\n"
+msgstr ""
 
 #: git-send-email.perl
 #, perl-format
 msgid "warning: sendmail line is not recognized: %s\n"
-msgstr "警告：无法识别的 sendmail 行：%s\n"
+msgstr ""
 
 #: git-send-email.perl
 #, perl-format
@@ -30089,36 +30114,29 @@ msgid ""
 "    * Saying \"./%s\" if you mean a file; or\n"
 "    * Giving --format-patch option if you mean a range.\n"
 msgstr ""
-"存在文件 '%s' 但是它也可能是一个用于产生补丁列表的提交范围。请用如下方法消除"
-"歧义：\n"
-"\n"
-"    * 如果含义为一个文件，使用 \"./%s\"，或者\n"
-"    * 如果含义为一个范围，使用 --format-patch 选项。\n"
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "Failed to opendir %s: %s"
-msgstr "无法打开目录 %s：%s"
+msgstr "无法打开 '%s'"
 
 #: git-send-email.perl
+#, fuzzy
 msgid ""
 "\n"
 "No patch files specified!\n"
 "\n"
-msgstr ""
-"\n"
-"未指定补丁文件！\n"
-"\n"
+msgstr "未指定路径"
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "No subject line in %s?"
-msgstr "在 %s 中没有标题行？"
+msgstr "对象未找到：%s"
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "Failed to open for writing %s: %s"
-msgstr "为写入打开 %s 失败：%s"
+msgstr "无法为写入打开 %s"
 
 #: git-send-email.perl
 msgid ""
@@ -30128,40 +30146,36 @@ msgid ""
 "\n"
 "Clear the body content if you don't wish to send a summary.\n"
 msgstr ""
-"以 \"GIT:\" 开头的行将被删除。\n"
-"考虑包含一个整体的差异统计或者您正在写的补丁的目录。\n"
-"\n"
-"如果您不想发送摘要，清除内容。\n"
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "Failed to open %s.final: %s"
-msgstr "无法打开 %s.final：%s"
+msgstr "无法打开 '%s'"
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "Failed to open %s: %s"
-msgstr "无法打开 %s：%s"
+msgstr "无法打开 '%s'"
 
 #: git-send-email.perl
 msgid "Summary email is empty, skipping it\n"
-msgstr "摘要邮件为空，跳过\n"
+msgstr ""
 
 #. TRANSLATORS: please keep [y/N] as is.
 #: git-send-email.perl
 #, perl-format
 msgid "Are you sure you want to use <%s> [y/N]? "
-msgstr "您确认要使用 <%s> [y/N]？"
+msgstr ""
 
 #: git-send-email.perl
 msgid ""
 "The following files are 8bit, but do not declare a Content-Transfer-"
 "Encoding.\n"
-msgstr "如下文件含 8bit 内容，但没有声明一个 Content-Transfer-Encoding。\n"
+msgstr ""
 
 #: git-send-email.perl
 msgid "Which 8bit encoding should I declare [UTF-8]? "
-msgstr "要声明哪种 8bit 编码格式 [UTF-8]？"
+msgstr ""
 
 #: git-send-email.perl
 #, perl-format
@@ -30171,39 +30185,36 @@ msgid ""
 "has the template subject '*** SUBJECT HERE ***'. Pass --force if you really "
 "want to send.\n"
 msgstr ""
-"拒绝发送，因为补丁\n"
-"\t%s\n"
-"包含模板标题 '*** SUBJECT HERE ***'。如果确实想要发送，使用参数 --force。\n"
 
 #: git-send-email.perl
 msgid "To whom should the emails be sent (if anyone)?"
-msgstr "邮件将要发送给谁（如果有的话）？"
+msgstr ""
 
 #: git-send-email.perl
 #, perl-format
 msgid "fatal: alias '%s' expands to itself\n"
-msgstr "致命错误：别名 '%s' 扩展为它自己\n"
+msgstr ""
 
 #: git-send-email.perl
 msgid "Message-ID to be used as In-Reply-To for the first email (if any)? "
-msgstr "如有的话，Message-ID 要用作第一封邮件的 In-Reply-To 吗？"
+msgstr ""
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "error: unable to extract a valid address from: %s\n"
-msgstr "错误：无法从 %s 中提取一个有效的邮件地址\n"
+msgstr "错误：无法格式化消息：%s\n"
 
 #. TRANSLATORS: Make sure to include [q] [d] [e] in your
 #. translation. The program will only accept English input
 #. at this point.
 #: git-send-email.perl
 msgid "What to do with this address? ([q]uit|[d]rop|[e]dit): "
-msgstr "如何处理这个地址？([q]uit|[d]rop|[e]dit)："
+msgstr ""
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "CA path \"%s\" does not exist"
-msgstr "CA 路径 \"%s\" 不存在"
+msgstr "路径 '%s' 不存在"
 
 #: git-send-email.perl
 msgid ""
@@ -30218,145 +30229,139 @@ msgid ""
 "    run 'git config --global sendemail.confirm auto'.\n"
 "\n"
 msgstr ""
-"    以上的抄送列表（Cc）已经用补丁提交信息中发现的地址进行\n"
-"    了扩展。默认情况下 send-email 会给出提示。这个行为由\n"
-"    sendemail.confirm 配置控制。\n"
-"\n"
-"    更多信息，执行 'git send-email --help'。\n"
-"    要保持当前行为，但不显示此信息，运行 'git config --global\n"
-"    sendemail.confirm auto'。\n"
-"\n"
 
 #. TRANSLATORS: Make sure to include [y] [n] [e] [q] [a] in your
 #. translation. The program will only accept English input
 #. at this point.
 #: git-send-email.perl
 msgid "Send this email? ([y]es|[n]o|[e]dit|[q]uit|[a]ll): "
-msgstr "发送这封邮件？([y]es|[n]o|[e]dit|[q]uit|[a]ll)："
+msgstr ""
 
 #: git-send-email.perl
 msgid "Send this email reply required"
-msgstr "发送要求的邮件回复"
+msgstr ""
 
 #: git-send-email.perl
 msgid "The destination IMAP folder is not properly defined."
-msgstr "目标 IMAP 文件夹没有正确定义。"
+msgstr ""
 
 #: git-send-email.perl
 msgid "The required SMTP server is not properly defined."
-msgstr "要求的 SMTP 服务器未被正确定义。"
+msgstr ""
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "Server does not support STARTTLS! %s"
-msgstr "服务器不支持 STARTTLS！%s"
+msgstr "服务器不支持 '%s'"
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "STARTTLS failed! %s"
-msgstr "STARTTLS 失败！%s"
+msgstr "RPC 失败。%s"
 
 #: git-send-email.perl
 msgid "Unable to initialize SMTP properly. Check config and use --smtp-debug."
-msgstr "无法正确地初始化 SMTP。检查配置并使用 --smtp-debug。"
+msgstr ""
 
 #: git-send-email.perl
 #, perl-format
 msgid "Outlook reassigned Message-ID to: %s\n"
-msgstr "Outlook 重新分配了 Message-ID 为：%s\n"
+msgstr ""
 
 #: git-send-email.perl
 msgid "Warning: Could not retrieve Message-ID from server response.\n"
-msgstr "警告：无法从服务器响应中获取 Message-ID。\n"
+msgstr ""
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "Failed to send %s\n"
-msgstr "无法发送 %s\n"
+msgstr "无法读取 %s"
 
 #: git-send-email.perl
 #, perl-format
 msgid "Dry-Sent %s"
-msgstr "模拟发送 %s"
+msgstr ""
 
 #: git-send-email.perl
 #, perl-format
 msgid "Sent %s"
-msgstr "已发送 %s"
+msgstr ""
 
 #: git-send-email.perl
 msgid "Dry-OK. Log says:"
-msgstr "模拟成功。日志说："
+msgstr ""
 
 #: git-send-email.perl
 msgid "OK. Log says:"
-msgstr "成功。日志说："
+msgstr ""
 
 #: git-send-email.perl
 msgid "Result: "
-msgstr "结果："
+msgstr ""
 
 #: git-send-email.perl
 msgid "Result: OK"
-msgstr "结果：成功"
+msgstr ""
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "can't open file %s"
-msgstr "无法打开文件 %s"
+msgstr "无法打开补丁文件 %s"
 
 #: git-send-email.perl
 #, perl-format
 msgid "(mbox) Adding cc: %s from line '%s'\n"
-msgstr "(mbox) 添加 cc：%s 来自行 '%s'\n"
+msgstr ""
 
 #: git-send-email.perl
 #, perl-format
 msgid "(mbox) Adding to: %s from line '%s'\n"
-msgstr "(mbox) 添加 to：%s 来自行 '%s'\n"
+msgstr ""
 
 #: git-send-email.perl
 #, perl-format
 msgid "(non-mbox) Adding cc: %s from line '%s'\n"
-msgstr "(non-mbox) 添加 cc：%s 来自行 '%s'\n"
+msgstr ""
 
 #: git-send-email.perl
 #, perl-format
 msgid "(body) Adding cc: %s from line '%s'\n"
-msgstr "(body) 添加 cc：%s 来自行 '%s'\n"
+msgstr ""
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "error: invalid SMTP port '%s'\n"
-msgstr "错误：无效的 SMTP 端口 '%s'\n"
+msgstr "无效格式 '%s'"
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "(%s) Could not execute '%s'"
-msgstr "(%s) 无法执行 '%s'"
+msgstr "无法删除 '%s'"
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "(%s) Malformed output from '%s'"
-msgstr "(%s) 来自 '%s' 的输出信息格式错误"
+msgstr "非法的输入行：'%s'。"
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "(%s) failed to close pipe to '%s'"
-msgstr "(%s) 无法关闭管道至 '%s'"
+msgstr "无法拷贝文件至 '%s'"
 
 #: git-send-email.perl
 #, perl-format
 msgid "(%s) Adding %s: %s from: '%s'\n"
-msgstr "(%s) 添加 %s：%s 自：'%s'\n"
+msgstr ""
 
 #: git-send-email.perl
+#, fuzzy
 msgid "cannot send message as 7bit"
-msgstr "无法以 7bit 形式发送信息"
+msgstr "无法作为内置命令处理 %s"
 
 #: git-send-email.perl
+#, fuzzy
 msgid "invalid transfer encoding"
-msgstr "无效的传送编码"
+msgstr "无效的范围结尾"
 
 #: git-send-email.perl
 #, perl-format
@@ -30365,14 +30370,11 @@ msgid ""
 "%s\n"
 "warning: no patches were sent\n"
 msgstr ""
-"致命错误：%s：被 %s 钩子拒绝\n"
-"%s\n"
-"警告：补丁未能发送\n"
 
 #: git-send-email.perl
-#, perl-format
+#, fuzzy, perl-format
 msgid "unable to open %s: %s\n"
-msgstr "无法打开 %s：%s\n"
+msgstr "无法打开 %s"
 
 #: git-send-email.perl
 #, perl-format
@@ -30380,29 +30382,14 @@ msgid ""
 "fatal: %s:%d is longer than 998 characters\n"
 "warning: no patches were sent\n"
 msgstr ""
-"致命错误：%s:%d 超过 998 字符\n"
-"警告：补丁未能发送\n"
 
 #: git-send-email.perl
 #, perl-format
 msgid "Skipping %s with backup suffix '%s'.\n"
-msgstr "略过 %s 含备份后缀 '%s'。\n"
+msgstr ""
 
 #. TRANSLATORS: please keep "[y|N]" as is.
 #: git-send-email.perl
 #, perl-format
 msgid "Do you really want to send %s? [y|N]: "
-msgstr "您真的要发送 %s？[y|N]："
-
-#~ msgid ""
-#~ "y - stage this hunk\n"
-#~ "n - do not stage this hunk\n"
-#~ "q - quit; do not stage this hunk or any of the remaining ones\n"
-#~ "a - stage this hunk and all later hunks in the file\n"
-#~ "d - do not stage this hunk or any of the later hunks\n"
-#~ msgstr ""
-#~ "y - 暂存该块\n"
-#~ "n - 不要暂存该块\n"
-#~ "q - 退出。不暂存该块及后面的全部块\n"
-#~ "a - 暂存该块和本文件中后面的全部块\n"
-#~ "d - 不暂存该块和本文件中后面的全部块\n"
+msgstr ""
