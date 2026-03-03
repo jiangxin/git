@@ -1,0 +1,192 @@
+From ed04d37535991a1b0e27dc5bc20ec29942e8299e Mon Sep 17 00:00:00 2001
+Message-ID: <ed04d37535991a1b0e27dc5bc20ec29942e8299e.1772551123.git.worldhello.net@gmail.com>
+In-Reply-To: <cover.1772551123.git.worldhello.net@gmail.com>
+References: <CANYiYbFM9+4xGmeBRNCC6VyW9EzjEFxEWHDNnOVhJNM73Ga_FA@mail.gmail.com>
+	<cover.1772551123.git.worldhello.net@gmail.com>
+From: Jiang Xin <worldhello.net@gmail.com>
+Date: Wed, 4 Feb 2026 11:39:22 +0800
+Subject: [PATCH v2 1/5] l10n: add .gitattributes to simplify location
+ filtering
+To: Junio C Hamano <gitster@pobox.com>,
+    Git List <git@vger.kernel.org>
+Cc: Alexander Shopov <ash@kambanaria.org>,
+    Mikel Forcada <mikel.forcada@gmail.com>,
+    Ralf Thielow <ralf.thielow@gmail.com>,
+    Jean-Noël Avila <jn.avila@free.fr>,
+    Bagas Sanjaya <bagasdotme@gmail.com>,
+    Dimitriy Ryazantcev <DJm00n@mail.ru>,
+    Peter Krefting <peter@softwolves.pp.se>,
+    Emir SARI <bitigchi@me.com>,
+    Arkadii Yakovets <ark@cho.red>,
+    Vũ Tiến Hưng <newcomerminecraft@gmail.com>,
+    Teng Long <dyroneteng@gmail.com>,
+    Yi-Jyun Pan <pan93412@gmail.com>
+
+To simplify the location filtering process for l10n contributors when
+committing po/XX.po files, add the filter attributes for selected PO
+files to the repository. This ensures all contributors automatically
+get the same filter configuration without manual setup in
+.git/info/attributes.
+
+The filter attribute is only applied to specific PO files that have
+been properly prepared. Files without the filter attribute fall into
+two categories:
+
+- Legacy files that lack maintenance and still contain location
+  comments that have not been cleaned up
+- Files whose formatting (such as line wrapping) differs from the
+  output of msgcat processing
+
+To avoid discrepancies between the filtered blob in the index and the
+unfiltered working tree for these files, the filter attribute is not
+applied to them.
+
+Contributors still need to manually define the filter drivers using
+git-config as documented in po/README.md.
+
+Additionally, po/README.md has been reorganized: the content of handling
+location-less PO file content has been moved from the "Updating a XX.po
+file" section to a separate "Preparing a XX.po file for commit" section.
+This prevents AI agents from introducing unrelated operations when
+updating PO files.
+
+Signed-off-by: Jiang Xin <worldhello.net@gmail.com>
+---
+ po/.gitattributes | 36 ++++++++++++++++++++++++
+ po/README.md      | 70 +++++++++++++++++++++++++----------------------
+ 2 files changed, 74 insertions(+), 32 deletions(-)
+ create mode 100644 po/.gitattributes
+
+diff --git a/po/.gitattributes b/po/.gitattributes
+new file mode 100644
+index 0000000000..7100b7050e
+--- /dev/null
++++ b/po/.gitattributes
+@@ -0,0 +1,36 @@
++# Git Attributes for PO Files
++#
++# This file configures Git filters to automatically strip location information
++# from PO files when committing, producing cleaner diffs and saving repository
++# space.
++#
++# Two filter types are used:
++# 1. gettext-no-file-no-location: Strips both filenames and line numbers
++#    (e.g., removes "#: main.c:123" entirely)
++# 2. gettext-no-location: Preserves filenames but removes line numbers, which
++#    requires gettext 0.20 or higher
++#    (e.g., "#: main.c:123" becomes "#: main.c")
++#
++# See `po/README.md` for instructions on setting up the required filter drivers.
++
++# Do not configure default attributes for `*.po` files, as this would cause
++# differences between the filtered blob stored in the index and the unfiltered
++# working tree version for legacy, unmaintained PO files.
++
++# Languages that strip both filenames and line numbers
++bg.po	filter=gettext-no-file-no-location
++de.po	filter=gettext-no-file-no-location
++#es.po	filter=gettext-no-file-no-location
++fr.po	filter=gettext-no-file-no-location
++#ga.po	filter=gettext-no-file-no-location
++#ru.po	filter=gettext-no-file-no-location
++sv.po	filter=gettext-no-file-no-location
++tr.po	filter=gettext-no-file-no-location
++uk.po	filter=gettext-no-file-no-location
++vi.po	filter=gettext-no-file-no-location
++
++# Languages that preserve filenames but strip line numbers
++#ca.po	filter=gettext-no-location
++id.po	filter=gettext-no-location
++zh_CN.po	filter=gettext-no-location
++zh_TW.po	filter=gettext-no-location
+diff --git a/po/README.md b/po/README.md
+index ec08aa24ad..79757d4c21 100644
+--- a/po/README.md
++++ b/po/README.md
+@@ -159,38 +159,6 @@ It will:
+   and these location lines will help translation tools to locate
+   translation context easily.
+ 
+-Once you are done testing the translation (see below), it's better
+-to commit a location-less "po/XX.po" file to save repository space
+-and make a user-friendly patch for review.
+-
+-To save a location-less "po/XX.po" automatically in repository, you
+-can:
+-
+-First define a new attribute for "po/XX.po" by appending the following
+-line in ".git/info/attributes":
+-
+-```
+-/po/XX.po filter=gettext-no-location
+-```
+-
+-Then define the driver for the "gettext-no-location" clean filter to
+-strip out both filenames and locations from the contents as follows:
+-
+-```shell
+-git config --global filter.gettext-no-location.clean \
+-           "msgcat --no-location -"
+-```
+-
+-For users who have gettext version 0.20 or higher, it is also possible
+-to define a clean filter to preserve filenames but not locations:
+-
+-```shell
+-git config --global filter.gettext-no-location.clean \
+-           "msgcat --add-location=file -"
+-```
+-
+-You're now ready to ask the l10n coordinator to pull from you.
+-
+ 
+ ## Fuzzy translation
+ 
+@@ -229,6 +197,44 @@ git-po-helper check-commits <rev-list-opts>
+ ```
+ 
+ 
++## Preparing a "XX.po" file for commit
++
++Once you are done testing the translation, it's better to commit a
++location-less "po/XX.po" file to save repository space and make a
++user-friendly patch for review.
++
++To save a location-less "po/XX.po" automatically in repository, you
++can:
++
++First, check which filter is configured for your "po/XX.po" file:
++
++```
++git check-attr filter po/XX.po
++```
++
++The filter configuration is defined in the "po/.gitattributes" file.
++
++Then define the driver for the filter. Most languages use the
++"gettext-no-file-no-location" clean filter, which strips out both filenames and
++locations from the comments. To set this up, run the following command:
++
++```shell
++git config --global filter.gettext-no-file-no-location.clean \
++           "msgcat --no-location -"
++```
++
++Some languages use the "gettext-no-location" clean filter, which preserves
++filenames but not locations. For these, install gettext version 0.20 or higher
++and setup the driver as below:
++
++```shell
++git config --global filter.gettext-no-location.clean \
++           "msgcat --add-location=file -"
++```
++
++You're now ready to ask the l10n coordinator to pull from you.
++
++
+ ## Marking strings for translation
+ 
+ (This is done by the core developers).
+-- 
+2.53.0.rc2.20.g532543fa46
+

@@ -1,0 +1,84 @@
+From e8bf240c68f069fb7ee71b4e42a43f0798b51671 Mon Sep 17 00:00:00 2001
+Message-ID: <e8bf240c68f069fb7ee71b4e42a43f0798b51671.1772551123.git.worldhello.net@gmail.com>
+In-Reply-To: <cover.1772551123.git.worldhello.net@gmail.com>
+References: <CANYiYbFM9+4xGmeBRNCC6VyW9EzjEFxEWHDNnOVhJNM73Ga_FA@mail.gmail.com>
+	<cover.1772551123.git.worldhello.net@gmail.com>
+From: Jiang Xin <worldhello.net@gmail.com>
+Date: Sun, 15 Feb 2026 11:53:27 +0800
+Subject: [PATCH v2 3/5] docs(l10n): add AI agent instructions for updating
+ po/XX.po files
+To: Junio C Hamano <gitster@pobox.com>,
+    Git List <git@vger.kernel.org>
+Cc: Alexander Shopov <ash@kambanaria.org>,
+    Mikel Forcada <mikel.forcada@gmail.com>,
+    Ralf Thielow <ralf.thielow@gmail.com>,
+    Jean-Noël Avila <jn.avila@free.fr>,
+    Bagas Sanjaya <bagasdotme@gmail.com>,
+    Dimitriy Ryazantcev <DJm00n@mail.ru>,
+    Peter Krefting <peter@softwolves.pp.se>,
+    Emir SARI <bitigchi@me.com>,
+    Arkadii Yakovets <ark@cho.red>,
+    Vũ Tiến Hưng <newcomerminecraft@gmail.com>,
+    Teng Long <dyroneteng@gmail.com>,
+    Yi-Jyun Pan <pan93412@gmail.com>
+
+Add a new section po/AGENTS.md to provide clear instructions for
+updating language-specific PO files. The improved documentation
+significantly reduces both model interaction rounds and execution time.
+
+Performance evaluation using the qwen model:
+
+    # Before: instructions in po/README.md; custom prompt references it
+    git-po-helper agent-test --runs=5 --agent=qwen update-po \
+        --prompt="Update po/zh_CN.po according to po/README.md"
+
+    # After: instructions in po/AGENTS.md; built-in prompt references it
+    git-po-helper agent-test --runs=5 --agent=qwen update-po
+
+Benchmark results (5-run average):
+
+    | Metric      | Before  | After  | Improvement |
+    |-------------|---------|--------|-------------|
+    | Turns:      | 22      | 4      | -82%        |
+    | Exec time   | 38s     | 9s     | -76%        |
+    | Turn range  | 17-39   | 3-9    |             |
+    | Time range  | 25s-68s | 7s-14s |             |
+
+This change makes agent workflows more efficient and reduces API costs
+by minimizing redundant LLM interactions and file content checks.
+
+Signed-off-by: Jiang Xin <worldhello.net@gmail.com>
+---
+ po/AGENTS.md | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/po/AGENTS.md b/po/AGENTS.md
+index 1fcef9119a..5eb1a606e1 100644
+--- a/po/AGENTS.md
++++ b/po/AGENTS.md
+@@ -72,6 +72,22 @@ The command will handle all necessary steps including file creation or
+ update automatically.
+ 
+ 
++### Task 2: Updating po/XX.po
++
++When asked to "update po/XX.po" or similar requests (where XX is a
++language code):
++
++1. **Directly execute** the command `make po-update PO_FILE=po/XX.po`
++   without reading or checking the file content beforehand.
++
++2. **Do not verify, translate, or review** the updated file after execution.
++   Simply run the command and consider the task complete.
++
++The command will handle all necessary steps including generating
++"po/git.pot" and merging new translatable strings into "po/XX.po"
++automatically.
++
++
+ ## Human translators remain in control
+ 
+ Git translation is human-driven; language team leaders and contributors are
+-- 
+2.53.0.rc2.20.g532543fa46
+

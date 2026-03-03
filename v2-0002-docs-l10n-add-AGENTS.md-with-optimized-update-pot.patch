@@ -1,0 +1,177 @@
+From 5e23a45964fa86bf710d5e04396a574dc8882ef3 Mon Sep 17 00:00:00 2001
+Message-ID: <5e23a45964fa86bf710d5e04396a574dc8882ef3.1772551123.git.worldhello.net@gmail.com>
+In-Reply-To: <cover.1772551123.git.worldhello.net@gmail.com>
+References: <CANYiYbFM9+4xGmeBRNCC6VyW9EzjEFxEWHDNnOVhJNM73Ga_FA@mail.gmail.com>
+	<cover.1772551123.git.worldhello.net@gmail.com>
+From: Jiang Xin <worldhello.net@gmail.com>
+Date: Sat, 14 Feb 2026 14:08:46 +0800
+Subject: [PATCH v2 2/5] docs(l10n): add AGENTS.md with optimized update-pot
+ instructions
+To: Junio C Hamano <gitster@pobox.com>,
+    Git List <git@vger.kernel.org>
+Cc: Alexander Shopov <ash@kambanaria.org>,
+    Mikel Forcada <mikel.forcada@gmail.com>,
+    Ralf Thielow <ralf.thielow@gmail.com>,
+    Jean-Noël Avila <jn.avila@free.fr>,
+    Bagas Sanjaya <bagasdotme@gmail.com>,
+    Dimitriy Ryazantcev <DJm00n@mail.ru>,
+    Peter Krefting <peter@softwolves.pp.se>,
+    Emir SARI <bitigchi@me.com>,
+    Arkadii Yakovets <ark@cho.red>,
+    Vũ Tiến Hưng <newcomerminecraft@gmail.com>,
+    Teng Long <dyroneteng@gmail.com>,
+    Yi-Jyun Pan <pan93412@gmail.com>
+
+Add a new documentation file po/AGENTS.md that provides agent-specific
+instructions for generating or updating po/git.pot, separating them
+from the general po/README.md. This separation allows for more targeted
+optimization of AI agent workflows.
+
+Performance evaluation using the qwen model:
+
+    # Before: add the instruction to po/README.md; the prompt references
+    # po/README.md for execution
+    git-po-helper agent-test --runs=5 --agent=qwen update-pot \
+	--prompt="Update po/git.pot according to po/README.md"
+
+    # After: add the instruction to po/AGENTS.md; use builtin prompt
+    # that references po/AGENTS.md for execution
+    git-po-helper agent-test --runs=5 --agent=qwen update-pot
+
+Benchmark results (5-run average):
+
+Phase 1 - Optimizing po/README.md:
+
+    | Metric      | Before  | After  | Improvement |
+    |-------------|---------|--------|-------------|
+    | Turns:      | 17      | 5      | -71%        |
+    | Exec time   | 34s     | 14s    | -59%        |
+    | Turn range  | 3-36    | 3-7    |             |
+    | Time range  | 10s-59s | 9s-19s |             |
+
+Phase 2 - Adding po/AGENTS.md (further optimization):
+
+    | Metric      | Before  | After  | Improvement |
+    |-------------|---------|--------|-------------|
+    | Turns       | 17      | 3      | -82%        |
+    | Exec time   | 34s     | 8s     | -76%        |
+    | Turn range  | 3-36    | 3-3    |             |
+    | Time range  | 10s-59s | 6s-9s  |             |
+
+Separating agent-specific instructions into AGENTS.md provides:
+
+- More focused and concise instructions for AI agents
+- Cleaner README.md for human readers
+- Additional 11% reduction in turns and 17% in execution time
+- More consistent behavior (turn range reduced from 3-7 to 3-3)
+
+This change makes agent workflows more efficient and reduces API costs
+by minimizing redundant LLM interactions.
+
+Signed-off-by: Jiang Xin <worldhello.net@gmail.com>
+---
+ po/AGENTS.md | 92 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 92 insertions(+)
+ create mode 100644 po/AGENTS.md
+
+diff --git a/po/AGENTS.md b/po/AGENTS.md
+new file mode 100644
+index 0000000000..1fcef9119a
+--- /dev/null
++++ b/po/AGENTS.md
+@@ -0,0 +1,92 @@
++# Instructions for AI Agents
++
++This file gives specific instructions for AI agents that perform
++housekeeping tasks for Git l10n. Use of AI is optional; many successful
++l10n teams work well without it.
++
++The section "Housekeeping tasks for localization workflows" documents the
++most commonly used housekeeping tasks.
++
++
++## Background knowledge for localization workflows
++
++Essential background for the workflows below; understand these concepts before
++performing any housekeeping tasks in this document.
++
++### Language code and notation (XX, ll, ll\_CC)
++
++XX is a placeholder for the language code. The code is either `ll` (ISO 639)
++or `ll_CC` (e.g. `de`, `zh_CN` for Simplified Chinese). It appears in the PO
++file's header entry metadata (e.g. `"Language: zh_CN\n"`) and is typically used
++as the filename: `po/XX.po`.
++
++
++### Header Entry
++
++Every PO file (`po/XX.po`) contains a special entry called the "header entry"
++at the beginning of the file. This entry has an empty `msgid` and contains
++metadata about the translation in its `msgstr`:
++
++```po
++msgid ""
++msgstr ""
++"Project-Id-Version: Git\n"
++"Report-Msgid-Bugs-To: Git Mailing List <git@vger.kernel.org>\n"
++"POT-Creation-Date: 2026-02-14 13:38+0800\n"
++"PO-Revision-Date: 2026-02-14 11:41+0800\n"
++"Last-Translator: Teng Long <dyroneteng@gmail.com>\n"
++"Language-Team: GitHub <https://github.com/dyrone/git/>\n"
++"Language: zh_CN\n"
++"MIME-Version: 1.0\n"
++"Content-Type: text/plain; charset=UTF-8\n"
++"Content-Transfer-Encoding: 8bit\n"
++"Plural-Forms: nplurals=2; plural=(n != 1);\n"
++"X-Generator: Gtranslator 42.0\n"
++```
++
++**CRITICAL**: Do not modify the header's `msgstr` during translation. Extracted
++files (e.g. `po/l10n-pending.po`) include this header; preserve it exactly.
++
++The header provides: translation metadata (translator, language, dates);
++pluralization rules (`Plural-Forms`); encoding and MIME type; project/version.
++
++
++## Housekeeping tasks for localization workflows
++
++This section describes housekeeping tasks listed in the introduction. Read
++"Background knowledge for localization workflows" above before performing
++any task.
++
++
++### Task 1: Generating or updating po/git.pot
++
++When asked to "update po/git.pot" or similar requests:
++
++1. **Directly execute** the command `make po/git.pot` without checking
++   if the file exists beforehand.
++
++2. **Do not verify** the generated file after execution. Simply run the
++   command and consider the task complete.
++
++The command will handle all necessary steps including file creation or
++update automatically.
++
++
++## Human translators remain in control
++
++Git translation is human-driven; language team leaders and contributors are
++responsible for:
++
++- Understanding technical context of Git commands and messages
++- Making linguistic and cultural decisions for the target language
++- Maintaining translation quality and consistency
++- Ensuring translations follow Git l10n conventions and standards
++- Building and maintaining language glossaries
++- Reviewing and approving all changes before submission
++
++AI tools, if used, only accelerate routine tasks.
++
++AI-generated output should always be treated as rough drafts requiring human
++review, editing, and approval by someone who understands both the technical
++context and the target language.  The best results come from combining AI
++efficiency with human judgment, cultural insight, and community engagement.
+-- 
+2.53.0.rc2.20.g532543fa46
+
