@@ -27790,81 +27790,82 @@ msgid "unable to set up work tree using invalid config"
 msgstr "无法使用无效配置来创建工作区"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "'%s' already specified as '%s'"
-msgstr "'%s' 已指定为 '%s'"
+msgstr "'%s' 已经存在"
 
 #: setup.c
 #, c-format
 msgid "Expected git repo version <= %d, found %d"
-msgstr "期望 git 仓库版本 <= %d，却得到 %d"
+msgstr ""
 
 #: setup.c
+#, fuzzy
 msgid "unknown repository extension found:"
 msgid_plural "unknown repository extensions found:"
-msgstr[0] "发现未知的仓库扩展："
-msgstr[1] "发现未知的仓库扩展："
+msgstr[0] "仓库 '%s' 未找到"
+msgstr[1] "仓库 '%s' 未找到"
 
 #: setup.c
 msgid "repo version is 0, but v1-only extension found:"
 msgid_plural "repo version is 0, but v1-only extensions found:"
-msgstr[0] "仓库的版本是 0，但是发现仅用于 v1 的扩展："
-msgstr[1] "仓库的版本是 0，但是发现仅用于 v1 的扩展："
+msgstr[0] ""
+msgstr[1] ""
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "error opening '%s'"
-msgstr "打开 '%s' 出错"
+msgstr "为 %s 打开索引出错"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "too large to be a .git file: '%s'"
-msgstr "文件太大，无法作为 .git 文件：'%s'"
+msgstr "无法读取输入文件 '%s'"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "error reading %s"
-msgstr "读取 %s 出错"
+msgstr "添加包 %s 出错"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "invalid gitfile format: %s"
-msgstr "无效的 gitfile 格式：%s"
+msgstr "无效的日期格式：%s"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "no path in gitfile: %s"
-msgstr "在 gitfile 中没有路径：%s"
+msgstr "无法打开补丁文件 %s"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "not a git repository: %s"
-msgstr "不是 Git 仓库：%s"
+msgstr "不是 Git 仓库"
 
 #: setup.c
 #, c-format
 msgid "'$%s' too big"
-msgstr "'$%s' 太大"
+msgstr ""
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "not a git repository: '%s'"
-msgstr "不是 Git 仓库：'%s'"
+msgstr "不是 Git 仓库"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "cannot chdir to '%s'"
-msgstr "无法切换目录到 '%s'"
+msgstr "无法切换目录到 %s"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "failed to stat '%*s%s%s'"
-msgstr "无法获取 '%*s%s%s' 状态（stat）"
+msgstr "无法对 '%s' 调用 stat"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "safe.directory '%s' not absolute"
-msgstr "safe.directory '%s' 不是绝对路径"
+msgstr "目录 '%s' 已存在"
 
 #: setup.c
 #, c-format
@@ -27874,24 +27875,21 @@ msgid ""
 "\n"
 "\tgit config --global --add safe.directory %s"
 msgstr ""
-"在 '%s' 检测到可疑的仓库所有权\n"
-"%s要为本仓库创建特例，请运行：\n"
-"\n"
-"\tgit config --global --add safe.directory %s"
 
 #: setup.c
+#, fuzzy
 msgid "Unable to read current working directory"
-msgstr "无法读取当前工作目录"
+msgstr "拒绝删除当前工作目录\n"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "cannot change to '%s'"
 msgstr "无法切换到 '%s'"
 
 #: setup.c
 #, c-format
 msgid "not a git repository (or any of the parent directories): %s"
-msgstr "不是 Git 仓库（或者任何父目录）：%s"
+msgstr ""
 
 #: setup.c
 #, c-format
@@ -27899,13 +27897,11 @@ msgid ""
 "not a git repository (or any parent up to mount point %s)\n"
 "Stopping at filesystem boundary (GIT_DISCOVERY_ACROSS_FILESYSTEM not set)."
 msgstr ""
-"不是 Git 仓库（或者直至挂载点 %s 的任何父目录）\n"
-"停止在文件系统边界（未设置 GIT_DISCOVERY_ACROSS_FILESYSTEM）。"
 
 #: setup.c
 #, c-format
 msgid "cannot use bare repository '%s' (safe.bareRepository is '%s')"
-msgstr "无法使用纯仓库 '%s' （safe.bareRepository 为 '%s'）"
+msgstr ""
 
 #: setup.c
 #, c-format
@@ -27913,203 +27909,206 @@ msgid ""
 "problem with core.sharedRepository filemode value (0%.3o).\n"
 "The owner of files must always have read and write permissions."
 msgstr ""
-"参数 core.sharedRepository 的文件属性值有问题（0%.3o）。\n"
-"文件属主必须始终拥有读写权限。"
 
 #: setup.c
+#, fuzzy
 msgid "fork failed"
-msgstr "fork 失败"
+msgstr "fseek 失败"
 
 #: setup.c
+#, fuzzy
 msgid "setsid failed"
-msgstr "setsid 失败"
+msgstr "储藏失败"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "cannot stat template '%s'"
-msgstr "无法对模板 '%s' 调用 stat"
+msgstr "无法对 '%s' 调用 stat"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "cannot opendir '%s'"
-msgstr "无法打开目录 '%s'"
+msgstr "无法打开 '%s'"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "cannot readlink '%s'"
-msgstr "无法读取链接 '%s'"
+msgstr "无法读取 '%s'"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "cannot symlink '%s' '%s'"
-msgstr "无法从 '%s' 到 '%s' 创建符号链接"
+msgstr "无法删除 '%s'"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "cannot copy '%s' to '%s'"
 msgstr "无法拷贝 '%s' 至 '%s'"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "ignoring template %s"
-msgstr "忽略模板 %s"
+msgstr "忽略未合入的：%s"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "templates not found in %s"
-msgstr "没有在 %s 中找到模板"
+msgstr "在 '%s' 中找不到仓库"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "not copying templates from '%s': %s"
-msgstr "没有从 '%s' 复制模板：%s"
+msgstr "无法打开补丁 '%s'：%s"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "invalid initial branch name: '%s'"
-msgstr "无效的初始分支名：'%s'"
+msgstr "无效的分支名：'%s'"
 
 #: setup.c
 #, c-format
 msgid "re-init: ignored --initial-branch=%s"
-msgstr "re-init：已忽略 --initial-branch=%s"
+msgstr ""
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "unable to handle file type %d"
-msgstr "无法处理 %d 类型的文件"
+msgstr "无法索引文件 '%s'"
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "unable to move %s to %s"
-msgstr "无法移动 %s 至 %s"
+msgstr "无法移动 '%s' 到 '%s'"
 
 #: setup.c
 msgid "attempt to reinitialize repository with different hash"
-msgstr "尝试用不同的哈希算法重新初始化仓库"
+msgstr ""
 
 #: setup.c
 msgid ""
 "attempt to reinitialize repository with different reference storage format"
-msgstr "尝试使用不同的引用存储格式重新初始化仓库"
+msgstr ""
 
 #: setup.c
-#, c-format
+#, fuzzy, c-format
 msgid "%s already exists"
-msgstr "%s 已经存在"
+msgstr "'%s' 已经存在"
 
 #: setup.c
 #, c-format
 msgid "Reinitialized existing shared Git repository in %s%s\n"
-msgstr "在 %s%s 重新初始化已存在的共享 Git 仓库\n"
+msgstr ""
 
 #: setup.c
 #, c-format
 msgid "Reinitialized existing Git repository in %s%s\n"
-msgstr "在 %s%s 重新初始化已存在的 Git 仓库\n"
+msgstr ""
 
 #: setup.c
 #, c-format
 msgid "Initialized empty shared Git repository in %s%s\n"
-msgstr "在 %s%s 初始化空的共享 Git 仓库\n"
+msgstr ""
 
 #: setup.c
 #, c-format
 msgid "Initialized empty Git repository in %s%s\n"
-msgstr "在 %s%s 初始化空的 Git 仓库\n"
+msgstr ""
 
 #: sparse-index.c
 #, c-format
 msgid "index entry is a directory, but not sparse (%08x)"
-msgstr "索引条目是一个目录，但不是稀疏的 (%08x)"
+msgstr ""
 
 #: split-index.c
+#, fuzzy
 msgid "cannot use split index with a sparse index"
-msgstr "拆分索引无法与稀疏索引一起使用"
+msgstr "无法为稀疏索引写入拆分索引"
 
 #. TRANSLATORS: The first %s is a command like "ls-tree".
 #: strbuf.c
-#, c-format
+#, fuzzy, c-format
 msgid "bad %s format: element '%s' does not start with '('"
-msgstr "无效的 %s 格式：元素 '%s' 没有以 '(' 开头"
+msgstr "包文件名 '%s' 没有以 '.%s' 结尾"
 
 #. TRANSLATORS: The first %s is a command like "ls-tree".
 #: strbuf.c
-#, c-format
+#, fuzzy, c-format
 msgid "bad %s format: element '%s' does not end in ')'"
-msgstr "无效的 %s 格式：元素 '%s' 没有以 ')' 结尾"
+msgstr "包文件名 '%s' 没有以 '.%s' 结尾"
 
 #. TRANSLATORS: %s is a command like "ls-tree".
 #: strbuf.c
-#, c-format
+#, fuzzy, c-format
 msgid "bad %s format: %%%.*s"
-msgstr "无效的 %s 格式：%%%.*s"
+msgstr "无效的引用格式：%s"
 
 #: strbuf.c
 #, c-format
 msgid "%u.%2.2u"
-msgstr "%u.%2.2u"
+msgstr ""
 
 #. TRANSLATORS: SI decimal prefix symbol for 10^9
 #: strbuf.c
 msgid "G"
-msgstr "G"
+msgstr ""
 
 #. TRANSLATORS: SI decimal prefix symbol for 10^6
 #: strbuf.c
 msgid "M"
-msgstr "M"
+msgstr ""
 
 #. TRANSLATORS: SI decimal prefix symbol for 10^3
 #: strbuf.c
 msgid "k"
-msgstr "k"
+msgstr ""
 
 #. TRANSLATORS: IEC 80000-13:2008 gibibyte/second and gibibyte
 #: strbuf.c
 msgid "GiB/s"
-msgstr "GiB/s"
+msgstr ""
 
 #: strbuf.c
 msgid "GiB"
-msgstr "GiB"
+msgstr ""
 
 #. TRANSLATORS: IEC 80000-13:2008 mebibyte/second and mebibyte
 #: strbuf.c
 msgid "MiB/s"
-msgstr "MiB/s"
+msgstr ""
 
 #: strbuf.c
 msgid "MiB"
-msgstr "MiB"
+msgstr ""
 
 #. TRANSLATORS: IEC 80000-13:2008 kibibyte/second and kibibyte
 #: strbuf.c
 msgid "KiB/s"
-msgstr "KiB/s"
+msgstr ""
 
 #: strbuf.c
 msgid "KiB"
-msgstr "KiB"
+msgstr ""
 
 #. TRANSLATORS: IEC 80000-13:2008 byte/second and byte
 #: strbuf.c
 msgid "B/s"
-msgstr "B/s"
+msgstr ""
 
 #: strbuf.c
 msgid "B"
-msgstr "B"
+msgstr ""
 
 #. TRANSLATORS: IEC 80000-13:2008 byte/second
 #: strbuf.c
+#, fuzzy
 msgid "byte/s"
 msgid_plural "bytes/s"
-msgstr[0] "字节/秒"
-msgstr[1] "字节/秒"
+msgstr[0] "字节"
+msgstr[1] "字节"
 
 #. TRANSLATORS: IEC 80000-13:2008 byte
 #: strbuf.c
+#, fuzzy
 msgid "byte"
 msgid_plural "bytes"
 msgstr[0] "字节"
@@ -28121,113 +28120,114 @@ msgstr[1] "字节"
 #: strbuf.c
 #, c-format
 msgid "%s %s"
-msgstr "%s %s"
+msgstr ""
 
 #: submodule-config.c
-#, c-format
+#, fuzzy, c-format
 msgid "ignoring suspicious submodule name: %s"
-msgstr "忽略可疑的子模组名称：%s"
+msgstr "忽略带有错误名称 %s 的引用"
 
 #: submodule-config.c
 msgid "negative values not allowed for submodule.fetchJobs"
-msgstr "submodule.fetchJobs 不允许为负值"
+msgstr ""
 
 #: submodule-config.c
 #, c-format
 msgid "ignoring '%s' which may be interpreted as a command-line option: %s"
-msgstr "忽略可能被解析为命令行选项的 '%s'：%s"
+msgstr ""
 
 #: submodule-config.c
-#, c-format
+#, fuzzy, c-format
 msgid "Could not update .gitmodules entry %s"
-msgstr "无法更新 .gitmodules 条目 %s"
+msgstr "无法创建空的子模组目录 %s"
 
 #: submodule.c
 msgid "Cannot change unmerged .gitmodules, resolve merge conflicts first"
-msgstr "无法修改未合并的 .gitmodules，先解决合并冲突"
+msgstr ""
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "Could not find section in .gitmodules where path=%s"
-msgstr "无法在 .gitmodules 中找到 path=%s 的小节"
+msgstr "在 .gitmodules 中没有发现路径 '%s' 的子模组映射"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "Could not remove .gitmodules entry for %s"
-msgstr "无法移除 %s 的 .gitmodules 条目"
+msgstr "无法移除子模组工作区 '%s'\n"
 
 #: submodule.c
+#, fuzzy
 msgid "staging updated .gitmodules failed"
-msgstr "将更新后 .gitmodules 添加暂存区失败"
+msgstr "更新文件失败"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "in unpopulated submodule '%s'"
-msgstr "位于未检出的子模组 '%s'"
+msgstr "无法添加子模组 '%s'"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "Pathspec '%s' is in submodule '%.*s'"
-msgstr "路径规格 '%s' 在子模组 '%.*s' 中"
+msgstr "无法在子模组路径 '%2$s' 中检出 '%1$s'"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "bad --ignore-submodules argument: %s"
-msgstr "无效的 --ignore-submodules 参数：%s"
+msgstr "无效的 --color-moved 参数：%s"
 
 #: submodule.c
 #, c-format
 msgid ""
 "Submodule in commit %s at path: '%s' collides with a submodule named the "
 "same. Skipping it."
-msgstr "提交 %s 中位于路径 '%s' 的子模组和同名的子模组冲突。跳过它。"
+msgstr ""
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "submodule entry '%s' (%s) is a %s, not a commit"
-msgstr "子模组条目 '%s'（%s）是一个 %s，不是一个提交"
+msgstr "%s %s 不是一个提交！"
 
 #: submodule.c
 #, c-format
 msgid ""
 "Could not run 'git rev-list <commits> --not --remotes -n 1' command in "
 "submodule %s"
-msgstr "无法在子模组 %s 中执行 'git rev-list <提交> --not --remotes -n 1'"
+msgstr ""
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "process for submodule '%s' failed"
-msgstr "处理子模组 '%s' 失败"
+msgstr "无法克隆 '%s' 到子模组路径 '%s'"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "Pushing submodule '%s'\n"
-msgstr "正在推送子模组 '%s'\n"
+msgstr "略过子模组 '%s'"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "Unable to push submodule '%s'\n"
-msgstr "无法推送子模组 '%s'\n"
+msgstr "无法检出子模组 '%s'"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "Fetching submodule %s%s\n"
-msgstr "正在获取子模组 %s%s\n"
+msgstr "略过子模组 '%s'"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "Could not access submodule '%s'\n"
-msgstr "无法访问子模组 '%s'\n"
+msgstr "无法移除子模组工作区 '%s'\n"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "Could not access submodule '%s' at commit %s\n"
-msgstr "无法访问子模组 '%s' 的提交 %s\n"
+msgstr "无法在路径 '%s' 初始化子模组"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "Fetching submodule %s%s at commit %s\n"
-msgstr "正在获取子模组 %s%s 的提交 %s\n"
+msgstr "注意：快进子模组 %s 到 %s"
 
 #: submodule.c
 #, c-format
@@ -28235,427 +28235,444 @@ msgid ""
 "Errors during submodule fetch:\n"
 "%s"
 msgstr ""
-"获取子模组时的错误：\n"
-"%s"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "'%s' not recognized as a git repository"
-msgstr "无法将 '%s' 识别为 Git 仓库"
+msgstr "--stdin 需要 git 仓库"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "Could not run 'git status --porcelain=2' in submodule %s"
-msgstr "无法在子模组 %s 中执行 'git status --porcelain=2'"
+msgstr "无法获得子模组 '%s' 的仓库句柄"
 
 #: submodule.c
 #, c-format
 msgid "'git status --porcelain=2' failed in submodule %s"
-msgstr "在子模组 %s 中执行 'git status --porcelain=2' 失败"
+msgstr ""
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "could not start 'git status' in submodule '%s'"
-msgstr "无法在子模组 '%s' 中启动 'git status'"
+msgstr "无法获得子模组 '%s' 的仓库句柄"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "could not run 'git status' in submodule '%s'"
-msgstr "无法在子模组 '%s' 中执行 'git status'"
+msgstr "无法在 '%s' 中执行 'git status'"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "Could not unset core.worktree setting in submodule '%s'"
-msgstr "无法在子模组 '%s' 中取消 core.worktree 的设置"
+msgstr "无法获得子模组 '%s' 的仓库句柄"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "could not recurse into submodule '%s'"
 msgstr "无法递归进入子模组 '%s'"
 
 #: submodule.c
+#, fuzzy
 msgid "could not reset submodule index"
-msgstr "无法重置子模组索引"
+msgstr "无法读取索引"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "submodule '%s' has dirty index"
-msgstr "子模组 '%s' 中有脏索引"
+msgstr "子模组 '%s'：无法找到子模组"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "Submodule '%s' could not be updated."
-msgstr "子模组 '%s' 无法被更新。"
+msgstr "子模组路径 '%s' 尚未初始化"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "submodule git dir '%s' is inside git dir '%.*s'"
-msgstr "子模组 Git 目录 '%s' 位于 Git 目录 '%.*s' 中"
+msgstr "子模组路径 '%s'：变基至 '%s'\n"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "expected '%.*s' in submodule path '%s' not to be a symbolic link"
-msgstr "期望子模组的父目录 '%.*s' 不是一个符号链接，子模组路径为 '%s'"
+msgstr "受影响的文件 '%s' 位于符号链接之外"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "expected submodule path '%s' not to be a symbolic link"
-msgstr "预期子模组路径 '%s' 不是符号链接"
+msgstr "受影响的文件 '%s' 位于符号链接之外"
 
 #: submodule.c
 #, c-format
 msgid ""
 "relocate_gitdir for submodule '%s' with more than one worktree not supported"
-msgstr "不支持对有多个工作区的子模组 '%s' 执行 relocate_gitdir"
+msgstr ""
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "could not lookup name for submodule '%s'"
-msgstr "无法查询子模组 '%s' 的名称"
+msgstr "无法获得子模组 '%s' 的仓库句柄"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid "refusing to move '%s' into an existing git dir"
-msgstr "拒绝移动 '%s' 到现存 Git 目录中"
+msgstr "拒绝在另一个子模组的 git 目录中创建/使用 '%s'"
 
 #: submodule.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "Migrating git directory of '%s%s' from\n"
 "'%s' to\n"
 "'%s'\n"
-msgstr ""
-"将 '%s%s' 的 Git 目录从\n"
-"'%s' 迁移至\n"
-"'%s'\n"
+msgstr "无法从 '%s' 迁移 Git 目录到 '%s'"
 
 #: submodule.c
+#, fuzzy
 msgid "could not start ls-files in .."
-msgstr "无法在 .. 中启动 ls-files"
+msgstr "无法对文件 '%s' 调用 stat"
 
 #: submodule.c
 #, c-format
 msgid "ls-tree returned unexpected return code %d"
-msgstr "ls-tree 返回意外返回码 %d"
+msgstr ""
 
 #: symlinks.c
-#, c-format
+#, fuzzy, c-format
 msgid "failed to lstat '%s'"
-msgstr "无法执行 lstat '%s'"
+msgstr "无法对 '%s' 调用 stat"
 
 #: t/helper/test-bundle-uri.c
 msgid "no remote configured to get bundle URIs from"
-msgstr "没有配置可用于获取 bundle URI 的远程"
+msgstr ""
 
 #: t/helper/test-bundle-uri.c
+#, fuzzy
 msgid "could not get the bundle-uri list"
-msgstr "无法获取 bundle-uri 列表"
+msgstr "无法生成待办列表"
 
 #: t/helper/test-cache-tree.c
 msgid "test-tool cache-tree <options> (control|prime|update)"
-msgstr "test-tool cache-tree <选项> (control|prime|update)"
+msgstr ""
 
 #: t/helper/test-cache-tree.c
 msgid "clear the cache tree before each iteration"
-msgstr "在每次迭代前清除缓存树"
+msgstr ""
 
 #: t/helper/test-cache-tree.c
 msgid "number of entries in the cache tree to invalidate (default 0)"
-msgstr "缓存树中无效化的条目数量（默认 0）"
+msgstr ""
 
 #: t/helper/test-pack-deltas.c
+#, fuzzy
 msgid "the number of objects to write"
-msgstr "写入对象的数量"
+msgstr "单次请求的最少对象数量"
 
 #: t/helper/test-path-walk.c
 msgid "test-tool path-walk <options> -- <revision-options>"
-msgstr "test-tool path-walk <选项> -- <版本选项>"
+msgstr ""
 
 #: t/helper/test-path-walk.c
+#, fuzzy
 msgid "toggle inclusion of blob objects"
-msgstr "切换是否包含数据对象"
+msgstr "无效的数据对象 %s"
 
 #: t/helper/test-path-walk.c
+#, fuzzy
 msgid "toggle inclusion of commit objects"
-msgstr "切换是否包含提交对象"
+msgstr "无法写提交对象"
 
 #: t/helper/test-path-walk.c
 msgid "toggle inclusion of tag objects"
-msgstr "切换是否包含标签对象"
+msgstr ""
 
 #: t/helper/test-path-walk.c
+#, fuzzy
 msgid "toggle inclusion of tree objects"
-msgstr "切换是否包含树对象"
+msgstr "显示一个树对象的内容"
 
 #: t/helper/test-path-walk.c
 msgid "toggle pruning of uninteresting paths"
-msgstr "切换对无趣路径的修剪"
+msgstr ""
 
 #: t/helper/test-path-walk.c
 msgid "toggle aggressive edge walk"
-msgstr "切换激进边遍历模式"
+msgstr ""
 
 #: t/helper/test-path-walk.c
+#, fuzzy
 msgid "read a pattern list over stdin"
-msgstr "从标准输入读取模式列表"
+msgstr "从标准输入读取模式"
 
 #: t/helper/test-reach.c
-#, c-format
+#, fuzzy, c-format
 msgid "commit %s is not marked reachable"
-msgstr "提交 %s 没有标记为可达"
+msgstr "提交 %s 没有第 %d 个父提交"
 
 #: t/helper/test-reach.c
+#, fuzzy
 msgid "too many commits marked reachable"
-msgstr "太多提交标记为可达"
+msgstr "提交太多，无法写入提交图"
 
 #: t/helper/test-read-midx.c
+#, fuzzy
 msgid "could not determine MIDX preferred pack"
-msgstr "无法确定多包索引的首选包"
+msgstr "无法确定首选包"
 
 #: t/helper/test-serve-v2.c
+#, fuzzy
 msgid "test-tool serve-v2 [<options>]"
-msgstr "test-tool serve-v2 [<选项>]"
+msgstr "git notes prune [<选项>]"
 
 #: t/helper/test-serve-v2.c
+#, fuzzy
 msgid "exit immediately after advertising capabilities"
-msgstr "通告能力之后立即退出"
+msgstr "在能力之后应为一个 flush 包"
 
 #: t/helper/test-simple-ipc.c
 msgid "test-helper simple-ipc is-active    [<name>] [<options>]"
-msgstr "test-helper simple-ipc is-active    [<名称>] [<选项>]"
+msgstr ""
 
 #: t/helper/test-simple-ipc.c
 msgid "test-helper simple-ipc run-daemon   [<name>] [<threads>]"
-msgstr "test-helper simple-ipc run-daemon   [<名称>] [<线程>]"
+msgstr ""
 
 #: t/helper/test-simple-ipc.c
 msgid "test-helper simple-ipc start-daemon [<name>] [<threads>] [<max-wait>]"
-msgstr "test-helper simple-ipc start-daemon [<名称>] [<线程>] [<最大等待>]"
+msgstr ""
 
 #: t/helper/test-simple-ipc.c
 msgid "test-helper simple-ipc stop-daemon  [<name>] [<max-wait>]"
-msgstr "test-helper simple-ipc stop-daemon  [<名称>] [<最大等待>]"
+msgstr ""
 
 #: t/helper/test-simple-ipc.c
 msgid "test-helper simple-ipc send         [<name>] [<token>]"
-msgstr "test-helper simple-ipc send         [<名称>] [<令牌>]"
+msgstr ""
 
 #: t/helper/test-simple-ipc.c
 msgid "test-helper simple-ipc sendbytes    [<name>] [<bytecount>] [<byte>]"
-msgstr "test-helper simple-ipc sendbytes    [<名称>] [<字节数>] [<字节>]"
+msgstr ""
 
 #: t/helper/test-simple-ipc.c
 msgid ""
 "test-helper simple-ipc multiple     [<name>] [<threads>] [<bytecount>] "
 "[<batchsize>]"
 msgstr ""
-"test-helper simple-ipc multiple     [<名称>] [<线程>] [<字节计数>] [<批处理大"
-"小>]"
 
 #: t/helper/test-simple-ipc.c
 msgid "name or pathname of unix domain socket"
-msgstr "Unix 域套接字的名称或路径名"
+msgstr ""
 
 #: t/helper/test-simple-ipc.c
 msgid "named-pipe name"
-msgstr "命名管道的名称"
+msgstr ""
 
 #: t/helper/test-simple-ipc.c
 msgid "number of threads in server thread pool"
-msgstr "服务器线程池中的线程数"
+msgstr ""
 
 #: t/helper/test-simple-ipc.c
+#, fuzzy
 msgid "seconds to wait for daemon to start or stop"
-msgstr "等待守护进程启动或停止的秒数"
+msgstr "等待守护进程启动的最大秒数"
 
 #: t/helper/test-simple-ipc.c
+#, fuzzy
 msgid "number of bytes"
-msgstr "字节数目"
+msgstr "错误的参数个数"
 
 #: t/helper/test-simple-ipc.c
+#, fuzzy
 msgid "number of requests per thread"
-msgstr "每个线程的请求数"
+msgstr "每个文件的最大结果数量"
 
 #: t/helper/test-simple-ipc.c
+#, fuzzy
 msgid "ballast character"
-msgstr "压仓字符"
+msgstr "无效的集合字符"
 
 #: t/helper/test-simple-ipc.c
 msgid "token"
-msgstr "令牌"
+msgstr ""
 
 #: t/helper/test-simple-ipc.c
 msgid "command token to send to the server"
-msgstr "发送到服务器的命令令牌"
+msgstr ""
 
 #: t/unit-tests/unit-test.c
+#, fuzzy
 msgid "unit-test [<options>]"
-msgstr "unit-test [<选项>]"
+msgstr "git gc [<选项>]"
 
 #: t/unit-tests/unit-test.c
 msgid "immediately exit upon the first failed test"
-msgstr "第一次测试失败后立即退出"
+msgstr ""
 
 #: t/unit-tests/unit-test.c
 msgid "suite[::test]"
-msgstr "suite[::测试用例]"
+msgstr ""
 
 #: t/unit-tests/unit-test.c
 msgid "run only test suite or individual test <suite[::test]>"
-msgstr "只运行测试套件或单独的测试 <测试套件[::测试用例]>"
+msgstr ""
 
 #: t/unit-tests/unit-test.c
 msgid "suite"
-msgstr "测试套件"
+msgstr ""
 
 #: t/unit-tests/unit-test.c
+#, fuzzy
 msgid "exclude test suite <suite>"
-msgstr "排除测试套件 <测试套件>"
+msgstr "排除指南"
 
 #: trailer.c
-#, c-format
+#, fuzzy, c-format
 msgid "running trailer command '%s' failed"
-msgstr "执行 trailer 命令 '%s' 失败"
+msgstr "重命名包为 '%s' 失败"
 
 #: trailer.c
-#, c-format
+#, fuzzy, c-format
 msgid "unknown value '%s' for key '%s'"
-msgstr "键 '%2$s' 的未知取值 '%1$s'"
+msgstr "配置 '%s' 未知的取值：%s"
 
 #: trailer.c
-#, c-format
+#, fuzzy, c-format
 msgid "empty trailer token in trailer '%.*s'"
-msgstr "尾注 '%.*s' 的键为空"
+msgstr "空的文件名：'%s'"
 
 #: transport-helper.c
+#, fuzzy
 msgid "full write to remote helper failed"
-msgstr "完整写入远程助手失败"
+msgstr "写入前端失败"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "unable to find remote helper for '%s'"
-msgstr "无法为 '%s' 找到远程助手"
+msgstr "无法为 '%s' 的值去引号"
 
 #: transport-helper.c
 msgid "can't dup helper output fd"
-msgstr "无法复制助手输出文件句柄"
+msgstr ""
 
 #: transport-helper.c
 #, c-format
 msgid ""
 "unknown mandatory capability %s; this remote helper probably needs newer "
 "version of Git"
-msgstr "未知的强制能力 %s，该远程助手可能需要新版本的 Git"
+msgstr ""
 
 #: transport-helper.c
 msgid "this remote helper should implement refspec capability"
-msgstr "远程助手需要实现 refspec 能力"
+msgstr ""
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "%s unexpectedly said: '%s'"
-msgstr "%s 意外地说：'%s'"
+msgstr "意外的行：'%s'"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "%s also locked %s"
-msgstr "%s 也锁定了 %s"
+msgstr "'%s' 未被锁定"
 
 #: transport-helper.c
+#, fuzzy
 msgid "couldn't run fast-import"
-msgstr "无法执行 fast-import"
+msgstr "无法运行储藏。"
 
 #: transport-helper.c
+#, fuzzy
 msgid "error while running fast-import"
-msgstr "执行 fast-import 出错"
+msgstr "索引 %s 时读取错误"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "could not read ref %s"
-msgstr "无法读取引用 %s"
+msgstr "无法读取标签 %s"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "unknown response to connect: %s"
-msgstr "连接时未知的响应：%s"
+msgstr "未知重编码模式：%s"
 
 #: transport-helper.c
 msgid "setting remote service path not supported by protocol"
-msgstr "协议不支持设置远程服务路径"
+msgstr ""
 
 #: transport-helper.c
+#, fuzzy
 msgid "invalid remote service path"
-msgstr "无效的远程服务路径"
+msgstr "无效引用：%s"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "can't connect to subservice %s"
-msgstr "无法连接到子服务 %s"
+msgstr "无法读取对象 %s"
 
 #: transport-helper.c transport.c
 msgid "--negotiate-only requires protocol v2"
-msgstr "--negotiate-only 需要协议 v2"
+msgstr ""
 
 #: transport-helper.c
 msgid "'option' without a matching 'ok/error' directive"
-msgstr "'option' 缺乏一个匹配的 'ok/error' 指令"
+msgstr ""
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "expected ok/error, helper said '%s'"
-msgstr "预期 ok/error，助手说 '%s'"
+msgstr "预期 '%s'，得到 '%s'"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "helper reported unexpected status of %s"
-msgstr "助手报告 %s 的意外状态"
+msgstr "无法解析远程解包状态：%s"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "helper %s does not support dry-run"
-msgstr "助手 %s 不支持 dry-run"
+msgstr "服务器不支持 --deepen"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "helper %s does not support --signed"
-msgstr "助手 %s 不支持 --signed"
+msgstr "服务器不支持 --shallow-since"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "helper %s does not support --signed=if-asked"
-msgstr "助手 %s 不支持 --signed=if-asked"
+msgstr "接收端不支持签名推送（--signed）"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "helper %s does not support --atomic"
-msgstr "助手 %s 不支持 --atomic"
+msgstr "服务器不支持 --shallow-since"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "helper %s does not support --%s"
-msgstr "助手 %s 不支持 --%s"
+msgstr "HTTP 传输协议不支持 %s"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "helper %s does not support 'push-option'"
-msgstr "助手 %s 不支持 'push-option'"
+msgstr "接收端不支持推送选项"
 
 #: transport-helper.c
 msgid "remote-helper doesn't support push; refspec needed"
-msgstr "remote-helper 不支持推送，需要引用规格"
+msgstr ""
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "helper %s does not support '--force'"
-msgstr "助手 %s 不支持 '--force'"
+msgstr "服务器不支持 --deepen"
 
 #: transport-helper.c
+#, fuzzy
 msgid "couldn't run fast-export"
-msgstr "无法执行 fast-export"
+msgstr "无法运行储藏。"
 
 #: transport-helper.c
+#, fuzzy
 msgid "error while running fast-export"
-msgstr "执行 fast-export 时出错"
+msgstr "索引 %s 时读取错误"
 
 #: transport-helper.c
 #, c-format
@@ -28663,108 +28680,111 @@ msgid ""
 "No refs in common and none specified; doing nothing.\n"
 "Perhaps you should specify a branch.\n"
 msgstr ""
-"没有共同的引用并且也没有指定，什么也不会做。\n"
-"也许您应该指定一个分支。\n"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "unsupported object format '%s'"
-msgstr "不支持的对象格式 '%s'"
+msgstr "不支持的对象格式：'%s'"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "malformed response in ref list: %s"
-msgstr "引用列表中格式错误的响应：%s"
+msgstr "格式错误的选项清单：'%s'"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "read(%s) failed"
-msgstr "读取（%s）失败"
+msgstr "%s 失败"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "write(%s) failed"
-msgstr "写（%s）失败"
+msgstr "写入 '%s' 失败"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "%s thread failed"
-msgstr "%s 线程失败"
+msgstr "%s 失败"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "%s thread failed to join: %s"
-msgstr "%s 线程等待失败：%s"
+msgstr "无法打开 '%s'"
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "can't start thread for copying data: %s"
-msgstr "无法启动线程来拷贝数据：%s"
+msgstr "无法为 '%s' 启动 thread[0]"
 
 #: transport-helper.c
 #, c-format
 msgid "%s process failed to wait"
-msgstr "%s 进程等待失败"
+msgstr ""
 
 #: transport-helper.c
-#, c-format
+#, fuzzy, c-format
 msgid "%s process failed"
-msgstr "%s 进程失败"
+msgstr "%s 失败"
 
 #: transport-helper.c
+#, fuzzy
 msgid "can't start thread for copying data"
-msgstr "无法启动线程来拷贝数据"
+msgstr "无法为 '%s' 启动 thread[0]"
 
 #: transport.c
-#, c-format
+#, fuzzy, c-format
 msgid "Would set upstream of '%s' to '%s' of '%s'\n"
-msgstr "将要设置 '%1$s' 的上游为 '%3$s' 的 '%2$s'\n"
+msgstr "无法重命名配置小节 '%s' 到 '%s'"
 
 #: transport.c
-#, c-format
+#, fuzzy, c-format
 msgid "could not read bundle '%s'"
-msgstr "无法读取捆绑包 '%s'"
+msgstr "无法读取文件 '%s'"
 
 #: transport.c
-#, c-format
+#, fuzzy, c-format
 msgid "transport: invalid depth option '%s'"
-msgstr "传输：无效的深度选项 '%s'"
+msgstr "无效的 --decorate 选项：%s"
 
 #: transport.c
+#, fuzzy
 msgid "see protocol.version in 'git help config' for more details"
-msgstr "查看 'git help config' 中的 protocol.version 获取更多信息"
+msgstr "'git help config' 获取更多信息"
 
 #: transport.c
 msgid "server options require protocol version 2 or later"
-msgstr "服务端选项需要版本 2 协议或更高"
+msgstr ""
 
 #: transport.c
+#, fuzzy
 msgid "server does not support wait-for-done"
-msgstr "服务器不支持 wait-for-done"
+msgstr "服务器不支持 --deepen"
 
 #: transport.c
+#, fuzzy
 msgid "could not parse transport.color.* config"
-msgstr "无法解析 transport.color.* 配置"
+msgstr "无法解析彩色差异信息"
 
 #: transport.c
 msgid "support for protocol v2 not implemented yet"
-msgstr "协议 v2 的支持尚未实现"
+msgstr ""
 
 #: transport.c
-#, c-format
+#, fuzzy, c-format
 msgid "transport '%s' not allowed"
-msgstr "传输 '%s' 不允许"
+msgstr "已阻止奇怪的端口号 '%s'"
 
 #: transport.c
+#, fuzzy
 msgid "git-over-rsync is no longer supported"
-msgstr "不再支持 git-over-rsync"
+msgstr "不再支持 --unpacked=<packfile>"
 
 #: transport.c
 #, c-format
 msgid ""
 "The following submodule paths contain changes that can\n"
 "not be found on any remote:\n"
-msgstr "下列子模组路径所包含的修改在任何远程源中都找不到：\n"
+msgstr ""
 
 #: transport.c
 #, c-format
@@ -28781,107 +28801,103 @@ msgid ""
 "to push them to a remote.\n"
 "\n"
 msgstr ""
-"\n"
-"请尝试\n"
-"\n"
-"\tgit push --recurse-submodules=on-demand\n"
-"\n"
-"或者进入到子目录执行\n"
-"\n"
-"\tgit push\n"
-"\n"
-"以推送至远程。\n"
-"\n"
 
 #: transport.c
 msgid "Aborting."
-msgstr "正在终止。"
+msgstr ""
 
 #: transport.c
+#, fuzzy
 msgid "failed to push all needed submodules"
-msgstr "无法推送全部需要的子模组"
+msgstr "无法添加子模组 '%s'"
 
 #: transport.c
 msgid "bundle-uri operation not supported by protocol"
-msgstr "协议不支持 bundle-uri 操作"
+msgstr ""
 
 #: transport.c
+#, fuzzy
 msgid "could not retrieve server-advertised bundle-uri list"
-msgstr "无法获取服务器公布的 bundle-uri 列表"
+msgstr "无法获取公布的捆绑包"
 
 #: transport.c
+#, fuzzy
 msgid "operation not supported by protocol"
-msgstr "协议不支持该操作"
+msgstr "--follow 不支持在路径规格中使用魔法前缀：%s"
 
 #: tree-walk.c
+#, fuzzy
 msgid "too-short tree object"
-msgstr "树对象太短"
+msgstr "不是一个树对象：%s"
 
 #: tree-walk.c
+#, fuzzy
 msgid "malformed mode in tree entry"
-msgstr "树对象中的条目模式错误"
+msgstr "无法解码树条目"
 
 #: tree-walk.c
+#, fuzzy
 msgid "empty filename in tree entry"
-msgstr "树对象条目中空的文件名"
+msgstr "空的文件名：'%s'"
 
 #: tree-walk.c
+#, fuzzy
 msgid "too-short tree file"
-msgstr "树文件太短"
+msgstr "恢复工作区文件"
 
 #: unpack-trees.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "Your local changes to the following files would be overwritten by checkout:\n"
 "%%sPlease commit your changes or stash them before you switch branches."
 msgstr ""
-"您对下列文件的本地修改将被检出操作覆盖：\n"
-"%%s请在切换分支前提交或储藏您的修改。"
+"您对下列文件的本地修改将被合并操作覆盖：\n"
+"  %s"
 
 #: unpack-trees.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "Your local changes to the following files would be overwritten by checkout:\n"
 "%%s"
 msgstr ""
-"您对下列文件的本地修改将被检出操作覆盖：\n"
-"%%s"
+"您对下列文件的本地修改将被合并操作覆盖：\n"
+"  %s"
 
 #: unpack-trees.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "Your local changes to the following files would be overwritten by merge:\n"
 "%%sPlease commit your changes or stash them before you merge."
 msgstr ""
 "您对下列文件的本地修改将被合并操作覆盖：\n"
-"%%s请在合并前提交或储藏您的修改。"
+"  %s"
 
 #: unpack-trees.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "Your local changes to the following files would be overwritten by merge:\n"
 "%%s"
 msgstr ""
 "您对下列文件的本地修改将被合并操作覆盖：\n"
-"%%s"
+"  %s"
 
 #: unpack-trees.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "Your local changes to the following files would be overwritten by %s:\n"
 "%%sPlease commit your changes or stash them before you %s."
 msgstr ""
-"您对下列文件的本地修改将被 %s 覆盖：\n"
-"%%s请在 %s 之前提交或储藏您的修改。"
+"您对下列文件的本地修改将被合并操作覆盖：\n"
+"  %s"
 
 #: unpack-trees.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "Your local changes to the following files would be overwritten by %s:\n"
 "%%s"
 msgstr ""
-"您对下列文件的本地修改将被 %s 覆盖：\n"
-"%%s"
+"您对下列文件的本地修改将被合并操作覆盖：\n"
+"  %s"
 
 #: unpack-trees.c
 #, c-format
@@ -28889,17 +28905,13 @@ msgid ""
 "Updating the following directories would lose untracked files in them:\n"
 "%s"
 msgstr ""
-"更新如下目录将会丢失其中未跟踪的文件：\n"
-"%s"
 
 #: unpack-trees.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "Refusing to remove the current working directory:\n"
 "%s"
-msgstr ""
-"拒绝删除当前工作目录：\n"
-"%s"
+msgstr "拒绝删除当前工作目录\n"
 
 #: unpack-trees.c
 #, c-format
@@ -28907,8 +28919,6 @@ msgid ""
 "The following untracked working tree files would be removed by checkout:\n"
 "%%sPlease move or remove them before you switch branches."
 msgstr ""
-"工作区中下列未跟踪的文件将会因为检出操作而被删除：\n"
-"%%s请在切换分支之前移动或删除。"
 
 #: unpack-trees.c
 #, c-format
@@ -28916,8 +28926,6 @@ msgid ""
 "The following untracked working tree files would be removed by checkout:\n"
 "%%s"
 msgstr ""
-"工作区中下列未跟踪的文件将会因为检出操作而被删除：\n"
-"%%s"
 
 #: unpack-trees.c
 #, c-format
@@ -28925,17 +28933,15 @@ msgid ""
 "The following untracked working tree files would be removed by merge:\n"
 "%%sPlease move or remove them before you merge."
 msgstr ""
-"工作区中下列未跟踪的文件将会因为合并操作而被删除：\n"
-"%%s请在合并前移动或删除。"
 
 #: unpack-trees.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "The following untracked working tree files would be removed by merge:\n"
 "%%s"
 msgstr ""
-"工作区中下列未跟踪的文件将会因为合并操作而被删除：\n"
-"%%s"
+"您对下列文件的本地修改将被合并操作覆盖：\n"
+"  %s"
 
 #: unpack-trees.c
 #, c-format
@@ -28943,8 +28949,6 @@ msgid ""
 "The following untracked working tree files would be removed by %s:\n"
 "%%sPlease move or remove them before you %s."
 msgstr ""
-"工作区中下列未跟踪的文件将会因为 %s 操作而被删除：\n"
-"%%s请在 %s 前移动或删除。"
 
 #: unpack-trees.c
 #, c-format
@@ -28952,8 +28956,6 @@ msgid ""
 "The following untracked working tree files would be removed by %s:\n"
 "%%s"
 msgstr ""
-"工作区中下列未跟踪的文件将会因为 %s 操作而被删除：\n"
-"%%s"
 
 #: unpack-trees.c
 #, c-format
@@ -28962,18 +28964,16 @@ msgid ""
 "checkout:\n"
 "%%sPlease move or remove them before you switch branches."
 msgstr ""
-"工作区中下列未跟踪的文件将会因为检出操作而被覆盖：\n"
-"%%s请在切换分支前移动或删除。"
 
 #: unpack-trees.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "The following untracked working tree files would be overwritten by "
 "checkout:\n"
 "%%s"
 msgstr ""
-"工作区中下列未跟踪的文件将会因为检出操作而被覆盖：\n"
-"%%s"
+"您对下列文件的本地修改将被合并操作覆盖：\n"
+"  %s"
 
 #: unpack-trees.c
 #, c-format
@@ -28981,17 +28981,15 @@ msgid ""
 "The following untracked working tree files would be overwritten by merge:\n"
 "%%sPlease move or remove them before you merge."
 msgstr ""
-"工作区中下列未跟踪的文件将会因为合并操作而被覆盖：\n"
-"%%s请在合并前移动或删除。"
 
 #: unpack-trees.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "The following untracked working tree files would be overwritten by merge:\n"
 "%%s"
 msgstr ""
-"工作区中下列未跟踪的文件将会因为合并操作而被覆盖：\n"
-"%%s"
+"您对下列文件的本地修改将被合并操作覆盖：\n"
+"  %s"
 
 #: unpack-trees.c
 #, c-format
@@ -28999,31 +28997,27 @@ msgid ""
 "The following untracked working tree files would be overwritten by %s:\n"
 "%%sPlease move or remove them before you %s."
 msgstr ""
-"工作区中下列未跟踪的文件将会因为 %s 操作而被覆盖：\n"
-"%%s请在 %s 前移动或删除。"
 
 #: unpack-trees.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "The following untracked working tree files would be overwritten by %s:\n"
 "%%s"
 msgstr ""
-"工作区中下列未跟踪的文件将会因为 %s 操作而被覆盖：\n"
-"%%s"
+"您对下列文件的本地修改将被合并操作覆盖：\n"
+"  %s"
 
 #: unpack-trees.c
 #, c-format
 msgid "Entry '%s' overlaps with '%s'.  Cannot bind."
-msgstr "条目 '%s' 和 '%s' 重叠。无法绑定。"
+msgstr ""
 
 #: unpack-trees.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "Cannot update submodule:\n"
 "%s"
-msgstr ""
-"无法更新子模组：\n"
-"%s"
+msgstr "无法用 %2$s 更新 %1$s"
 
 #: unpack-trees.c
 #, c-format
@@ -29032,17 +29026,13 @@ msgid ""
 "patterns:\n"
 "%s"
 msgstr ""
-"尽管存在稀疏检出模式，以下路径不是最新，因而保留：\n"
-"%s"
 
 #: unpack-trees.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "The following paths are unmerged and were left despite sparse patterns:\n"
 "%s"
-msgstr ""
-"尽管存在稀疏检出模式，以下路径处于未合并状态，因而保留：\n"
-"%s"
+msgstr "下列路径根据您的一个 .gitignore 文件而被忽略：\n"
 
 #: unpack-trees.c
 #, c-format
@@ -29051,24 +29041,23 @@ msgid ""
 "patterns:\n"
 "%s"
 msgstr ""
-"尽管存在稀疏检出模式，以下路径已经存在，因而未更新：\n"
-"%s"
 
 #: unpack-trees.c
 #, c-format
 msgid "Aborting\n"
-msgstr "正在终止\n"
+msgstr ""
 
 #: unpack-trees.c
 #, c-format
 msgid ""
 "After fixing the above paths, you may want to run `git sparse-checkout "
 "reapply`.\n"
-msgstr "在修复上述路径之后，您可能要执行 `git sparse-checkout reapply`。\n"
+msgstr ""
 
 #: unpack-trees.c
+#, fuzzy
 msgid "Updating files"
-msgstr "正在更新文件"
+msgstr "更新 %s 中"
 
 #: unpack-trees.c
 msgid ""
@@ -29076,76 +29065,82 @@ msgid ""
 "on a case-insensitive filesystem) and only one from the same\n"
 "colliding group is in the working tree:\n"
 msgstr ""
-"以下路径发生碰撞（如：在不区分大小写的文件系统上的区分大小写的路径），\n"
-"并且碰撞组中只有一个文件存在工作区中：\n"
 
 #: unpack-trees.c
+#, fuzzy
 msgid "Updating index flags"
-msgstr "正在更新索引标志"
+msgstr "更新 %s 中"
 
 #: unpack-trees.c
 #, c-format
 msgid "worktree and untracked commit have duplicate entries: %s"
-msgstr "工作区和未跟踪提交具有重复条目：%s"
+msgstr ""
 
 #: upload-pack.c
+#, fuzzy
 msgid "expected flush after fetch arguments"
-msgstr "在 fetch 参数之后应该有一个 flush 包"
+msgstr "在 ls-refs 参数后应该有一个 flush 包"
 
 #: urlmatch.c
 msgid "invalid URL scheme name or missing '://' suffix"
-msgstr "无效的 URL 方案名称或丢失 '://' 后缀"
+msgstr ""
 
 #: urlmatch.c
 #, c-format
 msgid "invalid %XX escape sequence"
-msgstr "无效的 %XX 转义序列"
+msgstr ""
 
 #: urlmatch.c
 msgid "missing host and scheme is not 'file:'"
-msgstr "缺失主机名且 URL 方案不是 'file:'"
+msgstr ""
 
 #: urlmatch.c
 msgid "a 'file:' URL may not have a port number"
-msgstr "一个 'file:' URL 不应该包含端口号"
+msgstr ""
 
 #: urlmatch.c
+#, fuzzy
 msgid "invalid characters in host name"
-msgstr "主机名中包含无效的字符"
+msgstr "无效的字符类名"
 
 #: urlmatch.c
+#, fuzzy
 msgid "invalid port number"
-msgstr "无效的端口号"
+msgstr "无效数字：'%s'"
 
 #: urlmatch.c
+#, fuzzy
 msgid "invalid '..' path segment"
-msgstr "无效的 '..' 路径片段"
+msgstr "无效路径 '%s'"
 
 #: usage.c
-#, c-format
+#, fuzzy, c-format
 msgid "error: unable to format message: %s\n"
-msgstr "错误：无法格式化消息：%s\n"
+msgstr "无法格式化消息：%s"
 
 #: usage.c
+#, fuzzy
 msgid "usage: "
-msgstr "用法："
+msgstr "用法：%s"
 
 #: usage.c
 msgid "fatal: "
-msgstr "致命错误："
+msgstr ""
 
 #: usage.c
+#, fuzzy
 msgid "error: "
-msgstr "错误："
+msgstr "错误：%s：%s"
 
 #: usage.c
+#, fuzzy
 msgid "warning: "
-msgstr "警告："
+msgstr "修剪 %s"
 
 #: usage.c
-#, c-format
+#, fuzzy, c-format
 msgid "'%s' is nominated for removal.\n"
-msgstr "'%s' 已被列入移除计划。\n"
+msgstr "'%s' 不是一个有效的引用。"
 
 #: usage.c
 #, c-format
@@ -29161,601 +29156,601 @@ msgid ""
 "  to determine a suitable replacement\n"
 "\n"
 msgstr ""
-"如果您仍在使用此命令，以下是您可以做的事情：\n"
-"\n"
-"- 阅读 https://git-scm.com/docs/BreakingChanges.html\n"
-"- 检查邮件列表中是否有人讨论过此问题，\n"
-"  以及他们是否提出了可以帮助您的建议：\n"
-"  https://lore.kernel.org/git/?q=%s\n"
-"- 发送电子邮件至 <git@vger.kernel.org>，让我们知道\n"
-"  您仍在使用此命令且无法确定合适的替代方案\n"
-"\n"
 
 #: usage.c
 msgid "refusing to run without --i-still-use-this"
-msgstr "拒绝在未指定 --i-still-use-this 选项时运行"
+msgstr ""
 
 #: version.c
-#, c-format
+#, fuzzy, c-format
 msgid "uname() failed with error '%s' (%d)\n"
-msgstr "uname() 失败，错误为 '%s'（%d）\n"
+msgstr "无法获取 '%s' 的所有者 (%ld)"
 
 #: walker.c
+#, fuzzy
 msgid "Fetching objects"
-msgstr "正在获取对象"
+msgstr "正在检查对象"
 
 #: worktree.c
 #, c-format
 msgid "'%s' at main working tree is not the repository directory"
-msgstr "在主工作区的 '%s' 不是仓库目录"
+msgstr ""
 
 #: worktree.c
 #, c-format
 msgid "'%s' file does not contain absolute path to the working tree location"
-msgstr "文件 '%s' 不包含工作区的绝对路径"
+msgstr ""
 
 #: worktree.c
-#, c-format
+#, fuzzy, c-format
 msgid "'%s' is not a .git file, error code %d"
-msgstr "'%s' 不是一个 .git 文件，错误码 %d"
+msgstr "'%s' 不是一个储藏引用"
 
 #: worktree.c
-#, c-format
+#, fuzzy, c-format
 msgid "'%s' does not point back to '%s'"
-msgstr "'%s' 没有指回到 '%s'"
+msgstr "'%s' 没有指向一个提交"
 
 #: worktree.c
+#, fuzzy
 msgid "not a directory"
-msgstr "不是一个目录"
+msgstr "不在 git 目录中"
 
 #: worktree.c
+#, fuzzy
 msgid ".git is not a file"
-msgstr ".git 不是一个文件"
+msgstr "git show %s：损坏的文件"
 
 #: worktree.c
 msgid ".git file broken"
-msgstr ".git 文件损坏"
+msgstr ""
 
 #: worktree.c
+#, fuzzy
 msgid ".git file incorrect"
-msgstr ".git 文件不正确"
+msgstr "索引文件损坏"
 
 #: worktree.c
 msgid ".git file absolute/relative path mismatch"
-msgstr ".git 文件绝对/相对路径不匹配"
+msgstr ""
 
 #: worktree.c
+#, fuzzy
 msgid "not a valid path"
-msgstr "不是一个有效的路径"
+msgstr "无效路径：%s"
 
 #: worktree.c
+#, fuzzy
 msgid "unable to locate repository; .git is not a file"
-msgstr "无法定位仓库，.git 不是一个文件"
+msgstr "无法创建临时文件"
 
 #: worktree.c
 msgid "unable to locate repository; .git file does not reference a repository"
-msgstr "无法定位仓库，.git 文件没有指向一个仓库"
+msgstr ""
 
 #: worktree.c
+#, fuzzy
 msgid "unable to locate repository; .git file broken"
-msgstr "无法定位仓库，.git 文件损坏"
+msgstr "无法创建临时文件"
 
 #: worktree.c
 msgid "gitdir unreadable"
-msgstr "gitdir 不可读"
+msgstr ""
 
 #: worktree.c
 msgid "gitdir absolute/relative path mismatch"
-msgstr "gitdir 绝对/相对路径不匹配"
+msgstr ""
 
 #: worktree.c
 msgid "gitdir incorrect"
-msgstr "gitdir 不正确"
+msgstr ""
 
 #: worktree.c
+#, fuzzy
 msgid "not a valid directory"
-msgstr "不是一个有效的目录"
+msgstr "不在 git 目录中"
 
 #: worktree.c
+#, fuzzy
 msgid "gitdir file does not exist"
-msgstr "gitdir 文件不存在"
+msgstr "引用不存在"
 
 #: worktree.c
-#, c-format
+#, fuzzy, c-format
 msgid "unable to read gitdir file (%s)"
-msgstr "无法读取 gitdir 文件（%s）"
+msgstr "无法读取树（%s）"
 
 #: worktree.c
-#, c-format
+#, fuzzy, c-format
 msgid "short read (expected %<PRIuMAX> bytes, read %<PRIuMAX>)"
-msgstr "读取过短（期望 %<PRIuMAX> 字节，读取 %<PRIuMAX>）"
+msgstr "越界读取：(%<PRIuMAX> >= %<PRIuMAX>)"
 
 #: worktree.c
+#, fuzzy
 msgid "invalid gitdir file"
-msgstr "无效的 gitdir 文件"
+msgstr "无效的配置文件 %s"
 
 #: worktree.c
 msgid "gitdir file points to non-existent location"
-msgstr "gitdir 文件指向一个不存在的位置"
+msgstr ""
 
 #: worktree.c
-#, c-format
+#, fuzzy, c-format
 msgid "unable to set %s in '%s'"
-msgstr "无法在 '%2$s' 中设置 %1$s"
+msgstr "无法在 '%2$s' 中取消配置 '%1$s'"
 
 #: worktree.c
-#, c-format
+#, fuzzy, c-format
 msgid "unable to unset %s in '%s'"
-msgstr "无法在 '%2$s' 中取消设置 %1$s"
+msgstr "无法在 '%2$s' 中取消配置 '%1$s'"
 
 #: worktree.c
+#, fuzzy
 msgid "failed to set extensions.worktreeConfig setting"
-msgstr "无法设置 extensions.worktreeConfig"
+msgstr "无法初始化工作区配置"
 
 #: worktree.c
+#, fuzzy
 msgid "unable to upgrade repository format to support relative worktrees"
-msgstr "无法升级仓库格式以支持相对工作区"
+msgstr "无法升级仓库格式以支持部分克隆"
 
 #: worktree.c
 msgid "unable to set extensions.relativeWorktrees setting"
-msgstr "无法设定 extensions.relativeWorktrees 的配置"
+msgstr ""
 
 #: wrapper.c
-#, c-format
+#, fuzzy, c-format
 msgid "could not setenv '%s'"
-msgstr "无法设置环境变量 '%s'"
+msgstr "无法设置 '%s'"
 
 #: wrapper.c
-#, c-format
+#, fuzzy, c-format
 msgid "unable to create '%s'"
-msgstr "无法创建 '%s'"
+msgstr "无法对 %s 执行 stat"
 
 #: wrapper.c
-#, c-format
+#, fuzzy, c-format
 msgid "could not open '%s' for reading and writing"
-msgstr "无法打开 '%s' 进行读写"
+msgstr "无法打开 '%s' 进行读取"
 
 #: wrapper.c
-#, c-format
+#, fuzzy, c-format
 msgid "unable to access '%s'"
-msgstr "无法访问 '%s'"
+msgstr "无法访问 '%s'：%s"
 
 #: wrapper.c
+#, fuzzy
 msgid "unable to get current working directory"
-msgstr "无法获取当前工作目录"
+msgstr "拒绝删除当前工作目录"
 
 #: wrapper.c
+#, fuzzy
 msgid "unable to get random bytes"
-msgstr "无法获取随机字节"
+msgstr "无法读取树 %s"
 
 #: wrapper.c
-#, c-format
+#, fuzzy, c-format
 msgid "attempting to mmap %<PRIuMAX> over limit %<PRIuMAX>"
-msgstr "尝试内存映射(mmap) %<PRIuMAX>，超过了最大值 %<PRIuMAX>"
+msgstr "提交图中提交 %s 的提交日期是 %<PRIuMAX> != %<PRIuMAX>"
 
 #: wrapper.c
-#, c-format
+#, fuzzy, c-format
 msgid "mmap failed%s"
-msgstr "mmap 失败%s"
+msgstr "RPC 失败。%s"
 
 #: wt-status.c
+#, fuzzy
 msgid "Unmerged paths:"
-msgstr "未合并的路径："
+msgstr "生成补丁"
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (use \"git restore --staged <file>...\" to unstage)"
-msgstr "  （使用 \"git restore --staged <文件>...\" 以取消暂存）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 #, c-format
 msgid "  (use \"git restore --source=%s --staged <file>...\" to unstage)"
-msgstr "  （使用 \"git restore --source=%s --staged <文件>...\" 以取消暂存）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (use \"git rm --cached <file>...\" to unstage)"
-msgstr "  （使用 \"git rm --cached <文件>...\" 以取消暂存）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (use \"git add <file>...\" to mark resolution)"
-msgstr "  （使用 \"git add <文件>...\" 标记解决方案）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
+#, fuzzy
 msgid "  (use \"git add/rm <file>...\" as appropriate to mark resolution)"
-msgstr "  （酌情使用 \"git add/rm <文件>...\" 标记解决方案）"
+msgstr ""
+"请在工作区改正文件，然后酌情使用 'git add/rm <文件>' 命令标记\n"
+"解决方案并提交。"
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (use \"git rm <file>...\" to mark resolution)"
-msgstr "  （使用 \"git rm <文件>...\" 标记解决方案）"
+msgstr ""
 
 #: wt-status.c
+#, fuzzy
 msgid "Changes to be committed:"
-msgstr "要提交的变更："
+msgstr "显示将要提交的内容"
 
 #: wt-status.c
+#, fuzzy
 msgid "Changes not staged for commit:"
-msgstr "尚未暂存以备提交的变更："
+msgstr "%s：不是一个提交"
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (use \"git add <file>...\" to update what will be committed)"
-msgstr "  （使用 \"git add <文件>...\" 更新要提交的内容）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (use \"git add/rm <file>...\" to update what will be committed)"
-msgstr "  （使用 \"git add/rm <文件>...\" 更新要提交的内容）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid ""
 "  (use \"git restore <file>...\" to discard changes in working directory)"
-msgstr "  （使用 \"git restore <文件>...\" 丢弃工作区的改动）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (commit or discard the untracked or modified content in submodules)"
-msgstr "  （提交或丢弃子模组中未跟踪或修改的内容）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 #, c-format
 msgid "  (use \"git %s <file>...\" to include in what will be committed)"
-msgstr "  （使用 \"git %s <文件>...\" 以包含要提交的内容）"
+msgstr ""
 
 #: wt-status.c
+#, fuzzy
 msgid "both deleted:"
-msgstr "双方删除："
+msgstr "[已删除]"
 
 #: wt-status.c
 msgid "added by us:"
-msgstr "由我们添加："
+msgstr ""
 
 #: wt-status.c
 msgid "deleted by them:"
-msgstr "由他们删除："
+msgstr ""
 
 #: wt-status.c
+#, fuzzy
 msgid "added by them:"
-msgstr "由他们添加："
+msgstr "增加了 %d 个路径\n"
 
 #: wt-status.c
+#, fuzzy
 msgid "deleted by us:"
-msgstr "由我们删除："
+msgstr "删除引用"
 
 #: wt-status.c
 msgid "both added:"
-msgstr "双方添加："
+msgstr ""
 
 #: wt-status.c
 msgid "both modified:"
-msgstr "双方修改："
+msgstr ""
 
 #: wt-status.c
+#, fuzzy
 msgid "new file:"
-msgstr "新文件："
+msgstr "文件"
 
 #: wt-status.c
 msgid "copied:"
-msgstr "拷贝："
+msgstr ""
 
 #: wt-status.c
+#, fuzzy
 msgid "deleted:"
-msgstr "删除："
+msgstr "删除"
 
 #: wt-status.c
 msgid "modified:"
-msgstr "修改："
+msgstr ""
 
 #: wt-status.c
+#, fuzzy
 msgid "renamed:"
-msgstr "重命名："
+msgstr "名称"
 
 #: wt-status.c
+#, fuzzy
 msgid "typechange:"
-msgstr "类型变更："
+msgstr "没有修改"
 
 #: wt-status.c
+#, fuzzy
 msgid "unknown:"
-msgstr "未知："
+msgstr "未知"
 
 #: wt-status.c
+#, fuzzy
 msgid "unmerged:"
-msgstr "未合并："
+msgstr "合并"
 
-#  译者：末尾两个字节可能被删减，如果翻译为中文标点会出现半个汉字
 #: wt-status.c
+#, fuzzy
 msgid "new commits, "
-msgstr "新提交, "
+msgstr "未知提交 %s"
 
-#  译者：末尾两个字节可能被删减，如果翻译为中文标点会出现半个汉字
 #: wt-status.c
+#, fuzzy
 msgid "modified content, "
-msgstr "修改的内容, "
+msgstr "无效内容：'%s'"
 
-#  译者：末尾两个字节可能被删减，如果翻译为中文标点会出现半个汉字
 #: wt-status.c
+#, fuzzy
 msgid "untracked content, "
-msgstr "未跟踪的内容, "
+msgstr "无法解压缩 %s 的内容"
 
 #: wt-status.c
 #, c-format
 msgid "Your stash currently has %d entry"
 msgid_plural "Your stash currently has %d entries"
-msgstr[0] "您的储藏区当前有 %d 条记录"
-msgstr[1] "您的储藏区当前有 %d 条记录"
+msgstr[0] ""
+msgstr[1] ""
 
 #: wt-status.c
+#, fuzzy
 msgid "Submodules changed but not updated:"
-msgstr "子模组已修改但尚未更新："
+msgstr "锁文件已创建但未报告：%s"
 
 #: wt-status.c
+#, fuzzy
 msgid "Submodule changes to be committed:"
-msgstr "要提交的子模组变更："
+msgstr "显示将要提交的内容"
 
 #: wt-status.c
 msgid ""
 "Do not modify or remove the line above.\n"
 "Everything below it will be ignored."
 msgstr ""
-"不要改动或删除上面的一行。\n"
-"其下所有内容都将被忽略。"
 
 #: wt-status.c
-#, c-format
+#, fuzzy, c-format
 msgid ""
 "\n"
 "It took %.2f seconds to compute the branch ahead/behind values.\n"
 "You can use '--no-ahead-behind' to avoid this.\n"
-msgstr ""
-"\n"
-"花了 %.2f 秒才计算出分支的领先/落后值。\n"
-"为避免这种情况，您可以使用 '--no-ahead-behind'。\n"
+msgstr "在重置后花了 %.2f 秒来刷新索引。使用 '--no-refresh' 以避免之。"
 
 #: wt-status.c
 msgid "You have unmerged paths."
-msgstr "您有尚未合并的路径。"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (fix conflicts and run \"git commit\")"
-msgstr "  （解决冲突并运行 \"git commit\"）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
+#, fuzzy
 msgid "  (use \"git merge --abort\" to abort the merge)"
-msgstr "  （使用 \"git merge --abort\" 终止合并）"
+msgstr "指定用于合并的合并基线"
 
 #: wt-status.c
 msgid "All conflicts fixed but you are still merging."
-msgstr "所有冲突已解决但您仍处于合并中。"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
+#, fuzzy
 msgid "  (use \"git commit\" to conclude merge)"
-msgstr "  （使用 \"git commit\" 结束合并）"
+msgstr "未提交合并，使用 'git commit' 完成此次合并。\n"
 
 #: wt-status.c
+#, fuzzy
 msgid "You are in the middle of an am session."
-msgstr "您正处于 am 操作过程中。"
+msgstr "您正处于一个合并过程中 -- 不能修订提交。"
 
 #: wt-status.c
+#, fuzzy
 msgid "The current patch is empty."
-msgstr "当前的补丁为空。"
+msgstr "补丁为空。"
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (fix conflicts and then run \"git am --continue\")"
-msgstr "  （解决冲突，然后运行 \"git am --continue\"）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (use \"git am --skip\" to skip this patch)"
-msgstr "  （使用 \"git am --skip\" 跳过此补丁）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
+#, fuzzy
 msgid ""
 "  (use \"git am --allow-empty\" to record this patch as an empty commit)"
-msgstr "  （使用 \"git am --allow-empty\" 将这个补丁记录为空提交）"
+msgstr "把空补丁记录为空提交"
 
 #  译者：注意保持前导空格
 #: wt-status.c
+#, fuzzy
 msgid "  (use \"git am --abort\" to restore the original branch)"
-msgstr "  （使用 \"git am --abort\" 恢复原有分支）"
+msgstr "  （使用 \"git pull\" 来更新您的本地分支）\n"
 
 #: wt-status.c
 msgid "git-rebase-todo is missing."
-msgstr "git-rebase-todo 丢失。"
+msgstr ""
 
 #: wt-status.c
+#, fuzzy
 msgid "No commands done."
-msgstr "没有命令被执行。"
+msgstr "未知命令 %d"
 
 #: wt-status.c
 #, c-format
 msgid "Last command done (%<PRIuMAX> command done):"
 msgid_plural "Last commands done (%<PRIuMAX> commands done):"
-msgstr[0] "最后完成的命令（%<PRIuMAX> 条命令被执行）："
-msgstr[1] "最后完成的命令（%<PRIuMAX> 条命令被执行）："
+msgstr[0] ""
+msgstr[1] ""
 
 #: wt-status.c
 #, c-format
 msgid "  (see more in file %s)"
-msgstr "  （更多内容参见文件 %s）"
+msgstr ""
 
 #: wt-status.c
+#, fuzzy
 msgid "No commands remaining."
-msgstr "没有剩余命令。"
+msgstr "从标准输入读取命令"
 
 #: wt-status.c
-#, c-format
+#, fuzzy, c-format
 msgid "Next command to do (%<PRIuMAX> remaining command):"
 msgid_plural "Next commands to do (%<PRIuMAX> remaining commands):"
-msgstr[0] "接下来要执行的命令（剩余 %<PRIuMAX> 条命令）："
-msgstr[1] "接下来要执行的命令（剩余 %<PRIuMAX> 条命令）："
+msgstr[0] "数据中 EOF（剩余 %<PRIuMAX> 字节）"
+msgstr[1] "数据中 EOF（剩余 %<PRIuMAX> 字节）"
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (use \"git rebase --edit-todo\" to view and edit)"
-msgstr "  （使用 \"git rebase --edit-todo\" 来查看和编辑）"
+msgstr ""
 
 #: wt-status.c
-#, c-format
+#, fuzzy, c-format
 msgid "You are currently rebasing branch '%s' on '%s'."
-msgstr "您在执行将分支 '%s' 变基到 '%s' 的操作。"
+msgstr "您当前不在一个分支上。"
 
 #: wt-status.c
+#, fuzzy
 msgid "You are currently rebasing."
-msgstr "您在执行变基操作。"
+msgstr "您当前不在一个分支上。"
 
-#  译者：注意保持前导空格
 #: wt-status.c
+#, fuzzy
 msgid "  (fix conflicts and then run \"git rebase --continue\")"
-msgstr "  （解决冲突，然后运行 \"git rebase --continue\"）"
+msgstr ""
+"执行失败：%s\n"
+"%s您可以改正该问题，然后运行\n"
+"\n"
+"  git rebase --continue\n"
+"\n"
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (use \"git rebase --skip\" to skip this patch)"
-msgstr "  （使用 \"git rebase --skip\" 跳过此补丁）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
+#, fuzzy
 msgid "  (use \"git rebase --abort\" to check out the original branch)"
-msgstr "  （使用 \"git rebase --abort\" 以检出原有分支）"
+msgstr "终止并检出原有分支"
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (all conflicts fixed: run \"git rebase --continue\")"
-msgstr "  （所有冲突已解决：运行 \"git rebase --continue\"）"
+msgstr ""
 
 #: wt-status.c
 #, c-format
 msgid ""
 "You are currently splitting a commit while rebasing branch '%s' on '%s'."
-msgstr "您在执行将分支 '%s' 变基到 '%s' 的操作时拆分提交。"
+msgstr ""
 
 #: wt-status.c
+#, fuzzy
 msgid "You are currently splitting a commit during a rebase."
-msgstr "您在执行变基操作时拆分提交。"
+msgstr "在变基过程中不能做部分提交。"
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (Once your working directory is clean, run \"git rebase --continue\")"
-msgstr "  （一旦您的工作目录干净后，运行 \"git rebase --continue\"）"
+msgstr ""
 
 #: wt-status.c
 #, c-format
 msgid "You are currently editing a commit while rebasing branch '%s' on '%s'."
-msgstr "您在执行将分支 '%s' 变基到 '%s' 的操作时编辑提交。"
+msgstr ""
 
 #: wt-status.c
+#, fuzzy
 msgid "You are currently editing a commit during a rebase."
-msgstr "您在执行变基操作时编辑提交。"
+msgstr "在变基过程中不能做部分提交。"
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (use \"git commit --amend\" to amend the current commit)"
-msgstr "  （使用 \"git commit --amend\" 修订当前提交）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid ""
 "  (use \"git rebase --continue\" once you are satisfied with your changes)"
-msgstr "  （当您对您的修改满意后执行 \"git rebase --continue\"）"
+msgstr ""
 
 #: wt-status.c
+#, fuzzy
 msgid "Cherry-pick currently in progress."
-msgstr "拣选操作正在进行中。"
+msgstr "拣选或还原操作并未进行"
 
 #: wt-status.c
 #, c-format
 msgid "You are currently cherry-picking commit %s."
-msgstr "您在执行拣选提交 %s 的操作。"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (fix conflicts and run \"git cherry-pick --continue\")"
-msgstr "  （解决冲突并运行 \"git cherry-pick --continue\"）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
+#, fuzzy
 msgid "  (run \"git cherry-pick --continue\" to continue)"
-msgstr "  （执行 \"git cherry-pick --continue\" 以继续）"
+msgstr "尝试 \"git cherry-pick (--continue | %s--abort | --quit)\""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (all conflicts fixed: run \"git cherry-pick --continue\")"
-msgstr "  （所有冲突已解决：运行 \"git cherry-pick --continue\"）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (use \"git cherry-pick --skip\" to skip this patch)"
-msgstr "  （使用 \"git cherry-pick --skip\" 跳过此补丁）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (use \"git cherry-pick --abort\" to cancel the cherry-pick operation)"
-msgstr "  （使用 \"git cherry-pick --abort\" 以取消拣选操作）"
+msgstr ""
 
 #: wt-status.c
+#, fuzzy
 msgid "Revert currently in progress."
-msgstr "还原操作正在进行中。"
+msgstr "一个还原操作已在进行"
 
 #: wt-status.c
-#, c-format
+#, fuzzy, c-format
 msgid "You are currently reverting commit %s."
-msgstr "您在执行还原提交 %s 的操作。"
+msgstr "您当前不在一个分支上。"
 
-#  译者：注意保持前导空格
 #: wt-status.c
 msgid "  (fix conflicts and run \"git revert --continue\")"
-msgstr "  （解决冲突并执行 \"git revert --continue\"）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
 #, fuzzy
 msgid "  (run \"git revert --continue\" to continue)"
-msgstr "  （执行 \"git cherry-pick --continue\" 以继续）"
+msgstr "尝试 \"git revert (--continue | %s--abort | --quit)\""
 
-#  译者：注意保持前导空格
 #: wt-status.c
-#, fuzzy
 msgid "  (all conflicts fixed: run \"git revert --continue\")"
-msgstr "  （所有冲突已解决：运行 \"git rebase --continue\"）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
-#, fuzzy
 msgid "  (use \"git revert --skip\" to skip this patch)"
-msgstr "  （使用 \"git rebase --skip\" 跳过此补丁）"
+msgstr ""
 
-#  译者：注意保持前导空格
 #: wt-status.c
-#, fuzzy
 msgid "  (use \"git revert --abort\" to cancel the revert operation)"
-msgstr "  （使用 \"git cherry-pick --abort\" 以取消拣选操作）"
+msgstr ""
 
 #: wt-status.c
 #, fuzzy, c-format
 msgid "You are currently bisecting, started from branch '%s'."
-msgstr "您在执行将分支 '%s' 变基到 '%s' 的操作。"
+msgstr "您当前不在一个分支上。"
 
 #: wt-status.c
 #, fuzzy
 msgid "You are currently bisecting."
-msgstr "您在执行变基操作。"
+msgstr "我们没有在二分查找。"
 
 #  译者：注意保持前导空格
 #: wt-status.c
 #, fuzzy
 msgid "  (use \"git bisect reset\" to get back to the original branch)"
-msgstr "  （使用 \"git rebase --abort\" 以检出原有分支）"
+msgstr "  （使用 \"git pull\" 来更新您的本地分支）\n"
 
 #: wt-status.c
 #, fuzzy
@@ -29856,7 +29851,7 @@ msgstr ""
 #: wt-status.c
 #, fuzzy, c-format
 msgid "no changes added to commit\n"
-msgstr "尚未暂存以备提交的变更："
+msgstr "强制编辑提交"
 
 #: wt-status.c
 #, c-format
@@ -29893,7 +29888,7 @@ msgstr "无法检出工作区"
 #: wt-status.c
 #, fuzzy
 msgid "No commits yet on "
-msgstr "没有命令被执行。"
+msgstr "没有解析提交。"
 
 #: wt-status.c
 #, fuzzy
@@ -29932,7 +29927,7 @@ msgstr "不能变基：您有未暂存的变更。"
 #: xdiff-interface.c
 #, fuzzy, c-format
 msgid "unknown style '%s' given for '%s'"
-msgstr "键 '%2$s' 的未知取值 '%1$s'"
+msgstr "未知的引用存储格式 '%s'"
 
 #: git-merge-octopus.sh git-merge-resolve.sh
 #, fuzzy
@@ -29941,7 +29936,7 @@ msgid ""
 "merge"
 msgstr ""
 "您对下列文件的本地修改将被合并操作覆盖：\n"
-"%%s"
+"  %s"
 
 #: git-merge-octopus.sh
 msgid "Automated merge did not work."
@@ -30202,7 +30197,7 @@ msgstr ""
 #: git-send-email.perl
 #, fuzzy, perl-format
 msgid "error: unable to extract a valid address from: %s\n"
-msgstr "错误：无法格式化消息：%s\n"
+msgstr "无法自动探测邮件地址（得到 '%s'）"
 
 #. TRANSLATORS: Make sure to include [q] [d] [e] in your
 #. translation. The program will only accept English input
