@@ -4,7 +4,7 @@
 
     import sys
     from pathlib import Path
-    sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_shared" / "scripts"))
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "lib"))
     from repo_config import load_repo_config
 
     cfg = load_repo_config(Path(__file__))
