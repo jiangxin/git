@@ -15,6 +15,8 @@ from discover_and_fetch import (  # noqa: E402
     extract_links,
     extract_text,
     format_summary,
+    is_undated,
+    parse_undated_quota,
     run,
 )
 from check_cloudflare import is_cloudflare  # noqa: E402
@@ -126,14 +128,34 @@ class TestExtractLinks:
 
 
 class TestDateAllows:
-    def test_unknown_may_enter(self):
-        assert date_allows(None, START_DATE, END_DATE) is True
+    def test_unknown_denied_by_default(self):
+        assert date_allows(None, START_DATE, END_DATE) is False
+        assert date_allows(None, START_DATE, END_DATE, allow_undated=False) is False
+
+    def test_unknown_allowed_when_opt_in(self):
+        assert date_allows(None, START_DATE, END_DATE, allow_undated=True) is True
+        assert date_allows("not-a-date", START_DATE, END_DATE, allow_undated=True) is True
 
     def test_out_of_range_excluded(self):
         assert date_allows("2026-06-01", START_DATE, END_DATE) is False
 
     def test_in_range_included(self):
         assert date_allows("2026-07-20", START_DATE, END_DATE) is True
+
+    def test_is_undated_matrix(self):
+        assert is_undated(None) is True
+        assert is_undated("") is True
+        assert is_undated("not-a-date") is True
+        assert is_undated("2026-07-20") is False
+        assert is_undated("2026-07-20T12:00:00") is False
+
+    def test_undated_quota_parsing(self):
+        assert parse_undated_quota({}, allow_undated=False) == 0
+        assert parse_undated_quota({"undated_quota": 5}, allow_undated=False) == 0
+        assert parse_undated_quota({"undated_quota": 3}, allow_undated=True) == 3
+        assert parse_undated_quota({"undated_quota": "2"}, allow_undated=True) == 2
+        assert parse_undated_quota({"undated_quota": "x"}, allow_undated=True) == 0
+        assert parse_undated_quota({}, allow_undated=True) == 0
 
 
 class TestCloudflare:
@@ -157,7 +179,7 @@ class TestDiscoverAndFetchRun:
         pages = {
             "https://example.com/blog": LIST_HTML,
             "https://example.com/posts/in-range": DETAIL_HTML,
-            "https://example.com/posts/unknown-date": DETAIL_HTML,
+            # undated must not be fetched by default — omit from map so a fetch would fail
         }
         counts = run(
             START_DATE,
@@ -174,8 +196,8 @@ class TestDiscoverAndFetchRun:
 
         assert "https://example.com/posts/already-archived" not in pending_urls
         assert "https://example.com/posts/out-of-range" not in pending_urls
+        assert "https://example.com/posts/unknown-date" not in pending_urls
         assert "https://example.com/posts/in-range" in pending_urls
-        assert "https://example.com/posts/unknown-date" in pending_urls
 
         in_range = next(e for e in pending if e["url"].endswith("/in-range"))
         assert in_range["original_title"] == "In Range Article"
@@ -189,10 +211,125 @@ class TestDiscoverAndFetchRun:
         assert len(raw_files) >= 1
 
         assert counts["sources"] == 1
-        assert counts["pending"] == 2
-        assert counts["skipped"] >= 2
+        assert counts["pending"] == 1
+        assert counts["skipped"] >= 3
         assert counts["errors"] == 0
-        assert format_summary(counts).startswith("sources=1 pending=2")
+        assert format_summary(counts).startswith("sources=1 pending=1")
+
+    def test_allow_undated_respects_quota(self, week_env):
+        weekly_root, ai_trends, sources_path = week_env(
+            archives=[
+                {
+                    "url": "https://example.com/posts/already-archived",
+                    "original_title": "Old",
+                    "publish_date": "2026-07-19",
+                    "source": "Fixture Blog",
+                }
+            ],
+            sources=[
+                {
+                    "name": "Fixture Blog",
+                    "url": "https://example.com/blog",
+                    "use_proxy": False,
+                    "fallback": "skip",
+                    "allow_undated": True,
+                    "undated_quota": 1,
+                }
+            ],
+        )
+        pages = {
+            "https://example.com/blog": LIST_HTML,
+            "https://example.com/posts/in-range": DETAIL_HTML,
+            "https://example.com/posts/unknown-date": DETAIL_HTML,
+        }
+        counts = run(
+            START_DATE,
+            END_DATE,
+            weekly_root=weekly_root,
+            sources_path=sources_path,
+            fetch_fn=make_fetch(pages),
+            save_raw=False,
+        )
+        pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
+        pending_urls = {e["url"] for e in pending}
+        assert "https://example.com/posts/in-range" in pending_urls
+        assert "https://example.com/posts/unknown-date" in pending_urls
+        assert counts["pending"] == 2
+        assert counts["errors"] == 0
+
+    def test_undated_quota_exhausted_skips_extra(self, week_env):
+        list_html = """<!DOCTYPE html><html><body>
+          <a href="/posts/u1">U1</a>
+          <a href="/posts/u2">U2</a>
+        </body></html>"""
+        weekly_root, ai_trends, sources_path = week_env(
+            archives=[],
+            sources=[
+                {
+                    "name": "Fixture Blog",
+                    "url": "https://example.com/blog",
+                    "use_proxy": False,
+                    "fallback": "skip",
+                    "allow_undated": True,
+                    "undated_quota": 1,
+                }
+            ],
+        )
+        pages = {
+            "https://example.com/blog": list_html,
+            "https://example.com/posts/u1": DETAIL_HTML,
+            "https://example.com/posts/u2": DETAIL_HTML,
+        }
+        counts = run(
+            START_DATE,
+            END_DATE,
+            weekly_root=weekly_root,
+            sources_path=sources_path,
+            fetch_fn=make_fetch(pages),
+            save_raw=False,
+        )
+        pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
+        assert len(pending) == 1
+        assert pending[0]["url"] == "https://example.com/posts/u1"
+        assert counts["skipped"] >= 1
+        assert counts["errors"] == 0
+
+    def test_url_exclude_skips_before_fetch(self, week_env):
+        weekly_root, ai_trends, sources_path = week_env(
+            archives=[
+                {
+                    "url": "https://example.com/posts/already-archived",
+                    "original_title": "Old",
+                    "publish_date": "2026-07-19",
+                    "source": "Fixture Blog",
+                }
+            ],
+            sources=[
+                {
+                    "name": "Fixture Blog",
+                    "url": "https://example.com/blog",
+                    "use_proxy": False,
+                    "fallback": "skip",
+                    "url_exclude": [r"/in-range"],
+                }
+            ],
+        )
+        pages = {
+            "https://example.com/blog": LIST_HTML,
+            # in-range excluded — must not be fetched
+        }
+        counts = run(
+            START_DATE,
+            END_DATE,
+            weekly_root=weekly_root,
+            sources_path=sources_path,
+            fetch_fn=make_fetch(pages),
+            save_raw=False,
+        )
+        pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
+        assert pending == []
+        assert counts["pending"] == 0
+        assert counts["errors"] == 0
 
     def test_cloudflare_list_page_skips_source(self, week_env):
         weekly_root, ai_trends, sources_path = week_env(archives=[])
@@ -224,7 +361,6 @@ class TestDiscoverAndFetchRun:
         pages = {
             "https://example.com/blog": LIST_HTML,
             "https://example.com/posts/in-range": DETAIL_HTML,
-            "https://example.com/posts/unknown-date": DETAIL_HTML,
         }
         run(
             START_DATE,
@@ -236,7 +372,7 @@ class TestDiscoverAndFetchRun:
         )
         pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
         assert all(e["url"] != "https://stale.example/old" for e in pending)
-        assert len(pending) == 2
+        assert len(pending) == 1
 
 
 class TestExtractText:

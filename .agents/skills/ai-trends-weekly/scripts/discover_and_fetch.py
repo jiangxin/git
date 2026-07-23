@@ -32,6 +32,7 @@ from check_cloudflare import is_cloudflare  # noqa: E402
 from filter_by_date import extract_date  # noqa: E402
 from json_archives import load_json_array, save_json_atomic  # noqa: E402
 from repo_config import load_repo_config  # noqa: E402
+from url_filter import url_allowed  # noqa: E402
 
 CONTENT_MAX = 12000
 USER_AGENT = (
@@ -313,14 +314,42 @@ def extract_text(html: str, max_chars: int = CONTENT_MAX) -> str:
     return text
 
 
-def date_allows(publish_date: str | None, start_date: str, end_date: str) -> bool:
-    """Unknown dates may enter pending; known out-of-range dates must not."""
+def is_undated(publish_date: str | None) -> bool:
+    """True when publish_date is missing or not parseable to YYYY-MM-DD."""
     if publish_date is None:
         return True
-    day = extract_date(publish_date)
-    if day is None:
-        return True
-    return start_date <= day <= end_date
+    return extract_date(publish_date) is None
+
+
+def date_allows(
+    publish_date: str | None,
+    start_date: str,
+    end_date: str,
+    *,
+    allow_undated: bool = False,
+) -> bool:
+    """Apply week-window date policy.
+
+    - Parseable in ``[start_date, end_date]`` → allow.
+    - Parseable out of range → reject.
+    - Unparseable / missing → allow only when ``allow_undated`` is True
+      (caller enforces ``undated_quota`` separately).
+    """
+    day = None if publish_date is None else extract_date(publish_date)
+    if day is not None:
+        return start_date <= day <= end_date
+    return allow_undated
+
+
+def parse_undated_quota(source: dict[str, Any], *, allow_undated: bool) -> int:
+    """Max undated detail fetches for this source; 0 when undated disallowed."""
+    if not allow_undated:
+        return 0
+    raw = source.get("undated_quota", 0)
+    try:
+        return max(0, int(raw))
+    except (TypeError, ValueError):
+        return 0
 
 
 def archive_url_set(archives: list) -> set[str]:
@@ -440,6 +469,11 @@ def run(
 
         use_proxy = source.get("use_proxy", "auto")
         date_attr = source.get("date_attr") if isinstance(source.get("date_attr"), str) else None
+        url_include = source.get("url_include")
+        url_exclude = source.get("url_exclude")
+        allow_undated = bool(source.get("allow_undated", False))
+        undated_quota = parse_undated_quota(source, allow_undated=allow_undated)
+        undated_used = 0
 
         try:
             list_html, _method = fetch_with_policy(
@@ -456,9 +490,26 @@ def run(
             if url in known_urls:
                 skipped += 1
                 continue
-            if not date_allows(item.get("publish_date"), start_date, end_date):
+            # Filter before any detail request
+            if not url_allowed(
+                url,
+                list_url=list_url,
+                url_include=url_include,
+                url_exclude=url_exclude,
+            ):
                 skipped += 1
                 continue
+            pub = item.get("publish_date")
+            if not date_allows(
+                pub, start_date, end_date, allow_undated=allow_undated
+            ):
+                skipped += 1
+                continue
+            if is_undated(pub):
+                if undated_used >= undated_quota:
+                    skipped += 1
+                    continue
+                undated_used += 1
 
             entry = process_candidate(
                 item,
@@ -473,7 +524,12 @@ def run(
                 errors += 1
                 continue
             # Re-check date after detail enrichment
-            if not date_allows(entry.get("publish_date"), start_date, end_date):
+            if not date_allows(
+                entry.get("publish_date"),
+                start_date,
+                end_date,
+                allow_undated=allow_undated,
+            ):
                 skipped += 1
                 continue
             pending.append(entry)
