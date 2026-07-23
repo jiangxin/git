@@ -1,0 +1,225 @@
+[
+  {
+    "name": "GitHub Blog",
+    "url": "https://github.blog/",
+    "use_proxy": true,
+    "fallback": "search",
+    "rss_url": "https://github.blog/feed/",
+    "url_include": [
+      "/security/",
+      "/ai-and-ml/",
+      "/engineering/",
+      "/open-source/",
+      "/developer-skills/",
+      "/news-insights/",
+      "/changelog/",
+      "/enterprise/",
+      "/product/"
+    ],
+    "url_exclude": [
+      "/category/",
+      "/tag/",
+      "/author/",
+      "/page/",
+      "/feed/",
+      "/comments/",
+      "/customer-stories/"
+    ],
+    "date_attr": "datetime",
+    "browser_on_cloudflare": true,
+    "max_links": 40
+  },
+  {
+    "name": "GitHub Engineering",
+    "url": "https://github.blog/engineering/",
+    "use_proxy": true,
+    "fallback": "search",
+    "rss_url": "https://github.blog/engineering/feed/",
+    "fallback_rss_url": "https://github.blog/category/engineering/feed/",
+    "url_include": ["/engineering/", "/ai-and-ml/"],
+    "url_exclude": [
+      "/category/",
+      "/tag/",
+      "/page/",
+      "/feed/",
+      "/comments/",
+      "/engineering/architecture-optimization/$",
+      "/engineering/infrastructure/$",
+      "/engineering/user-experience/$",
+      "/engineering/platform-security/$",
+      "/engineering/engineering-principles/$"
+    ],
+    "date_attr": "datetime",
+    "browser_on_cloudflare": true,
+    "max_links": 30
+  },
+  {
+    "name": "GitHub Changelog",
+    "url": "https://github.blog/changelog/",
+    "use_proxy": true,
+    "fallback": "search",
+    "rss_url": "https://github.blog/changelog/feed/",
+    "url_include": ["/changelog/20\\d{2}-\\d{2}-\\d{2}-"],
+    "url_exclude": ["/category/", "/tag/", "/page/", "/feed/", "/changelog/\\d{4}/\\d{1,2}/"],
+    "date_attr": "datetime",
+    "browser_on_cloudflare": true,
+    "max_links": 30
+  },
+  {
+    "name": "GitLab Blog",
+    "url": "https://about.gitlab.com/blog/",
+    "use_proxy": true,
+    "fallback": "aggregate",
+    "rss_url": "https://about.gitlab.com/atom.xml",
+    "fallback_rss_url": "https://about.gitlab.com/releases.xml",
+    "url_include": ["/blog/", "/releases/"],
+    "url_exclude": [
+      "/blog/categories/",
+      "/tag/",
+      "/page/",
+      "/author/",
+      "/_payload\\.json",
+      "/de-de/",
+      "/fr-fr/",
+      "/ja-jp/"
+    ],
+    "fetch": "browser",
+    "browser_on_cloudflare": true,
+    "max_links": 30
+  },
+  {
+    "name": "Atlassian Git Blog",
+    "url": "https://www.atlassian.com/blog/git",
+    "use_proxy": true,
+    "fallback": "search",
+    "rss_url": "https://atlassianblog.wpengine.com/feed/",
+    "url_include": [
+      "/blog/bitbucket/",
+      "/blog/git/",
+      "/blog/devops/",
+      "/blog/developer/",
+      "/blog/how-we-build/"
+    ],
+    "url_exclude": [
+      "/blog/search",
+      "/category/",
+      "/tag/",
+      "/page/",
+      "/comments/",
+      "/blog/trello/",
+      "/blog/loom/",
+      "/blog/teamwork/"
+    ],
+    "fetch": "browser",
+    "browser_on_cloudflare": true,
+    "allow_undated": true,
+    "undated_quota": 8,
+    "max_links": 20
+  },
+  {
+    "name": "Software Engineering Daily",
+    "url": "https://softwareengineeringdaily.com/",
+    "use_proxy": false,
+    "fallback": "search",
+    "rss_url": "https://softwareengineeringdaily.com/feed/",
+    "url_include": ["/\\d{4}/\\d{2}/\\d{2}/"],
+    "url_exclude": ["/category/", "/tag/", "/author/", "/page/"],
+    "date_attr": "datetime",
+    "max_links": 30
+  },
+  {
+    "name": "Dev.to Git",
+    "url": "https://dev.to/t/git",
+    "use_proxy": false,
+    "fallback": "skip",
+    "rss_url": "https://dev.to/feed/tag/git",
+    "url_include": ["dev\\.to/[a-zA-Z0-9_-]+/[a-zA-Z0-9_-]+"],
+    "url_exclude": [
+      "/t/",
+      "/tags/",
+      "/enter",
+      "/search",
+      "/listings/",
+      "/pod/",
+      "/videos/"
+    ],
+    "date_attr": "datetime",
+    "max_links": 30
+  },
+  {
+    "name": "Opensource.com Git",
+    "url": "https://opensource.com/tags/git",
+    "use_proxy": false,
+    "fallback": "aggregate",
+    "rss_url": "https://opensource.com/taxonomy/term/9280/feed",
+    "fallback_rss_url": "https://opensource.com/feed",
+    "url_include": ["/article/"],
+    "url_exclude": ["/tags/", "/category/", "/page/", "/taxonomy/", "/user/"],
+    "max_links": 15
+  },
+  {
+    "name": "Git Official",
+    "url": "https://github.com/git/git/releases",
+    "use_proxy": "auto",
+    "fallback": "skip",
+    "rss_url": "https://github.com/git/git/releases.atom",
+    "url_include": [
+      "github\\.com/git/git/releases/tag/",
+      "github\\.com/git/git/releases/"
+    ],
+    "url_exclude": ["/releases\\?page=", "/releases\\.atom"],
+    "max_links": 15
+  },
+  {
+    "name": "DevOps.com News",
+    "url": "https://devops.com/category/news/",
+    "use_proxy": true,
+    "fallback": "search",
+    "rss_url": "https://devops.com/feed/",
+    "url_include": ["devops\\.com/[a-z0-9-]+/?$"],
+    "url_exclude": [
+      "/category/",
+      "/tag/",
+      "/author/",
+      "/page/",
+      "/feed",
+      "/wp-content/",
+      "/wp-json/"
+    ],
+    "fetch": "browser",
+    "browser_on_cloudflare": true,
+    "max_links": 30
+  },
+  {
+    "name": "DevOps Daily Git",
+    "url": "https://devops-daily.com/categories/git",
+    "use_proxy": false,
+    "fallback": "skip",
+    "url_include": ["/posts/", "/guides/"],
+    "url_exclude": [
+      "/categories/",
+      "/tags/",
+      "/newsletter",
+      "/about",
+      "/sitemap"
+    ],
+    "date_attr": "datetime",
+    "max_links": 40
+  },
+  {
+    "name": "DevOps Daily DevOps",
+    "url": "https://devops-daily.com/categories/devops",
+    "use_proxy": false,
+    "fallback": "skip",
+    "url_include": ["/posts/", "/guides/"],
+    "url_exclude": [
+      "/categories/",
+      "/tags/",
+      "/newsletter",
+      "/about",
+      "/sitemap"
+    ],
+    "date_attr": "datetime",
+    "max_links": 40
+  }
+]
