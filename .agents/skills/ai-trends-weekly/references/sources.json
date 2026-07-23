@@ -1,0 +1,170 @@
+[
+  {
+    "name": "Anthropic News",
+    "url": "https://www.anthropic.com/news",
+    "use_proxy": true,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "Anthropic Research",
+    "url": "https://www.anthropic.com/research",
+    "use_proxy": true,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "Anthropic Blog",
+    "url": "https://claude.com/blog",
+    "use_proxy": true,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "OpenAI Blog",
+    "url": "https://openai.com/blog",
+    "use_proxy": false,
+    "fallback": "search"
+  },
+  {
+    "name": "OpenAI News",
+    "url": "https://openai.com/news",
+    "use_proxy": false,
+    "fallback": "search"
+  },
+  {
+    "name": "Google DeepMind Blog",
+    "url": "https://deepmind.google/blog",
+    "use_proxy": true,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "Google AI Blog",
+    "url": "https://blog.google/technology/ai",
+    "use_proxy": true,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "Meta AI Blog",
+    "url": "https://ai.meta.com/blog",
+    "use_proxy": true,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "Microsoft AI Blog",
+    "url": "https://news.microsoft.com/source/topics/ai",
+    "use_proxy": false,
+    "fallback": "search"
+  },
+  {
+    "name": "Cohere Blog",
+    "url": "https://cohere.com/blog",
+    "use_proxy": false,
+    "fallback": "search"
+  },
+  {
+    "name": "TechCrunch AI",
+    "url": "https://techcrunch.com/category/artificial-intelligence",
+    "use_proxy": "auto",
+    "fallback": "search"
+  },
+  {
+    "name": "The Verge AI",
+    "url": "https://www.theverge.com/ai-artificial-intelligence",
+    "use_proxy": "auto",
+    "fallback": "search"
+  },
+  {
+    "name": "VentureBeat AI",
+    "url": "https://venturebeat.com/ai",
+    "use_proxy": "auto",
+    "fallback": "search"
+  },
+  {
+    "name": "通义千问 Qwen Blog",
+    "url": "https://qwen.ai/blog",
+    "use_proxy": false,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "字节跳动 Seed 博客",
+    "url": "https://seed.bytedance.com/zh/blog",
+    "use_proxy": false,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "百度文心 ERNIE Blog",
+    "url": "https://ernie.baidu.com/blog/zh/",
+    "use_proxy": false,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "月之暗面 Kimi Blog",
+    "url": "https://platform.kimi.com/blog",
+    "use_proxy": false,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "深度求索 DeepSeek",
+    "url": "https://www.deepseek.com/zh/",
+    "use_proxy": false,
+    "fallback": "search"
+  },
+  {
+    "name": "智谱 AI 新闻",
+    "url": "https://www.zhipuai.cn/news",
+    "use_proxy": false,
+    "fallback": "search"
+  },
+  {
+    "name": "MiniMax 新闻",
+    "url": "https://www.minimaxi.com/news",
+    "use_proxy": false,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "MiniMax Research",
+    "url": "https://www.minimax.io/blog",
+    "use_proxy": false,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "腾讯混元",
+    "url": "https://hunyuan.tencent.com/blog",
+    "use_proxy": false,
+    "fallback": "search"
+  },
+  {
+    "name": "腾讯 AI Lab 新闻",
+    "url": "https://ai.tencent.com/ailab/zh/news/",
+    "use_proxy": false,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "零一万物 Blog",
+    "url": "https://www.lingyiwanwu.com/blog",
+    "use_proxy": false,
+    "fallback": "aggregate"
+  },
+  {
+    "name": "百川智能",
+    "url": "https://www.baichuan-ai.com/",
+    "use_proxy": false,
+    "fallback": "search"
+  },
+  {
+    "name": "阿里云开发者社区 AI",
+    "url": "https://developer.aliyun.com/group/ai",
+    "use_proxy": false,
+    "fallback": "search"
+  },
+  {
+    "name": "每日AI快讯",
+    "url": "https://ai-bot.cn/daily-ai-news/",
+    "use_proxy": false,
+    "fallback": "skip"
+  },
+  {
+    "name": "大黑 AI 速报",
+    "url": "https://news.daheiai.com/",
+    "use_proxy": false,
+    "fallback": "skip"
+  }
+]
