@@ -353,10 +353,23 @@ class TestDiscoverAndFetchRun:
         assert "Cloudflare challenge" in error_log
         assert "https://example.com/blog" in error_log
 
-    def test_overwrite_pending_each_run(self, week_env):
+    def test_resume_merges_pending_and_skips_refetch(self, week_env):
         weekly_root, ai_trends, sources_path = week_env(archives=[])
         (ai_trends / "pending.json").write_text(
-            json.dumps([{"url": "https://stale.example/old"}], indent=2) + "\n"
+            json.dumps(
+                [
+                    {
+                        "url": "https://stale.example/old",
+                        "original_title": "Stale",
+                        "publish_date": "2026-07-19",
+                        "source": "Other",
+                        "content": "kept",
+                        "fetched_at": "2026-07-19T00:00:00",
+                    }
+                ],
+                indent=2,
+            )
+            + "\n"
         )
         pages = {
             "https://example.com/blog": LIST_HTML,
@@ -369,10 +382,188 @@ class TestDiscoverAndFetchRun:
             sources_path=sources_path,
             fetch_fn=make_fetch(pages),
             save_raw=False,
+            resume=True,
+        )
+        pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
+        urls = {e["url"] for e in pending}
+        assert "https://stale.example/old" in urls
+        assert "https://example.com/posts/in-range" in urls
+        assert len(pending) == 2
+
+        state_path = ai_trends / "fetch_state.jsonl"
+        assert state_path.is_file()
+        state_text = state_path.read_text(encoding="utf-8")
+        assert '"status": "fetched"' in state_text
+        assert "https://example.com/posts/in-range" in state_text
+
+        # Second run: detail URL must not be fetched again (omit from map)
+        pages2 = {"https://example.com/blog": LIST_HTML}
+        fetch_log: list[str] = []
+
+        def tracking_fetch(url: str, *, proxy=None, use_proxy_flag: bool = False, timeout: int = 30):
+            fetch_log.append(url)
+            if url not in pages2:
+                raise FetchError(url, "curl(direct)", f"unexpected refetch: {url}")
+            return pages2[url]
+
+        counts = run(
+            START_DATE,
+            END_DATE,
+            weekly_root=weekly_root,
+            sources_path=sources_path,
+            fetch_fn=tracking_fetch,
+            save_raw=False,
+            resume=True,
+        )
+        assert "https://example.com/posts/in-range" not in fetch_log
+        assert counts["errors"] == 0
+        pending2 = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
+        assert {e["url"] for e in pending2} == urls
+
+    def test_fresh_clears_state_and_pending(self, week_env):
+        weekly_root, ai_trends, sources_path = week_env(archives=[])
+        (ai_trends / "pending.json").write_text(
+            json.dumps([{"url": "https://stale.example/old", "content": "x"}], indent=2) + "\n"
+        )
+        (ai_trends / "fetch_state.jsonl").write_text(
+            json.dumps(
+                {
+                    "url": "https://example.com/posts/in-range",
+                    "status": "fetched",
+                    "source": "Fixture Blog",
+                    "at": "2026-07-20T00:00:00Z",
+                }
+            )
+            + "\n"
+        )
+        pages = {
+            "https://example.com/blog": LIST_HTML,
+            "https://example.com/posts/in-range": DETAIL_HTML,
+        }
+        run(
+            START_DATE,
+            END_DATE,
+            weekly_root=weekly_root,
+            sources_path=sources_path,
+            fetch_fn=make_fetch(pages),
+            save_raw=False,
+            fresh=True,
         )
         pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
         assert all(e["url"] != "https://stale.example/old" for e in pending)
         assert len(pending) == 1
+        assert pending[0]["url"] == "https://example.com/posts/in-range"
+        # State rewritten for this run (fetched again despite prior state)
+        statuses = {
+            json.loads(ln)["url"]: json.loads(ln)["status"]
+            for ln in (ai_trends / "fetch_state.jsonl").read_text(encoding="utf-8").splitlines()
+            if ln.strip()
+        }
+        assert statuses.get("https://example.com/posts/in-range") == "fetched"
+
+    def test_resume_skips_preset_fetched_without_network(self, week_env):
+        """Pre-seeded fetch_state prevents detail fetch on first run."""
+        list_html = """<!DOCTYPE html><html><body>
+          <a href="/posts/in-range" data-date="2026-07-20">In Range Article</a>
+        </body></html>"""
+        weekly_root, ai_trends, sources_path = week_env(archives=[])
+        (ai_trends / "fetch_state.jsonl").write_text(
+            json.dumps(
+                {
+                    "url": "https://example.com/posts/in-range",
+                    "status": "fetched",
+                    "source": "Fixture Blog",
+                    "at": "2026-07-20T00:00:00Z",
+                }
+            )
+            + "\n"
+        )
+        (ai_trends / "pending.json").write_text(
+            json.dumps(
+                [
+                    {
+                        "url": "https://example.com/posts/in-range",
+                        "original_title": "In Range Article",
+                        "publish_date": "2026-07-20",
+                        "source": "Fixture Blog",
+                        "content": "cached body",
+                        "fetched_at": "2026-07-20T00:00:00",
+                    }
+                ],
+                indent=2,
+            )
+            + "\n"
+        )
+        pages = {"https://example.com/blog": list_html}
+        fetch_log: list[str] = []
+
+        def tracking_fetch(url: str, *, proxy=None, use_proxy_flag: bool = False, timeout: int = 30):
+            fetch_log.append(url)
+            if url not in pages:
+                raise FetchError(url, "curl(direct)", f"unexpected refetch: {url}")
+            return pages[url]
+
+        counts = run(
+            START_DATE,
+            END_DATE,
+            weekly_root=weekly_root,
+            sources_path=sources_path,
+            fetch_fn=tracking_fetch,
+            save_raw=False,
+            resume=True,
+        )
+        assert fetch_log == ["https://example.com/blog"]
+        assert counts["pending"] == 1
+        assert counts["errors"] == 0
+        pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
+        assert pending[0]["content"] == "cached body"
+
+    def test_retry_errors_refetches_error_urls(self, week_env):
+        list_html = """<!DOCTYPE html><html><body>
+          <a href="/posts/in-range" data-date="2026-07-20">In Range Article</a>
+        </body></html>"""
+        weekly_root, ai_trends, sources_path = week_env(archives=[])
+        (ai_trends / "fetch_state.jsonl").write_text(
+            json.dumps(
+                {
+                    "url": "https://example.com/posts/in-range",
+                    "status": "error",
+                    "source": "Fixture Blog",
+                    "at": "2026-07-20T00:00:00Z",
+                }
+            )
+            + "\n"
+        )
+        pages = {
+            "https://example.com/blog": list_html,
+            "https://example.com/posts/in-range": DETAIL_HTML,
+        }
+        # Default resume skips error URLs
+        counts_skip = run(
+            START_DATE,
+            END_DATE,
+            weekly_root=weekly_root,
+            sources_path=sources_path,
+            fetch_fn=make_fetch({"https://example.com/blog": list_html}),
+            save_raw=False,
+            resume=True,
+            retry_errors=False,
+        )
+        assert counts_skip["pending"] == 0
+
+        counts = run(
+            START_DATE,
+            END_DATE,
+            weekly_root=weekly_root,
+            sources_path=sources_path,
+            fetch_fn=make_fetch(pages),
+            save_raw=False,
+            resume=True,
+            retry_errors=True,
+        )
+        pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
+        assert counts["pending"] == 1
+        assert pending[0]["url"] == "https://example.com/posts/in-range"
 
 
 class TestExtractText:

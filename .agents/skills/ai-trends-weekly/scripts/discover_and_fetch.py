@@ -3,9 +3,11 @@
 
 Usage:
   python3 discover_and_fetch.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
+  python3 discover_and_fetch.py ... --fresh          # clear state + pending
+  python3 discover_and_fetch.py ... --retry-errors    # retry prior error URLs
 
 Stdout summary: sources=N pending=M skipped=K errors=E
-First version overwrites pending.json each run; no WebSearch fallback.
+Default ``--resume`` loads ``fetch_state.jsonl`` and merges existing pending.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ import re
 import sys
 import urllib.error
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable
@@ -35,6 +37,11 @@ from repo_config import load_repo_config  # noqa: E402
 from url_filter import url_allowed  # noqa: E402
 
 CONTENT_MAX = 12000
+PENDING_SAVE_EVERY = 20
+FETCH_STATE_FILENAME = "fetch_state.jsonl"
+TERMINAL_SKIP_STATUSES = frozenset(
+    {"fetched", "skipped_date", "skipped_filter", "cached"}
+)
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -116,6 +123,123 @@ def append_error_log(ai_trends_dir: Path, method: str, url: str, reason: str) ->
     line = f"[{ts}] FAILED {method} {url} - {reason}\n"
     with log_path.open("a", encoding="utf-8") as f:
         f.write(line)
+
+
+def url_sha1(url: str) -> str:
+    return hashlib.sha1(url.encode("utf-8")).hexdigest()
+
+
+def fetch_state_path(ai_trends_dir: Path) -> Path:
+    return ai_trends_dir / FETCH_STATE_FILENAME
+
+
+def load_fetch_state(path: Path) -> dict[str, str]:
+    """Load url → last status from fetch_state.jsonl (later lines win)."""
+    state: dict[str, str] = {}
+    if not path.is_file():
+        return state
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(row, dict):
+                continue
+            url = row.get("url")
+            status = row.get("status")
+            if isinstance(url, str) and isinstance(status, str) and url:
+                state[url] = status
+    return state
+
+
+def append_fetch_state(
+    path: Path,
+    *,
+    url: str,
+    status: str,
+    source: str,
+    sha1: str | None = None,
+) -> None:
+    """Append one JSONL record to fetch_state."""
+    record: dict[str, Any] = {
+        "url": url,
+        "status": status,
+        "source": source,
+        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    if sha1:
+        record["sha1"] = sha1
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def should_skip_from_state(
+    url: str,
+    state: dict[str, str],
+    *,
+    retry_errors: bool,
+) -> bool:
+    """True when resume should not re-process this URL."""
+    status = state.get(url)
+    if status is None:
+        return False
+    if status in TERMINAL_SKIP_STATUSES:
+        return True
+    if status == "error":
+        return not retry_errors
+    return False
+
+
+def load_pending_entries(path: Path) -> list[dict[str, Any]]:
+    """Load pending.json array; missing/invalid → empty list."""
+    if not path.is_file():
+        return []
+    raw = path.read_text(encoding="utf-8").strip()
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [e for e in data if isinstance(e, dict) and e.get("url")]
+
+
+def merge_pending_by_url(
+    existing: list[dict[str, Any]],
+    incoming: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Merge by url: existing order first, incoming updates/overwrites."""
+    by_url: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for entry in existing:
+        url = entry.get("url")
+        if not isinstance(url, str) or not url:
+            continue
+        if url not in by_url:
+            order.append(url)
+        by_url[url] = entry
+    for entry in incoming:
+        url = entry.get("url")
+        if not isinstance(url, str) or not url:
+            continue
+        if url not in by_url:
+            order.append(url)
+        by_url[url] = entry
+    return [by_url[u] for u in order]
+
+
+def clear_fetch_artifacts(ai_trends_dir: Path) -> None:
+    """``--fresh``: remove fetch_state and reset pending.json."""
+    state_path = fetch_state_path(ai_trends_dir)
+    if state_path.exists():
+        state_path.unlink()
+    save_json_atomic([], ai_trends_dir / "pending.json")
 
 
 def proxy_attempts(use_proxy: Any, proxy: str | None) -> list[bool]:
@@ -359,7 +483,7 @@ def archive_url_set(archives: list) -> set[str]:
 def write_raw(ai_trends_dir: Path, url: str, content: str) -> Path:
     raw_dir = ai_trends_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
-    digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
+    digest = url_sha1(url)
     path = raw_dir / f"{digest}.txt"
     path.write_text(content, encoding="utf-8")
     return path
@@ -421,6 +545,10 @@ def run(
     proxy: str | None = None,
     fetch_fn: FetchFn | None = None,
     save_raw: bool = True,
+    resume: bool = True,
+    fresh: bool = False,
+    retry_errors: bool = False,
+    pending_save_every: int = PENDING_SAVE_EVERY,
 ) -> dict[str, int]:
     """Core pipeline. Returns counts dict for summary line."""
     for label, d in (("start_date", start_date), ("end_date", end_date)):
@@ -444,6 +572,13 @@ def run(
     fetch_fn = fetch_fn or default_fetch
     sources = load_sources(sources_path)
 
+    if fresh:
+        clear_fetch_artifacts(ai_trends_dir)
+        resume = False
+
+    state_path = fetch_state_path(ai_trends_dir)
+    state = load_fetch_state(state_path) if resume else {}
+
     archives_path = ai_trends_dir / "archives.json"
     if archives_path.exists():
         archives = load_json_array(archives_path, "archives.json")
@@ -452,9 +587,27 @@ def run(
         archives = []
     known_urls = archive_url_set(archives)
 
-    pending: list[dict[str, Any]] = []
+    pending_path = ai_trends_dir / "pending.json"
+    if resume:
+        pending = load_pending_entries(pending_path)
+        for entry in pending:
+            known_urls.add(entry["url"])
+    else:
+        pending = []
+
     skipped = 0
     errors = 0
+    since_save = 0
+
+    def persist_pending() -> None:
+        nonlocal since_save
+        save_json_atomic(pending, pending_path)
+        since_save = 0
+
+    def record_state(url: str, status: str, source: str, *, with_sha1: bool = False) -> None:
+        sha = url_sha1(url) if with_sha1 else None
+        append_fetch_state(state_path, url=url, status=status, source=source, sha1=sha)
+        state[url] = status
 
     for source in sources:
         if not isinstance(source, dict):
@@ -482,12 +635,16 @@ def run(
         except FetchError as e:
             append_error_log(ai_trends_dir, e.method, e.url, e.reason)
             errors += 1
+            persist_pending()
             continue
 
         items = extract_links(list_html, list_url, date_attr=date_attr)
         for item in items:
             url = item["url"]
             if url in known_urls:
+                skipped += 1
+                continue
+            if should_skip_from_state(url, state, retry_errors=retry_errors):
                 skipped += 1
                 continue
             # Filter before any detail request
@@ -497,16 +654,19 @@ def run(
                 url_include=url_include,
                 url_exclude=url_exclude,
             ):
+                record_state(url, "skipped_filter", name)
                 skipped += 1
                 continue
             pub = item.get("publish_date")
             if not date_allows(
                 pub, start_date, end_date, allow_undated=allow_undated
             ):
+                record_state(url, "skipped_date", name)
                 skipped += 1
                 continue
             if is_undated(pub):
                 if undated_used >= undated_quota:
+                    record_state(url, "skipped_date", name)
                     skipped += 1
                     continue
                 undated_used += 1
@@ -521,6 +681,7 @@ def run(
                 save_raw=save_raw,
             )
             if entry is None:
+                record_state(url, "error", name)
                 errors += 1
                 continue
             # Re-check date after detail enrichment
@@ -530,12 +691,20 @@ def run(
                 end_date,
                 allow_undated=allow_undated,
             ):
+                record_state(url, "skipped_date", name, with_sha1=True)
                 skipped += 1
                 continue
-            pending.append(entry)
+            record_state(url, "fetched", name, with_sha1=True)
+            pending = merge_pending_by_url(pending, [entry])
             known_urls.add(url)
+            since_save += 1
+            if since_save >= pending_save_every:
+                persist_pending()
 
-    save_json_atomic(pending, ai_trends_dir / "pending.json")
+        # Persist after each source
+        persist_pending()
+
+    persist_pending()
     return {
         "sources": len(sources),
         "pending": len(pending),
@@ -554,7 +723,11 @@ def format_summary(counts: dict[str, int]) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Discover links from sources.json and fetch bodies into pending.json.",
-        epilog="Example: python3 discover_and_fetch.py --start-date 2026-07-18 --end-date 2026-07-24",
+        epilog=(
+            "Example: python3 discover_and_fetch.py "
+            "--start-date 2026-07-18 --end-date 2026-07-24\n"
+            "Default resumes from fetch_state.jsonl; use --fresh for a clean run."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--start-date", required=True, help="Inclusive start YYYY-MM-DD")
@@ -570,6 +743,25 @@ def main() -> None:
         action="store_true",
         help="Do not write raw/<sha1>.txt caches",
     )
+    resume_group = parser.add_mutually_exclusive_group()
+    resume_group.add_argument(
+        "--resume",
+        dest="fresh",
+        action="store_false",
+        help="Resume from fetch_state.jsonl and merge pending (default)",
+    )
+    resume_group.add_argument(
+        "--fresh",
+        dest="fresh",
+        action="store_true",
+        help="Clear fetch_state.jsonl and pending.json, then full re-run",
+    )
+    parser.set_defaults(fresh=False)
+    parser.add_argument(
+        "--retry-errors",
+        action="store_true",
+        help="Re-fetch URLs previously recorded as error in fetch_state",
+    )
     args = parser.parse_args()
 
     counts = run(
@@ -578,6 +770,9 @@ def main() -> None:
         weekly_root=args.weekly_root,
         sources_path=Path(args.sources) if args.sources else None,
         save_raw=not args.no_raw,
+        resume=not args.fresh,
+        fresh=args.fresh,
+        retry_errors=args.retry_errors,
     )
     print(format_summary(counts))
 
