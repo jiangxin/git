@@ -12,8 +12,10 @@ from render_ai_trends import (  # noqa: E402
     DEFAULT_QUALITY_MIN,
     apply_max_per_day,
     collect_entries,
+    collect_source_counts,
     format_item,
     group_by_date,
+    render_html,
     render_markdown,
     run,
     sort_entries,
@@ -169,3 +171,73 @@ def test_no_quality_warning_when_enough(week_env, capsys):
         _seed(ai_trends, "s", f"https://e.com/{i}", publish_date="2026-05-05", rank_hint=i)
     run(START_DATE, END_DATE, weekly_root=weekly_root, quality_min=DEFAULT_QUALITY_MIN)
     assert "QUALITY_WARNING" not in capsys.readouterr().err
+
+
+class TestCollectSourceCounts:
+    def test_empty(self):
+        assert collect_source_counts([]) == {}
+
+    def test_single_source(self):
+        entries = [{"source": "A"}, {"source": "A"}, {"source": "A"}]
+        assert collect_source_counts(entries) == {"A": 3}
+
+    def test_multiple_sources(self):
+        entries = [{"source": "A"}, {"source": "B"}, {"source": "A"}]
+        counts = collect_source_counts(entries)
+        assert counts == {"A": 2, "B": 1}
+
+    def test_missing_source(self):
+        entries = [{"source": "A"}, {}]
+        counts = collect_source_counts(entries)
+        assert "(unknown)" in counts
+        assert counts["(unknown)"] == 1
+
+
+class TestRenderHtml:
+    def test_contains_source_names_and_counts(self):
+        entries = [
+            {"source": "TechCrunch AI", "url": "https://e.com/1", "cn_title": "T1", "cn_summary": "S1", "original_title": "O1", "publish_date": "2026-05-05"},
+            {"source": "TechCrunch AI", "url": "https://e.com/2", "cn_title": "T2", "cn_summary": "S2", "original_title": "O2", "publish_date": "2026-05-05"},
+            {"source": "The Verge AI", "url": "https://e.com/3", "cn_title": "T3", "cn_summary": "S3", "original_title": "O3", "publish_date": "2026-05-06"},
+        ]
+        counts = collect_source_counts(entries)
+        html_output = render_html("2026-05-10", entries, counts)
+        assert "TechCrunch AI (2)" in html_output
+        assert "The Verge AI (1)" in html_output
+
+    def test_contains_data_source_attribute(self):
+        entries = [
+            {"source": "Src A", "url": "https://e.com/1", "cn_title": "T", "cn_summary": "S", "original_title": "O", "publish_date": "2026-05-05"},
+        ]
+        counts = collect_source_counts(entries)
+        html_output = render_html("2026-05-10", entries, counts)
+        assert 'data-source="Src A"' in html_output
+
+    def test_contains_all_and_clear_buttons(self):
+        entries = [
+            {"source": "X", "url": "https://e.com/1", "cn_title": "T", "cn_summary": "S", "original_title": "O", "publish_date": "2026-05-05"},
+        ]
+        counts = collect_source_counts(entries)
+        html_output = render_html("2026-05-10", entries, counts)
+        assert "全部" in html_output
+        assert "清空" in html_output
+        assert '__all__' in html_output
+        assert '__none__' in html_output
+
+    def test_contains_inline_css_and_js(self):
+        entries = []
+        html_output = render_html("2026-05-10", entries, {})
+        assert "<style>" in html_output
+        assert "<script>" in html_output
+
+
+def test_run_generates_html(week_env):
+    weekly_root, ai_trends = week_env()
+    _seed(ai_trends, "s", "https://e.com/1", publish_date="2026-05-05", source="TestSrc")
+    out = run(START_DATE, END_DATE, weekly_root=weekly_root)
+    html_path = out.parent / "AI-trends.html"
+    assert html_path.is_file()
+    content = html_path.read_text(encoding="utf-8")
+    assert "TestSrc" in content
+    assert "<!DOCTYPE html>" in content
+    assert out.is_file()
