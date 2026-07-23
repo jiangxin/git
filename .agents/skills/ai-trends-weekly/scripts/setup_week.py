@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""
-给定日期（YYYY-MM-DD），输出收集闭区间 start_date、end_date（空格分隔），
-并创建 weekly/<end_date>/ai-trends/ 目录。
+"""Create weekly/<end_date>/ai-trends/ directory for the AI trends skill.
 
-起止 weekday 由仓库根 config.json 的 start_day、end_day 决定（缺省 saturday–friday），
-经 week_bounds.compute_week_dates 计算，非固定自然周。
-
-用法: python3 setup_week.py [<YYYY-MM-DD>]
-不传日期时使用本地当前日期。
+Usage:
+    python3 setup_week.py [<YYYY-MM-DD>]
 """
+
+from __future__ import annotations
 
 import argparse
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_shared" / "scripts"))
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parents[3]
+sys.path.insert(0, str(REPO_ROOT / "lib"))
+
 from week_bounds import (
     SETUP_WEEK_EPILOG,
     SETUP_WEEK_INTERVAL_HELP,
@@ -24,17 +24,18 @@ from week_bounds import (
     resolve_anchor_datetime,
 )
 
+SKILL_SUBDIR = "ai-trends"
+
 
 def setup_week(weekly_root, end_date):
-    """创建周目录与 ai-trends 子目录。"""
     week_dir = ensure_week_dir(weekly_root, end_date)
-    (week_dir / "ai-trends").mkdir(parents=True, exist_ok=True)
+    (week_dir / SKILL_SUBDIR).mkdir(parents=True, exist_ok=True)
 
 
 def main():
     parser = argparse.ArgumentParser(
         description=(
-            f"计算收集周期并创建 weekly/<end_date>/ai-trends/。"
+            f"计算收集周期并创建 weekly/<end_date>/{SKILL_SUBDIR}/。"
             f"{SETUP_WEEK_INTERVAL_HELP}"
         ),
         epilog=f"{SETUP_WEEK_EPILOG}；省略参数则按今天计算。",

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Check whether a URL exists in url_index.jsonl.
+"""Check whether a URL exists in url_index.jsonl for ai-trends.
+
+Thin wrapper around lib/check_helpers.
 
 Usage:
     python3 check_url.py --end-date YYYY-MM-DD <URL>
@@ -8,35 +10,19 @@ Usage:
 Output: FOUND or NOT_FOUND per URL.
 """
 
+from __future__ import annotations
+
 import argparse
 import sys
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-sys.path.insert(0, str(SCRIPT_DIR))
+REPO_ROOT = SCRIPT_DIR.parents[3]
+sys.path.insert(0, str(REPO_ROOT / "lib"))
 
-from site_store import load_url_index, url_index_path  # noqa: E402
+from check_helpers import check_url, get_url_index  # noqa: E402
 
-
-def get_url_index(end_date: str, root_override=None) -> dict:
-    if not end_date:
-        print("ERROR: end_date is required (YYYY-MM-DD)", file=sys.stderr)
-        sys.exit(2)
-    if root_override is not None:
-        weekly_root = Path(root_override)
-    else:
-        repo_root = SCRIPT_DIR.parents[3]
-        weekly_root = repo_root / "weekly"
-    idx_path = url_index_path(weekly_root / end_date / "ai-trends")
-    if not idx_path.is_file():
-        print(f"ERROR: url_index.jsonl not found at {idx_path}", file=sys.stderr)
-        print("Run setup_week.py and discover_and_fetch.py first.", file=sys.stderr)
-        sys.exit(2)
-    return load_url_index(idx_path)
-
-
-def check_url(url_index: dict, url: str):
-    return url_index.get(url)
+SKILL_SUBDIR = "ai-trends"
 
 
 def main():
@@ -54,7 +40,7 @@ def main():
     group.add_argument("--file", metavar="FILE", help="File with URLs (one per line)")
     args = parser.parse_args()
 
-    url_index = get_url_index(args.end_date, root_override=args.weekly_root)
+    url_index = get_url_index(args.end_date, SKILL_SUBDIR, root_override=args.weekly_root)
 
     if args.file:
         url_file = Path(args.file)
