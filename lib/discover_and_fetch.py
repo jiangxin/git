@@ -28,7 +28,6 @@ from urllib.parse import urljoin, urlparse
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(SCRIPT_DIR))
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_shared" / "scripts"))
 
 from fetch_backends import (  # noqa: E402
     DEFAULT_RETRY_BASE_DELAY,
@@ -145,21 +144,21 @@ def default_sources_path() -> Path:
     return SCRIPT_DIR.parent / "references" / "sources.json"
 
 
-def resolve_ai_trends_dir(end_date: str, weekly_root=None) -> Path:
+def resolve_skill_dir(end_date: str, skill_subdir: str = "ai-trends", weekly_root=None) -> Path:
     if not end_date:
         print("ERROR: end_date is required (YYYY-MM-DD)", file=sys.stderr)
         sys.exit(2)
     if weekly_root is None:
-        repo_root = SCRIPT_DIR.parents[3]
+        repo_root = SCRIPT_DIR.parents[0]
         weekly_root = repo_root / "weekly"
     else:
         weekly_root = Path(weekly_root)
-    ai_trends = Path(weekly_root) / end_date / "ai-trends"
-    if not ai_trends.is_dir():
-        print(f"ERROR: ai-trends directory not found: {ai_trends}", file=sys.stderr)
+    skill_dir = Path(weekly_root) / end_date / skill_subdir
+    if not skill_dir.is_dir():
+        print(f"ERROR: {skill_subdir} directory not found: {skill_dir}", file=sys.stderr)
         print("Run setup_week.py first.", file=sys.stderr)
         sys.exit(2)
-    return ai_trends
+    return skill_dir
 
 
 def load_sources(path: Path) -> list[dict[str, Any]]:
@@ -1018,6 +1017,7 @@ def run(
     start_date: str,
     end_date: str,
     *,
+    skill_subdir: str = "ai-trends",
     weekly_root=None,
     sources_path: Path | None = None,
     proxy: str | None = None,
@@ -1044,7 +1044,7 @@ def run(
             print(f"ERROR: invalid {label} (expected YYYY-MM-DD): {d!r}", file=sys.stderr)
             sys.exit(2)
 
-    ai_trends_dir = resolve_ai_trends_dir(end_date, weekly_root)
+    ai_trends_dir = resolve_skill_dir(end_date, skill_subdir, weekly_root)
     sources_path = Path(sources_path) if sources_path else default_sources_path()
     if not sources_path.is_file():
         print(f"ERROR: sources.json not found: {sources_path}", file=sys.stderr)
@@ -1381,6 +1381,10 @@ def main() -> None:
     parser.add_argument("--end-date", required=True, help="Week dir / inclusive end YYYY-MM-DD")
     parser.add_argument("--weekly-root", default=None, help="Override weekly/ directory path")
     parser.add_argument(
+        "--skill-subdir", default="ai-trends",
+        help="Subdirectory under weekly/<end_date>/ (default: ai-trends)",
+    )
+    parser.add_argument(
         "--sources", default=None,
         help="Override sources.json path (default: skill references/sources.json)",
     )
@@ -1403,6 +1407,7 @@ def main() -> None:
     counts = run(
         args.start_date,
         args.end_date,
+        skill_subdir=args.skill_subdir,
         weekly_root=args.weekly_root,
         sources_path=Path(args.sources) if args.sources else None,
         resume=not args.fresh,
