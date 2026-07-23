@@ -98,6 +98,8 @@ SKIP_EXTENSIONS = {
     ".json",
 }
 _URL_DATE = re.compile(r"/(20\d{2})[/-](\d{1,2})[/-](\d{1,2})(?:/|$)")
+# Also match ISO dates in query/path (e.g. dahei realtime.php?file=quick_2026-07-23_1601)
+_URL_DATE_ISO = re.compile(r"(?<!\d)(20\d{2})-(\d{2})-(\d{2})(?!\d)")
 
 # Back-compat aliases for tests / callers
 default_fetch = fetch_http
@@ -379,7 +381,10 @@ def dedupe_pending_events(entries: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 
 def date_from_url(url: str) -> str | None:
-    m = _URL_DATE.search(urlparse(url).path)
+    parsed = urlparse(url)
+    m = _URL_DATE.search(parsed.path)
+    if not m:
+        m = _URL_DATE_ISO.search(f"{parsed.path}?{parsed.query}")
     if not m:
         return None
     y, mo, d = int(m.group(1)), int(m.group(2)), int(m.group(3))

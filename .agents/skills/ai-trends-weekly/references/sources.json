@@ -5,10 +5,10 @@
     "use_proxy": true,
     "fallback": "aggregate",
     "rss_url": "https://raw.githubusercontent.com/taobojlen/anthropic-rss-feed/main/anthropic_news_rss.xml",
-    "fallback_rss_url": "https://raw.githubusercontent.com/taobojlen/anthropic-rss-feed/main/anthropic_news_rss.xml",
     "url_include": ["/news/"],
-    "url_exclude": ["/news/tag/", "/news/category/"],
+    "url_exclude": ["/news/tag/", "/news/category/", "/news/team/", "/news/page/"],
     "fetch": "browser",
+    "browser_on_cloudflare": true,
     "max_links": 40
   },
   {
@@ -17,8 +17,11 @@
     "use_proxy": true,
     "fallback": "aggregate",
     "url_include": ["/research/"],
-    "url_exclude": ["/research/tag/", "/research/category/"],
+    "url_exclude": ["/research/tag/", "/research/category/", "/research/team/", "/research/page/"],
     "fetch": "browser",
+    "browser_on_cloudflare": true,
+    "allow_undated": true,
+    "undated_quota": 15,
     "max_links": 40
   },
   {
@@ -27,25 +30,33 @@
     "use_proxy": true,
     "fallback": "aggregate",
     "url_include": ["/blog/"],
+    "url_exclude": ["/blog/tag/", "/blog/category/", "/blog/page/"],
     "fetch": "browser",
+    "browser_on_cloudflare": true,
+    "allow_undated": true,
+    "undated_quota": 15,
     "max_links": 40
   },
   {
     "name": "OpenAI Blog",
     "url": "https://openai.com/blog",
-    "use_proxy": false,
+    "use_proxy": true,
     "fallback": "search",
     "rss_url": "https://openai.com/news/rss.xml",
-    "url_include": ["/index/", "/research/", "/blog/"],
+    "url_include": ["/index/", "/research/"],
+    "url_exclude": ["/business/", "/academy/", "/chatgpt/", "/customer-stories/"],
+    "browser_on_cloudflare": true,
     "max_links": 40
   },
   {
     "name": "OpenAI News",
     "url": "https://openai.com/news",
-    "use_proxy": false,
+    "use_proxy": true,
     "fallback": "search",
     "rss_url": "https://openai.com/news/rss.xml",
-    "url_include": ["/index/", "/research/", "/blog/"],
+    "url_include": ["/index/", "/research/"],
+    "url_exclude": ["/business/", "/academy/", "/chatgpt/", "/customer-stories/"],
+    "browser_on_cloudflare": true,
     "max_links": 40
   },
   {
@@ -55,6 +66,8 @@
     "fallback": "aggregate",
     "rss_url": "https://deepmind.google/blog/rss.xml",
     "url_include": ["/blog/"],
+    "url_exclude": ["/blog/page/", "/models/", "/discover/"],
+    "date_attr": "datetime",
     "max_links": 40
   },
   {
@@ -63,7 +76,12 @@
     "use_proxy": true,
     "fallback": "aggregate",
     "rss_url": "https://blog.google/technology/ai/rss/",
-    "url_include": ["/technology/ai/"],
+    "url_include": [
+      "/innovation-and-ai/",
+      "/technology/ai/",
+      "/products-and-platforms/"
+    ],
+    "url_exclude": ["/tag/", "/category/", "/page/"],
     "max_links": 40
   },
   {
@@ -71,17 +89,29 @@
     "url": "https://ai.meta.com/blog",
     "use_proxy": true,
     "fallback": "aggregate",
-    "url_include": ["/blog/"],
+    "fallback_rss_url": "https://engineering.fb.com/feed/",
+    "url_include": ["/blog/", "/ai-research/", "/ml-applications/", "/\\d{4}/\\d{2}/\\d{2}/"],
+    "url_exclude": ["/blog/tag/", "/blog/category/", "/subscribe/", "/about/"],
     "fetch": "browser",
+    "browser_on_cloudflare": true,
+    "allow_undated": true,
+    "undated_quota": 15,
     "max_links": 40
   },
   {
     "name": "Microsoft AI Blog",
     "url": "https://news.microsoft.com/source/topics/ai",
-    "use_proxy": false,
+    "use_proxy": true,
     "fallback": "search",
-    "url_include": ["/source/", "/en-us/"],
-    "url_exclude": ["/topics/", "/tag/", "/category/"],
+    "rss_url": "https://news.microsoft.com/source/feed/",
+    "url_include": [
+      "/source/",
+      "blogs\\.microsoft\\.com/",
+      "news\\.microsoft\\.com/en-us/"
+    ],
+    "url_exclude": ["/topics/", "/tag/", "/category/", "/linkedin", "/features/"],
+    "fetch": "browser",
+    "browser_on_cloudflare": true,
     "max_links": 40
   },
   {
@@ -90,6 +120,9 @@
     "use_proxy": false,
     "fallback": "search",
     "url_include": ["/blog/"],
+    "url_exclude": ["/blog/tag/", "/blog/category/", "/blog/page/", "/blog/author/"],
+    "allow_undated": true,
+    "undated_quota": 12,
     "max_links": 30
   },
   {
@@ -99,6 +132,8 @@
     "fallback": "search",
     "rss_url": "https://techcrunch.com/category/artificial-intelligence/feed/",
     "url_include": ["/\\d{4}/\\d{2}/\\d{2}/"],
+    "url_exclude": ["/category/", "/tag/", "/author/", "/page/"],
+    "date_attr": "datetime",
     "max_links": 50
   },
   {
@@ -107,7 +142,13 @@
     "use_proxy": "auto",
     "fallback": "search",
     "rss_url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
-    "url_include": ["/ai-artificial-intelligence/\\d+"],
+    "url_include": [
+      "/ai-artificial-intelligence/\\d+",
+      "/tech/\\d+",
+      "/news/\\d+"
+    ],
+    "url_exclude": ["/authors/", "/label/", "/page/"],
+    "date_attr": "datetime",
     "max_links": 50
   },
   {
@@ -116,23 +157,31 @@
     "use_proxy": "auto",
     "fallback": "search",
     "rss_url": "https://venturebeat.com/category/ai/feed/",
-    "url_include": ["/\\d{4}/\\d{2}/\\d{2}/"],
+    "url_include": ["/ai/", "/technology/", "/infrastructure/", "/games/"],
+    "url_exclude": ["/category/", "/tag/", "/author/", "/page/", "/event/"],
+    "date_attr": "datetime",
     "max_links": 50
   },
   {
     "name": "通义千问 Qwen Blog",
-    "url": "https://qwen.ai/blog",
+    "url": "https://qwenlm.github.io/blog/",
     "use_proxy": false,
     "fallback": "aggregate",
+    "rss_url": "https://qwenlm.github.io/blog/index.xml",
     "url_include": ["/blog/"],
+    "url_exclude": ["/blog/page/", "/blog/tags/", "/blog/categories/"],
     "max_links": 30
   },
   {
     "name": "字节跳动 Seed 博客",
     "url": "https://seed.bytedance.com/zh/blog",
     "use_proxy": false,
-    "fallback": "aggregate",
-    "url_include": ["/blog/"],
+    "fallback": "search",
+    "url_include": ["/zh/"],
+    "url_exclude": ["/direction/", "/career", "/research\\?", "view_from="],
+    "fetch": "browser",
+    "allow_undated": true,
+    "undated_quota": 10,
     "max_links": 30
   },
   {
@@ -140,7 +189,9 @@
     "url": "https://ernie.baidu.com/blog/zh/",
     "use_proxy": false,
     "fallback": "aggregate",
-    "url_include": ["/blog/"],
+    "rss_url": "https://ernie.baidu.com/blog/zh/index.xml",
+    "url_include": ["/blog/zh/posts/"],
+    "url_exclude": ["/blog/zh/tags/", "/blog/zh/categories/", "/blog/img/", "/blog/assets/"],
     "max_links": 30
   },
   {
@@ -148,7 +199,10 @@
     "url": "https://platform.kimi.com/blog",
     "use_proxy": false,
     "fallback": "aggregate",
-    "url_include": ["/blog/"],
+    "url_include": ["/blog/posts/"],
+    "url_exclude": ["/blog/posts/changelog", "/blog/_next/", "/blog/tag/"],
+    "date_attr": "datetime",
+    "fetch": "browser",
     "max_links": 30
   },
   {
@@ -156,6 +210,11 @@
     "url": "https://www.deepseek.com/zh/",
     "use_proxy": false,
     "fallback": "search",
+    "url_include": ["/zh/", "/en/"],
+    "url_exclude": ["/policies/", "/_next/", "/user/", "/org/"],
+    "fetch": "browser",
+    "allow_undated": true,
+    "undated_quota": 8,
     "max_links": 20
   },
   {
@@ -163,7 +222,11 @@
     "url": "https://www.zhipuai.cn/news",
     "use_proxy": false,
     "fallback": "search",
-    "url_include": ["/news/"],
+    "url_include": ["/news/", "/blog/", "/zh/"],
+    "url_exclude": ["/_next/", "/courses", "/certificates/", "channel="],
+    "fetch": "browser",
+    "allow_undated": true,
+    "undated_quota": 10,
     "max_links": 30
   },
   {
@@ -172,6 +235,9 @@
     "use_proxy": false,
     "fallback": "aggregate",
     "url_include": ["/news/"],
+    "url_exclude": ["/docs/", "/models/", "/about", "/careers"],
+    "allow_undated": true,
+    "undated_quota": 12,
     "max_links": 30
   },
   {
@@ -179,7 +245,10 @@
     "url": "https://www.minimax.io/blog",
     "use_proxy": false,
     "fallback": "aggregate",
-    "url_include": ["/blog/"],
+    "url_include": ["/blog/", "/news/"],
+    "url_exclude": ["/docs/", "/models/", "/about", "/careers"],
+    "allow_undated": true,
+    "undated_quota": 12,
     "max_links": 30
   },
   {
@@ -187,7 +256,10 @@
     "url": "https://hunyuan.tencent.com/blog",
     "use_proxy": false,
     "fallback": "search",
-    "url_include": ["/blog/"],
+    "url_include": ["/blog/", "/news/"],
+    "fetch": "browser",
+    "allow_undated": true,
+    "undated_quota": 10,
     "max_links": 30
   },
   {
@@ -195,7 +267,11 @@
     "url": "https://ai.tencent.com/ailab/zh/news/",
     "use_proxy": false,
     "fallback": "aggregate",
-    "url_include": ["/news/"],
+    "url_include": ["/news/", "/ailab/"],
+    "url_exclude": ["/_next/", "/m/"],
+    "fetch": "browser",
+    "allow_undated": true,
+    "undated_quota": 10,
     "max_links": 30
   },
   {
@@ -203,7 +279,11 @@
     "url": "https://www.lingyiwanwu.com/blog",
     "use_proxy": false,
     "fallback": "aggregate",
-    "url_include": ["/blog/"],
+    "url_include": ["/blog/", "\\.html"],
+    "url_exclude": ["/solution-", "branding/", "assets/"],
+    "fetch": "browser",
+    "allow_undated": true,
+    "undated_quota": 10,
     "max_links": 30
   },
   {
@@ -211,6 +291,10 @@
     "url": "https://www.baichuan-ai.com/",
     "use_proxy": false,
     "fallback": "search",
+    "url_include": ["/blog/", "/news/", "/article/"],
+    "fetch": "browser",
+    "allow_undated": true,
+    "undated_quota": 8,
     "max_links": 20
   },
   {
@@ -218,7 +302,10 @@
     "url": "https://developer.aliyun.com/group/ai",
     "use_proxy": false,
     "fallback": "search",
-    "url_include": ["/article/"],
+    "url_include": ["/article/\\d+"],
+    "url_exclude": ["/group/", "/profile/", "/product/"],
+    "allow_undated": true,
+    "undated_quota": 15,
     "max_links": 40
   },
   {
@@ -226,14 +313,31 @@
     "url": "https://ai-bot.cn/daily-ai-news/",
     "use_proxy": false,
     "fallback": "skip",
-    "url_include": ["/daily-ai-news/", "/\\d{4}/"],
-    "max_links": 30
+    "url_include": [
+      "mp\\.weixin\\.qq\\.com/",
+      "ithome\\.com/",
+      "zhidx\\.com/",
+      "jiqizhixin\\.com/",
+      "36kr\\.com/"
+    ],
+    "url_exclude": [
+      "ai-bot\\.cn/sites/",
+      "ai-bot\\.cn/wp-",
+      "ai-bot\\.cn/author/",
+      "ai-bot\\.cn/app/",
+      "ai-bot\\.cn/daily-ai-news/"
+    ],
+    "date_attr": "datetime",
+    "max_links": 40
   },
   {
     "name": "大黑 AI 速报",
     "url": "https://news.daheiai.com/",
     "use_proxy": false,
     "fallback": "skip",
+    "rss_url": "https://news.daheiai.com/rss.php",
+    "url_include": ["realtime\\.php\\?file=quick_"],
+    "url_exclude": ["/tag/", "/category/", "/page/"],
     "max_links": 30
   }
 ]

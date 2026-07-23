@@ -59,10 +59,11 @@ arguments:
   {
     "name": "OpenAI News",
     "url": "https://openai.com/news",
-    "use_proxy": false,
+    "use_proxy": true,
     "fallback": "search",
     "rss_url": "https://openai.com/news/rss.xml",
-    "url_include": ["/index/", "/research/"]
+    "url_include": ["/index/", "/research/"],
+    "url_exclude": ["/business/", "/academy/"]
   },
   {
     "name": "Anthropic News",
@@ -70,6 +71,7 @@ arguments:
     "use_proxy": true,
     "fallback": "aggregate",
     "fetch": "browser",
+    "rss_url": "https://raw.githubusercontent.com/taobojlen/anthropic-rss-feed/main/anthropic_news_rss.xml",
     "url_include": ["/news/"]
   }
 ]
