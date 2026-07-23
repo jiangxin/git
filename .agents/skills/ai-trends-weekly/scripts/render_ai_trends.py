@@ -391,6 +391,12 @@ def run(
     week_dir = ai_trends.parent
     out_path = week_dir / "AI-trends.md"
     out_path.write_text(md, encoding="utf-8")
+
+    source_counts = collect_source_counts(in_range)
+    html_content = render_html(end_date, sorted_entries, source_counts, max_per_day=max_per_day)
+    html_path = week_dir / "AI-trends.html"
+    html_path.write_text(html_content, encoding="utf-8")
+
     return out_path
 
 
