@@ -1,0 +1,20 @@
+config.json
+config.json-*
+users.json
+__pycache__
+.DS_Store
+.playwright-cli
+.*.swp
+
+# Ignore WuKong workspace files
+.real/
+MEMORY.md
+SOUL.md
+USER.md
+dingtalk_doc_patched.py
+memory/
+pyproject.toml
+/.*.done
+
+# Local auth makefile (secrets / local paths — see makefile.auth.example for template)
+makefile.auth
