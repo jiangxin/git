@@ -17,6 +17,7 @@ from fetch_backends import (  # noqa: E402
     method_label,
     parse_browser_on_cloudflare,
     parse_fetch_mode,
+    parse_last_modified,
 )
 
 CF_HTML = """<!DOCTYPE html>
@@ -256,3 +257,20 @@ def test_playwright_integration_optional():
     )
     assert "Example Domain" in html or "<html" in html.lower()
     assert method.startswith("browser")
+
+
+class TestParseLastModified:
+    def test_rfc_7231_format(self):
+        assert parse_last_modified("Sun, 06 Nov 1994 08:49:37 GMT") == "1994-11-06"
+
+    def test_iso_date(self):
+        assert parse_last_modified("2026-07-23T14:00:00Z") is None
+
+    def test_none_input(self):
+        assert parse_last_modified(None) is None
+
+    def test_empty_input(self):
+        assert parse_last_modified("") is None
+
+    def test_invalid_format(self):
+        assert parse_last_modified("not a date") is None

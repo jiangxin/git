@@ -104,6 +104,80 @@ def fetch_http(
         raise FetchError(url, method, str(e) or type(e).__name__) from e
 
 
+_HTTP_DATE_FORMATS = [
+    "%a, %d %b %Y %H:%M:%S %Z",
+    "%a, %d %b %Y %H:%M:%S %z",
+    "%A, %d-%b-%y %H:%M:%S %Z",
+    "%a %b %d %H:%M:%S %Y",
+]
+
+
+def parse_last_modified(value: str | None) -> str | None:
+    """Parse HTTP Last-Modified header to YYYY-MM-DD date string."""
+    if not value:
+        return None
+    text = value.strip()
+    for fmt in _HTTP_DATE_FORMATS:
+        try:
+            from datetime import datetime as _dt
+            dt = _dt.strptime(text, fmt)
+            return dt.strftime("%Y-%m-%d")
+        except ValueError:
+            continue
+    return None
+
+
+def fetch_http_with_headers(
+    url: str,
+    *,
+    proxy: str | None,
+    use_proxy_flag: bool,
+    timeout: int = 30,
+) -> tuple[str, str | None]:
+    """Fetch URL and return (html, last_modified_date_or_None)."""
+    method = method_label(use_proxy_flag, mode="http")
+    handlers = []
+    if use_proxy_flag and proxy:
+        handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+    else:
+        handlers.append(urllib.request.ProxyHandler({}))
+    opener = urllib.request.build_opener(*handlers)
+    req = urllib.request.Request(url, headers=DEFAULT_HEADERS)
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            last_mod = parse_last_modified(resp.headers.get("Last-Modified"))
+            charset = resp.headers.get_content_charset() or "utf-8"
+            html = resp.read().decode(charset, errors="replace")
+            return html, last_mod
+    except urllib.error.HTTPError as e:
+        raise FetchError(url, method, f"HTTP {e.code}") from e
+    except Exception as e:
+        raise FetchError(url, method, str(e) or type(e).__name__) from e
+
+
+def fetch_last_modified(
+    url: str,
+    *,
+    proxy: str | None,
+    use_proxy_flag: bool,
+    timeout: int = 15,
+) -> str | None:
+    """HEAD request; return Last-Modified as YYYY-MM-DD or None."""
+    method = method_label(use_proxy_flag, mode="http")
+    handlers = []
+    if use_proxy_flag and proxy:
+        handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+    else:
+        handlers.append(urllib.request.ProxyHandler({}))
+    opener = urllib.request.build_opener(*handlers)
+    req = urllib.request.Request(url, headers=DEFAULT_HEADERS, method="HEAD")
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            return parse_last_modified(resp.headers.get("Last-Modified"))
+    except Exception:
+        return None
+
+
 def fetch_browser(
     url: str,
     *,

@@ -15,6 +15,7 @@ from discover_and_fetch import (  # noqa: E402
     FetchError,
     date_allows,
     dedupe_pending_events,
+    extract_date_from_html,
     extract_links,
     extract_text,
     extract_title,
@@ -519,3 +520,44 @@ class TestEventDedupe:
         primary = next(e for e in out if "openai" in e["original_title"].lower())
         assert primary["url"] == "https://b.example/2"
         assert primary["related_urls"] == ["https://a.example/1"]
+
+
+class TestExtractDateFromHtml:
+    def test_jsonld_datepublished(self):
+        html = '<script type="application/ld+json">{"@context":"https://schema.org","datePublished":"2026-07-14T10:00:00Z"}</script>'
+        assert extract_date_from_html(html) == "2026-07-14"
+
+    def test_meta_article_published_time(self):
+        html = '<meta property="article:published_time" content="2026-06-09T15:30:00Z">'
+        assert extract_date_from_html(html) == "2026-06-09"
+
+    def test_time_datetime(self):
+        html = '<time datetime="2026-05-20T00:00:00">May 20</time>'
+        assert extract_date_from_html(html) == "2026-05-20"
+
+    def test_meta_name_publish_date(self):
+        html = '<meta name="publish_date" content="2026-03-15">'
+        assert extract_date_from_html(html) == "2026-03-15"
+
+    def test_anthropic_agate(self):
+        html = '<div class="body-3 agate">Jul 14, 2026</div>'
+        assert extract_date_from_html(html) == "2026-07-14"
+
+    def test_meta_amum(self):
+        html = '<span class="_amum">March 27, 2026</span>'
+        assert extract_date_from_html(html) == "2026-03-27"
+
+    def test_full_month_text(self):
+        html = '<div>January 5, 2026</div>'
+        assert extract_date_from_html(html) == "2026-01-05"
+
+    def test_abbreviated_month(self):
+        html = '<div>Feb 3, 2026</div>'
+        assert extract_date_from_html(html) == "2026-02-03"
+
+    def test_no_date_returns_none(self):
+        html = '<div>Hello world</div>'
+        assert extract_date_from_html(html) is None
+
+    def test_empty_html_returns_none(self):
+        assert extract_date_from_html("") is None

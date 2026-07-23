@@ -38,6 +38,8 @@ from fetch_backends import (  # noqa: E402
     FetchMode,
     fetch_html_with_backoff,
     fetch_http,
+    fetch_http_with_headers,
+    fetch_last_modified,
     parse_browser_on_cloudflare,
     parse_fetch_mode,
 )
@@ -61,6 +63,11 @@ from site_store import (  # noqa: E402
     site_index_path,
     url_hash,
     url_index_path,
+)
+from url_date_cache import (  # noqa: E402
+    append_cache as date_cache_append,
+    load_cache as date_cache_load,
+    lookup_date as date_cache_lookup,
 )
 from url_filter import url_allowed  # noqa: E402
 
@@ -95,6 +102,41 @@ SKIP_EXTENSIONS = {
 }
 _URL_DATE = re.compile(r"/(20\d{2})[/-](\d{1,2})[/-](\d{1,2})(?:/|$)")
 _URL_DATE_ISO = re.compile(r"(?<!\d)(20\d{2})-(\d{2})-(\d{2})(?!\d)")
+
+_HTML_DATE_JSONLD = re.compile(
+    r'"date(?:Published|Created)"\s*:\s*"([^"]+)"'
+)
+_HTML_DATE_META_TIME = re.compile(
+    r'<time[^>]*\bdatetime=["\']([^"\']+)["\']', re.I
+)
+_HTML_DATE_META_PUB = re.compile(
+    r'<meta[^>]*\bproperty=["\']article:published_time["\'][^>]*\bcontent=["\']([^"\']+)["\']', re.I
+)
+_HTML_DATE_META_NAME = re.compile(
+    r'<meta[^>]*\bname=["\'](?:publish_date|date)["\'][^>]*\bcontent=["\']([^"\']+)["\']', re.I
+)
+_HTML_DATE_ANTHROPIC = re.compile(
+    r'agate[^"]*"[^>]*>'
+    r'((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\.?\s+\d{1,2},?\s+\d{4})<'
+)
+_HTML_DATE_META_AMUM = re.compile(
+    r'class=["\']_amum["\']>'
+    r'((?:January|February|March|April|May|June|July|August|September|October|November|December)'
+    r'\s+\d{1,2},?\s+\d{4})<'
+)
+_HTML_DATE_TEXT = re.compile(
+    r'>(?:'
+    r'(?:January|February|March|April|May|June|July|August|September|October|November|December)'
+    r'|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?'
+    r')\s+\d{1,2},?\s+\d{4}<'
+)
+
+_MONTH_NAMES = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+    "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8,
+    "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+}
 
 default_fetch = fetch_http
 
@@ -680,6 +722,49 @@ def resolve_title(html: str, *, list_title: str | None, url: str) -> str:
     return page_title or url
 
 
+def _normalize_date_text(raw: str) -> str | None:
+    text = raw.strip().rstrip(".")
+    if not text:
+        return None
+    m = re.match(r"(\d{4})-(\d{1,2})-(\d{1,2})", text)
+    if m:
+        try:
+            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3))).strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+    m = re.match(
+        r"(January|February|March|April|May|June|July|August|September|October|November|December"
+        r"|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\.?\s+(\d{1,2}),?\s+(\d{4})",
+        text, re.I,
+    )
+    if m:
+        month_num = _MONTH_NAMES.get(m.group(1).lower())
+        if month_num:
+            try:
+                return datetime(int(m.group(3)), month_num, int(m.group(2))).strftime("%Y-%m-%d")
+            except ValueError:
+                return None
+    return None
+
+
+def extract_date_from_html(html: str) -> str | None:
+    for pattern in [
+        _HTML_DATE_JSONLD, _HTML_DATE_META_TIME, _HTML_DATE_META_PUB,
+        _HTML_DATE_META_NAME, _HTML_DATE_ANTHROPIC, _HTML_DATE_META_AMUM,
+    ]:
+        m = pattern.search(html)
+        if m:
+            result = _normalize_date_text(m.group(1))
+            if result:
+                return result
+    m = _HTML_DATE_TEXT.search(html)
+    if m:
+        result = _normalize_date_text(m.group(0).strip("<>"))
+        if result:
+            return result
+    return None
+
+
 def passes_article_gate(
     *,
     title: str | None,
@@ -832,8 +917,19 @@ def process_candidate(
     max_retries: int = DEFAULT_RETRY_MAX,
     base_delay: float = DEFAULT_RETRY_BASE_DELAY,
     sleep_fn: Callable[[float], None] | None = None,
+    date_cache: dict[str, dict] | None = None,
+    site_slug: str = "",
+    head_fn: Callable[..., str | None] | None = None,
+    browser_date_fn: Callable[..., str | None] | None = None,
+    skip_date_fallbacks: bool = False,
 ) -> dict[str, Any] | None:
     url = item["url"]
+
+    cached_date, cache_hit = date_cache_lookup(url, date_cache or {})
+    if cache_hit and cached_date:
+        item = dict(item)
+        item["publish_date"] = cached_date
+
     try:
         html, _method = fetch_with_policy(
             url,
@@ -861,6 +957,35 @@ def process_candidate(
             )
             if m:
                 pub = m.group(1)
+
+    date_method = "list_or_url"
+    if pub is None or is_undated(pub):
+        html_date = extract_date_from_html(html)
+        if html_date:
+            pub = html_date
+            date_method = "html_extract"
+        elif not skip_date_fallbacks:
+            _head_fn = head_fn if head_fn is not None else (
+                lambda u, **kw: fetch_last_modified(u, proxy=kw.get("proxy"), use_proxy_flag=kw.get("use_proxy_flag", False))
+            )
+            head_date = _head_fn(url, proxy=proxy, use_proxy_flag=bool(use_proxy is True))
+            if head_date:
+                pub = head_date
+                date_method = "last_modified"
+            else:
+                _browser_date_fn = browser_date_fn if browser_date_fn is not None else _default_browser_date
+                browser_date = _browser_date_fn(
+                    url, use_proxy=use_proxy, proxy=proxy, browser_fetch_fn=browser_fetch_fn,
+                )
+                if browser_date:
+                    pub = browser_date
+                    date_method = "browser_html"
+
+    if date_cache is not None and pub:
+        date_cache_append(url, pub, method=date_method)
+    elif date_cache is not None and (pub is None or is_undated(pub)):
+        date_cache_append(url, None, method="undated")
+
     title = resolve_title(html, list_title=item.get("original_title"), url=url)
     return {
         "url": url,
@@ -870,6 +995,23 @@ def process_candidate(
         "content": content,
         "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
+
+
+def _default_browser_date(
+    url: str,
+    *,
+    use_proxy: Any,
+    proxy: str | None,
+    browser_fetch_fn: FetchFn | None = None,
+) -> str | None:
+    try:
+        browser_html, _bm = fetch_html_with_backoff(
+            url, mode="browser", use_proxy=use_proxy, proxy=proxy,
+            browser_fetch_fn=browser_fetch_fn, timeout=45,
+        )
+        return extract_date_from_html(browser_html)
+    except FetchError:
+        return None
 
 
 def run(
@@ -981,6 +1123,8 @@ def run(
         site_idx_path = site_index_path(ai_trends_dir, slug)
         site_index = load_site_index(site_idx_path) if resume else {}
 
+        date_cache = date_cache_load() if fetch_fn is default_fetch else None
+
         items, discover_errors = discover_source_items(
             source,
             start_date=start_date,
@@ -1028,6 +1172,20 @@ def run(
                     counters["skipped"] += 1
                 continue
             pub = item.get("publish_date")
+            if date_cache is not None:
+                cached_date, cache_hit = date_cache_lookup(url, date_cache)
+                if cache_hit:
+                    if cached_date:
+                        pub = cached_date
+                        item["publish_date"] = pub
+                    else:
+                        append_site_index(
+                            site_idx_path, url=url, status="skipped_date", hash=url_hash(url),
+                        )
+                        site_index[url] = {"url": url, "status": "skipped_date"}
+                        with counters_lock:
+                            counters["skipped"] += 1
+                        continue
             if not date_allows(pub, start_date, end_date, allow_undated=allow_undated):
                 append_site_index(
                     site_idx_path, url=url, status="skipped_date", hash=url_hash(url),
@@ -1098,6 +1256,9 @@ def run(
                     max_retries=max_retries,
                     base_delay=retry_base_delay,
                     sleep_fn=sleep_fn,
+                    date_cache=date_cache,
+                    site_slug=slug,
+                    skip_date_fallbacks=(fetch_fn is not default_fetch),
                 )
 
         if to_fetch:

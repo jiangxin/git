@@ -18,3 +18,8 @@ pyproject.toml
 
 # Local auth makefile (secrets / local paths — see makefile.auth.example for template)
 makefile.auth
+
+*.lock
+
+# ai-trends-weekly runtime cache
+.agents/skills/ai-trends-weekly/data/
