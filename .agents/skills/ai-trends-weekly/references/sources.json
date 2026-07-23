@@ -3,7 +3,8 @@
     "name": "Anthropic News",
     "url": "https://www.anthropic.com/news",
     "use_proxy": true,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "fallback_rss_url": "https://raw.githubusercontent.com/taobojlen/anthropic-rss-feed/main/anthropic_news_rss.xml"
   },
   {
     "name": "Anthropic Research",
@@ -21,25 +22,29 @@
     "name": "OpenAI Blog",
     "url": "https://openai.com/blog",
     "use_proxy": false,
-    "fallback": "search"
+    "fallback": "search",
+    "rss_url": "https://openai.com/news/rss.xml"
   },
   {
     "name": "OpenAI News",
     "url": "https://openai.com/news",
     "use_proxy": false,
-    "fallback": "search"
+    "fallback": "search",
+    "rss_url": "https://openai.com/news/rss.xml"
   },
   {
     "name": "Google DeepMind Blog",
     "url": "https://deepmind.google/blog",
     "use_proxy": true,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "rss_url": "https://deepmind.google/blog/rss.xml"
   },
   {
     "name": "Google AI Blog",
     "url": "https://blog.google/technology/ai",
     "use_proxy": true,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "rss_url": "https://blog.google/technology/ai/rss/"
   },
   {
     "name": "Meta AI Blog",
@@ -63,19 +68,22 @@
     "name": "TechCrunch AI",
     "url": "https://techcrunch.com/category/artificial-intelligence",
     "use_proxy": "auto",
-    "fallback": "search"
+    "fallback": "search",
+    "rss_url": "https://techcrunch.com/category/artificial-intelligence/feed/"
   },
   {
     "name": "The Verge AI",
     "url": "https://www.theverge.com/ai-artificial-intelligence",
     "use_proxy": "auto",
-    "fallback": "search"
+    "fallback": "search",
+    "rss_url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
   },
   {
     "name": "VentureBeat AI",
     "url": "https://venturebeat.com/ai",
     "use_proxy": "auto",
-    "fallback": "search"
+    "fallback": "search",
+    "rss_url": "https://venturebeat.com/category/ai/feed/"
   },
   {
     "name": "通义千问 Qwen Blog",

@@ -35,6 +35,13 @@ from check_cloudflare import is_cloudflare  # noqa: E402
 from filter_by_date import extract_date  # noqa: E402
 from json_archives import load_json_array, save_json_atomic  # noqa: E402
 from repo_config import load_repo_config  # noqa: E402
+from restricted_search import (  # noqa: E402
+    SearchFn,
+    SearchSkipped,
+    resolve_search_config,
+    restricted_search,
+)
+from rss_parse import parse_feed  # noqa: E402
 from url_filter import url_allowed  # noqa: E402
 
 CONTENT_MAX = 12000
@@ -43,6 +50,8 @@ DEFAULT_RAW_TTL_DAYS = 7
 PENDING_SAVE_EVERY = 20
 FETCH_STATE_FILENAME = "fetch_state.jsonl"
 RAW_INDEX_FILENAME = "index.jsonl"
+# Limited same-origin feed probes for fallback=aggregate (avoid blind guessing).
+COMMON_FEED_PATHS = ("/feed", "/rss", "/feed.xml", "/rss.xml", "/atom.xml")
 TERMINAL_SKIP_STATUSES = frozenset(
     {"fetched", "skipped_date", "skipped_filter", "cached"}
 )
@@ -418,6 +427,198 @@ def extract_links(
     except Exception:  # noqa: BLE001 — tolerate broken HTML
         pass
     return collector.links
+
+
+def parse_max_links(source: dict[str, Any]) -> int | None:
+    """Optional per-source candidate cap; None means unlimited."""
+    raw = source.get("max_links")
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def apply_max_links(
+    items: list[dict[str, Any]], max_links: int | None
+) -> list[dict[str, Any]]:
+    if max_links is None:
+        return items
+    return items[:max_links]
+
+
+def feed_probe_urls(list_url: str) -> list[str]:
+    """Same-origin common feed paths derived from the list page URL."""
+    parsed = urlparse(list_url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return []
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    urls: list[str] = []
+    seen: set[str] = set()
+    for path in COMMON_FEED_PATHS:
+        candidate = origin + path
+        if candidate not in seen:
+            seen.add(candidate)
+            urls.append(candidate)
+    return urls
+
+
+def fetch_feed_items(
+    feed_url: str,
+    *,
+    use_proxy: Any,
+    proxy: str | None,
+    fetch_fn: FetchFn,
+) -> list[dict[str, Any]]:
+    """Fetch and parse one RSS/Atom URL; raises FetchError on transport failure."""
+    body, _method = fetch_with_policy(
+        feed_url, use_proxy=use_proxy, proxy=proxy, fetch_fn=fetch_fn
+    )
+    items = parse_feed(body, base_url=feed_url)
+    if not items:
+        raise FetchError(feed_url, "rss", "empty or unparseable feed")
+    return items
+
+
+def discover_via_html(
+    list_url: str,
+    *,
+    date_attr: str | None,
+    use_proxy: Any,
+    proxy: str | None,
+    fetch_fn: FetchFn,
+) -> list[dict[str, Any]]:
+    """Fetch list HTML and extract links; raises FetchError on failure."""
+    list_html, _method = fetch_with_policy(
+        list_url, use_proxy=use_proxy, proxy=proxy, fetch_fn=fetch_fn
+    )
+    return extract_links(list_html, list_url, date_attr=date_attr)
+
+
+def discover_via_aggregate(
+    source: dict[str, Any],
+    *,
+    list_url: str,
+    use_proxy: Any,
+    proxy: str | None,
+    fetch_fn: FetchFn,
+) -> list[dict[str, Any]]:
+    """Try ``fallback_rss_url`` then a few same-origin feed probes."""
+    candidates: list[str] = []
+    fb = source.get("fallback_rss_url")
+    if isinstance(fb, str) and fb.startswith(("http://", "https://")):
+        candidates.append(fb)
+    for url in feed_probe_urls(list_url):
+        if url not in candidates:
+            candidates.append(url)
+
+    last_err: FetchError | None = None
+    for feed_url in candidates:
+        try:
+            return fetch_feed_items(
+                feed_url, use_proxy=use_proxy, proxy=proxy, fetch_fn=fetch_fn
+            )
+        except FetchError as e:
+            last_err = e
+            continue
+    if last_err is not None:
+        raise last_err
+    raise FetchError(list_url, "aggregate", "no fallback feed candidates")
+
+
+def discover_source_items(
+    source: dict[str, Any],
+    *,
+    start_date: str,
+    end_date: str,
+    use_proxy: Any,
+    proxy: str | None,
+    fetch_fn: FetchFn,
+    search_cfg: dict[str, Any] | None = None,
+    search_fn: SearchFn | None = None,
+) -> tuple[list[dict[str, Any]], list[tuple[str, str, str]]]:
+    """RSS-first discovery with HTML + fallback. Returns (items, error_triples).
+
+    error_triples are ``(method, url, reason)`` for ``error.log`` (non-fatal notes
+    and terminal failures). Empty items with a terminal failure are signalled by
+    a final triple whose method starts with ``discover``.
+    """
+    list_url = source.get("url")
+    if not isinstance(list_url, str) or not list_url.startswith(("http://", "https://")):
+        return [], [("config", str(list_url), "invalid source url")]
+
+    date_attr = source.get("date_attr") if isinstance(source.get("date_attr"), str) else None
+    fallback = source.get("fallback") or "skip"
+    errors: list[tuple[str, str, str]] = []
+    items: list[dict[str, Any]] = []
+
+    rss_url = source.get("rss_url")
+    if isinstance(rss_url, str) and rss_url.startswith(("http://", "https://")):
+        try:
+            items = fetch_feed_items(
+                rss_url, use_proxy=use_proxy, proxy=proxy, fetch_fn=fetch_fn
+            )
+        except FetchError as e:
+            errors.append((e.method, e.url, e.reason))
+
+    if not items:
+        try:
+            items = discover_via_html(
+                list_url,
+                date_attr=date_attr,
+                use_proxy=use_proxy,
+                proxy=proxy,
+                fetch_fn=fetch_fn,
+            )
+        except FetchError as e:
+            errors.append((e.method, e.url, e.reason))
+
+    if items:
+        return apply_max_links(items, parse_max_links(source)), errors
+
+    # Zero items or list/RSS failure → fallback
+    if fallback == "skip":
+        errors.append(("discover", list_url, "list empty; fallback=skip"))
+        return [], errors
+
+    if fallback == "aggregate":
+        try:
+            items = discover_via_aggregate(
+                source,
+                list_url=list_url,
+                use_proxy=use_proxy,
+                proxy=proxy,
+                fetch_fn=fetch_fn,
+            )
+        except FetchError as e:
+            errors.append((e.method, e.url, e.reason))
+            errors.append(("discover", list_url, "aggregate fallback failed"))
+            return [], errors
+        return apply_max_links(items, parse_max_links(source)), errors
+
+    if fallback == "search":
+        try:
+            items = restricted_search(
+                source_name=str(source.get("name") or "unknown"),
+                list_url=list_url,
+                start_date=start_date,
+                end_date=end_date,
+                search_cfg=search_cfg,
+                search_fn=search_fn,
+            )
+        except SearchSkipped as e:
+            errors.append(("search", list_url, e.reason))
+            errors.append(("discover", list_url, "search fallback skipped"))
+            return [], errors
+        if not items:
+            errors.append(("discover", list_url, "search fallback returned 0 results"))
+            return [], errors
+        return apply_max_links(items, parse_max_links(source)), errors
+
+    errors.append(("discover", list_url, f"unknown fallback={fallback!r}"))
+    return [], errors
 
 
 _SKIP_TEXT_TAGS = frozenset(
@@ -832,6 +1033,8 @@ def run(
     pending_save_every: int = PENDING_SAVE_EVERY,
     raw_ttl_days: int | None = None,
     content_min: int = CONTENT_MIN,
+    search_fn: SearchFn | None = None,
+    search_cfg: dict[str, Any] | None = None,
 ) -> dict[str, int]:
     """Core pipeline. Returns counts dict for summary line."""
     for label, d in (("start_date", start_date), ("end_date", end_date)):
@@ -852,6 +1055,8 @@ def run(
         raw_proxy = cfg.get("proxy")
         proxy = raw_proxy.strip() if isinstance(raw_proxy, str) and raw_proxy.strip() else None
     ttl_days = parse_raw_ttl_days(cfg, raw_ttl_days)
+    if search_cfg is None:
+        search_cfg = resolve_search_config(cfg)
 
     fetch_fn = fetch_fn or default_fetch
     sources = load_sources(sources_path)
@@ -935,24 +1140,31 @@ def run(
             continue
 
         use_proxy = source.get("use_proxy", "auto")
-        date_attr = source.get("date_attr") if isinstance(source.get("date_attr"), str) else None
         url_include = source.get("url_include")
         url_exclude = source.get("url_exclude")
         allow_undated = bool(source.get("allow_undated", False))
         undated_quota = parse_undated_quota(source, allow_undated=allow_undated)
         undated_used = 0
 
-        try:
-            list_html, _method = fetch_with_policy(
-                list_url, use_proxy=use_proxy, proxy=proxy, fetch_fn=fetch_fn
-            )
-        except FetchError as e:
-            append_error_log(ai_trends_dir, e.method, e.url, e.reason)
-            errors += 1
+        items, discover_errors = discover_source_items(
+            source,
+            start_date=start_date,
+            end_date=end_date,
+            use_proxy=use_proxy,
+            proxy=proxy,
+            fetch_fn=fetch_fn,
+            search_cfg=search_cfg,
+            search_fn=search_fn,
+        )
+        for method, err_url, reason in discover_errors:
+            append_error_log(ai_trends_dir, method, err_url, reason)
+        if not items:
+            # Terminal discovery failure (or empty after skip/search)
+            if discover_errors:
+                errors += 1
             persist_pending()
             continue
 
-        items = extract_links(list_html, list_url, date_attr=date_attr)
         for item in items:
             url = item["url"]
             if url in known_urls:
