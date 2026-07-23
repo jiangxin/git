@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import html as html_mod
 import sys
 from collections import defaultdict
 from datetime import datetime
@@ -208,6 +209,163 @@ def filter_entries(
         else:
             excluded.append((entry, str(pub), "undated"))
     return in_range, excluded
+
+
+def collect_source_counts(entries: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for entry in entries:
+        src = entry.get("source") or "(unknown)"
+        counts[src] = counts.get(src, 0) + 1
+    return counts
+
+
+def _html_article_item(entry: dict[str, Any]) -> str:
+    title = html_mod.escape(entry.get("cn_title") or entry.get("original_title") or "(untitled)")
+    url = html_mod.escape(entry.get("url") or "")
+    summary = html_mod.escape((entry.get("cn_summary") or "").rstrip("。. "))
+    source = html_mod.escape(entry.get("source") or "")
+    day = html_mod.escape(
+        extract_date(entry.get("publish_date")) or str(entry.get("publish_date") or "")
+    )
+    return (
+        f'<div class="article-item" data-source="{source}">'
+        f'<strong><a href="{url}">{title}</a></strong>'
+        f'：{summary}。'
+        f'<span class="meta">📰 {source} 📅 {day}</span></div>'
+    )
+
+
+def _html_reference(index: int, entry: dict[str, Any]) -> str:
+    title = html_mod.escape(entry.get("original_title") or entry.get("cn_title") or "(untitled)")
+    url = html_mod.escape(entry.get("url") or "")
+    return f'<li><a href="{url}">{index}. {title}</a></li>'
+
+
+def render_html(
+    end_date: str,
+    entries: list[dict[str, Any]],
+    source_counts: dict[str, int],
+    *,
+    max_per_day: int | None = None,
+) -> str:
+    items = apply_max_per_day(entries[:MAX_ITEMS], max_per_day)
+    groups = group_by_date(items)
+
+    sorted_sources = sorted(source_counts.keys())
+    chips_html = '<button class="source-chip active" data-source="__all__">全部</button>\n'
+    for src in sorted_sources:
+        cnt = source_counts[src]
+        esc = html_mod.escape(src)
+        chips_html += (
+            f'<button class="source-chip active" data-source="{esc}">'
+            f'{esc} ({cnt})</button>\n'
+        )
+    chips_html += '<button class="source-chip" data-source="__none__">清空</button>'
+
+    articles_parts: list[str] = []
+    for day, group in groups:
+        articles_parts.append(f'<div class="date-group" data-date="{html_mod.escape(day)}">')
+        articles_parts.append(f'<h3>{html_mod.escape(day)}</h3>')
+        for entry in group:
+            articles_parts.append(_html_article_item(entry))
+        articles_parts.append("</div>")
+    articles_html = "\n".join(articles_parts)
+
+    refs_parts: list[str] = []
+    for i, entry in enumerate(items, start=1):
+        refs_parts.append(_html_reference(i, entry))
+    refs_html = "\n".join(refs_parts)
+
+    return f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{html_mod.escape(end_date)} AI 行业动态周报</title>
+<style>
+body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 900px; margin: 0 auto; padding: 20px; color: #333; }}
+h1 {{ margin-bottom: 8px; }}
+.source-filter {{ display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 24px; }}
+.source-chip {{ border: 1px solid #ccc; border-radius: 16px; padding: 4px 14px; font-size: 13px; cursor: pointer; background: #f5f5f5; color: #666; transition: all .15s; }}
+.source-chip.active {{ background: #2563eb; color: #fff; border-color: #2563eb; }}
+.source-chip:hover {{ opacity: .85; }}
+.date-group {{ margin-bottom: 24px; }}
+.date-group h3 {{ color: #555; border-bottom: 1px solid #eee; padding-bottom: 4px; }}
+.date-group.hidden {{ display: none; }}
+.article-item {{ margin: 10px 0; line-height: 1.6; }}
+.article-item.hidden {{ display: none; }}
+.article-item .meta {{ font-size: 12px; color: #888; }}
+.article-item a {{ color: #2563eb; text-decoration: none; }}
+.article-item a:hover {{ text-decoration: underline; }}
+.references {{ margin-top: 32px; }}
+.references ol {{ padding-left: 24px; }}
+.references li {{ margin: 4px 0; font-size: 13px; }}
+.references a {{ color: #2563eb; text-decoration: none; }}
+</style>
+</head>
+<body>
+<h1>{html_mod.escape(end_date)} AI 行业动态周报</h1>
+<h2>本周 AI 行业动态</h2>
+<div class="source-filter">
+{chips_html}
+</div>
+<div class="articles">
+{articles_html}
+</div>
+<div class="references">
+<h2>参考来源</h2>
+<ol>
+{refs_html}
+</ol>
+</div>
+<script>
+(function() {{
+  var allSources = {str(sorted_sources).replace("'", '"')};
+  var selected = new Set(allSources);
+  var chips = document.querySelectorAll('.source-chip');
+  var items = document.querySelectorAll('.article-item');
+  var groups = document.querySelectorAll('.date-group');
+
+  function updateUI() {{
+    chips.forEach(function(chip) {{
+      var s = chip.dataset.source;
+      if (s === '__all__') {{
+        chip.classList.toggle('active', selected.size === allSources.length);
+      }} else if (s === '__none__') {{
+        chip.classList.toggle('active', selected.size === 0);
+      }} else {{
+        chip.classList.toggle('active', selected.has(s));
+      }}
+    }});
+    items.forEach(function(item) {{
+      item.classList.toggle('hidden', !selected.has(item.dataset.source));
+    }});
+    groups.forEach(function(g) {{
+      var visible = g.querySelectorAll('.article-item:not(.hidden)');
+      g.classList.toggle('hidden', visible.length === 0);
+    }});
+  }}
+
+  chips.forEach(function(chip) {{
+    chip.addEventListener('click', function() {{
+      var s = chip.dataset.source;
+      if (s === '__all__') {{
+        allSources.forEach(function(x) {{ selected.add(x); }});
+      }} else if (s === '__none__') {{
+        selected.clear();
+      }} else {{
+        if (selected.has(s)) {{ selected.delete(s); }} else {{ selected.add(s); }}
+      }}
+      updateUI();
+    }});
+  }});
+
+  updateUI();
+}})();
+</script>
+</body>
+</html>
+"""
 
 
 def run(
