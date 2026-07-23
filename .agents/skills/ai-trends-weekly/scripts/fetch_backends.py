@@ -2,10 +2,13 @@
 
 ``fetch_html`` selects ``http`` vs ``browser`` and optionally one-shots a
 browser retry when HTTP hits a Cloudflare challenge.
+``fetch_html_with_backoff`` retries 429/5xx with exponential backoff.
 """
 
 from __future__ import annotations
 
+import re
+import time
 import urllib.error
 import urllib.request
 from typing import Any, Callable, Literal
@@ -24,6 +27,9 @@ DEFAULT_HEADERS = {
     "User-Agent": USER_AGENT,
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 }
+_RETRYABLE_HTTP = re.compile(r"\bHTTP (429|5\d{2})\b")
+DEFAULT_RETRY_MAX = 3
+DEFAULT_RETRY_BASE_DELAY = 0.5
 
 
 class FetchError(Exception):
@@ -234,3 +240,47 @@ def fetch_html(
             fetch_fn=browser_fn,
             timeout=timeout,
         )
+
+
+def is_retryable_fetch_error(err: FetchError) -> bool:
+    """True for HTTP 429 and 5xx responses (safe to back off and retry)."""
+    return bool(_RETRYABLE_HTTP.search(err.reason or ""))
+
+
+def fetch_html_with_backoff(
+    url: str,
+    *,
+    mode: FetchMode = "http",
+    use_proxy: Any = "auto",
+    proxy: str | None = None,
+    browser_on_cloudflare: bool = True,
+    http_fetch_fn: FetchFn | None = None,
+    browser_fetch_fn: FetchFn | None = None,
+    timeout: int = 30,
+    max_retries: int = DEFAULT_RETRY_MAX,
+    base_delay: float = DEFAULT_RETRY_BASE_DELAY,
+    sleep_fn: Callable[[float], None] | None = None,
+) -> tuple[str, str]:
+    """Like ``fetch_html`` but retries retryable HTTP failures with backoff."""
+    sleeper = sleep_fn or time.sleep
+    last_err: FetchError | None = None
+    attempts = max(0, int(max_retries)) + 1
+    for attempt in range(attempts):
+        try:
+            return fetch_html(
+                url,
+                mode=mode,
+                use_proxy=use_proxy,
+                proxy=proxy,
+                browser_on_cloudflare=browser_on_cloudflare,
+                http_fetch_fn=http_fetch_fn,
+                browser_fetch_fn=browser_fetch_fn,
+                timeout=timeout,
+            )
+        except FetchError as e:
+            last_err = e
+            if not is_retryable_fetch_error(e) or attempt >= attempts - 1:
+                raise
+            sleeper(base_delay * (2**attempt))
+    assert last_err is not None
+    raise last_err

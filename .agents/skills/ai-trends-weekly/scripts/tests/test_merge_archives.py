@@ -202,3 +202,46 @@ class TestRun:
         added, total = run("2026-05-10", weekly_root=weekly_root)
         assert added == 1
         assert total == 2
+
+
+class TestUpsert:
+    def test_merge_upsert_updates_summary_fields(self):
+        archives = [
+            _entry("https://a.com"),
+        ]
+        archives[0]["cn_summary"] = "旧概述"
+        archives[0]["rank_hint"] = 9
+        new = [
+            {
+                **_entry("https://a.com"),
+                "cn_summary": "新概述",
+                "en_summary": "New summary.",
+                "rank_hint": 1,
+                "collected_at": "2026-05-11T12:00:00",
+            }
+        ]
+        # default: no update
+        merged, added = merge(archives, new)
+        assert added == 0
+        assert merged[0]["cn_summary"] == "旧概述"
+
+        merged2, added2 = merge(archives, new, upsert=True)
+        assert added2 == 0
+        assert merged2[0]["cn_summary"] == "新概述"
+        assert merged2[0]["en_summary"] == "New summary."
+        assert merged2[0]["rank_hint"] == 1
+        assert merged2[0]["collected_at"] == "2026-05-11T12:00:00"
+        assert merged2[0]["url"] == "https://a.com"
+
+    def test_run_upsert(self, week_env):
+        old = _entry("https://a.com")
+        old["cn_summary"] = "旧"
+        new = {**_entry("https://a.com"), "cn_summary": "新", "rank_hint": 2}
+        weekly_root, ai_trends = week_env(archives_data=[old], new_data=[new])
+        added, total = run("2026-05-10", weekly_root=weekly_root, upsert=True)
+        assert added == 0
+        assert total == 1
+        archives = json.loads((ai_trends / "archives.json").read_text())
+        assert archives[0]["cn_summary"] == "新"
+        assert archives[0]["rank_hint"] == 2
+        assert not (ai_trends / "new.json").exists()

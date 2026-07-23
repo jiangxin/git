@@ -45,3 +45,17 @@ playwright install chromium
 |--------|---------|
 | `TestParseFetchConfig` | `fetch` / `browser_on_cloudflare` 解析 |
 | `TestFetchHtmlBackends` | http/browser 选择、Cloudflare 一次降级、缺失 playwright |
+| `TestBackoffRetry` | 429/5xx 可重试判定、指数退避成功与立即失败 |
+
+### render_ai_trends.py
+
+| 测试 | 覆盖内容 |
+|------|---------|
+| `test_*max_per_day*` | 按日上限裁剪（默认不限制） |
+| `test_quality_warning*` | `QUALITY_WARNING` 触发与跳过 |
+
+### merge_archives.py
+
+| 测试类 | 覆盖内容 |
+|--------|---------|
+| `TestUpsert` | `--upsert` 同 url 刷新摘要字段；默认仍仅追加 |

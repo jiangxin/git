@@ -17,11 +17,13 @@ import hashlib
 import json
 import re
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urljoin, urlparse
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -30,10 +32,12 @@ sys.path.insert(0, str(SCRIPT_DIR))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_shared" / "scripts"))
 
 from fetch_backends import (  # noqa: E402
+    DEFAULT_RETRY_BASE_DELAY,
+    DEFAULT_RETRY_MAX,
     FetchError,
     FetchFn,
     FetchMode,
-    fetch_html,
+    fetch_html_with_backoff,
     fetch_http,
     parse_browser_on_cloudflare,
     parse_fetch_mode,
@@ -53,14 +57,19 @@ from url_filter import url_allowed  # noqa: E402
 CONTENT_MAX = 12000
 CONTENT_MIN = 400
 DEFAULT_RAW_TTL_DAYS = 7
+DEFAULT_FETCH_CONCURRENCY = 4
+DEFAULT_FETCH_CONCURRENCY_PER_SOURCE = 2
 PENDING_SAVE_EVERY = 20
 FETCH_STATE_FILENAME = "fetch_state.jsonl"
 RAW_INDEX_FILENAME = "index.jsonl"
+_TITLE_PUNCT = re.compile(r"[^\w\s]", re.UNICODE)
+_TITLE_WS = re.compile(r"\s+")
 # Limited same-origin feed probes for fallback=aggregate (avoid blind guessing).
 COMMON_FEED_PATHS = ("/feed", "/rss", "/feed.xml", "/rss.xml", "/atom.xml")
 TERMINAL_SKIP_STATUSES = frozenset(
     {"fetched", "skipped_date", "skipped_filter", "cached"}
 )
+_ERROR_LOG_LOCK = threading.Lock()
 _ARTICLE_BLOCK = re.compile(
     r"(?is)<(article|main)\b[^>]*>(.*?)</\1>"
 )
@@ -134,8 +143,9 @@ def append_error_log(ai_trends_dir: Path, method: str, url: str, reason: str) ->
     log_path = ai_trends_dir / "error.log"
     ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{ts}] FAILED {method} {url} - {reason}\n"
-    with log_path.open("a", encoding="utf-8") as f:
-        f.write(line)
+    with _ERROR_LOG_LOCK:
+        with log_path.open("a", encoding="utf-8") as f:
+            f.write(line)
 
 
 def url_sha1(url: str) -> str:
@@ -264,9 +274,12 @@ def fetch_with_policy(
     mode: FetchMode = "http",
     browser_on_cloudflare: bool = True,
     browser_fetch_fn: FetchFn | None = None,
+    max_retries: int = DEFAULT_RETRY_MAX,
+    base_delay: float = DEFAULT_RETRY_BASE_DELAY,
+    sleep_fn: Callable[[float], None] | None = None,
 ) -> tuple[str, str]:
-    """Fetch via http/browser backends; optional Cloudflare→browser downgrade."""
-    return fetch_html(
+    """Fetch via http/browser; CF→browser downgrade; 429/5xx exponential backoff."""
+    return fetch_html_with_backoff(
         url,
         mode=mode,
         use_proxy=use_proxy,
@@ -274,7 +287,95 @@ def fetch_with_policy(
         browser_on_cloudflare=browser_on_cloudflare,
         http_fetch_fn=fetch_fn,
         browser_fetch_fn=browser_fetch_fn,
+        max_retries=max_retries,
+        base_delay=base_delay,
+        sleep_fn=sleep_fn,
     )
+
+
+def parse_concurrency(cfg: dict[str, Any] | None) -> tuple[int, int]:
+    """Return (global_workers, per_source_workers) from config or defaults."""
+    global_n = DEFAULT_FETCH_CONCURRENCY
+    per_source = DEFAULT_FETCH_CONCURRENCY_PER_SOURCE
+    if not cfg:
+        return global_n, per_source
+    raw_g = cfg.get("fetch_concurrency")
+    if isinstance(raw_g, (int, float)) and not isinstance(raw_g, bool):
+        global_n = max(1, int(raw_g))
+    elif isinstance(raw_g, str) and raw_g.strip().isdigit():
+        global_n = max(1, int(raw_g.strip()))
+    raw_p = cfg.get("fetch_concurrency_per_source")
+    if isinstance(raw_p, (int, float)) and not isinstance(raw_p, bool):
+        per_source = max(1, int(raw_p))
+    elif isinstance(raw_p, str) and raw_p.strip().isdigit():
+        per_source = max(1, int(raw_p.strip()))
+    return global_n, per_source
+
+
+def normalize_event_key(title: str | None, url: str | None = None) -> str:
+    """Cluster key: normalized title, else URL path without query/fragment."""
+    text = (title or "").strip().lower()
+    text = _TITLE_PUNCT.sub("", text)
+    text = _TITLE_WS.sub(" ", text).strip()
+    if text:
+        return f"title:{text}"
+    if isinstance(url, str) and url:
+        parsed = urlparse(url)
+        path = (parsed.path or "/").rstrip("/") or "/"
+        return f"path:{parsed.netloc.lower()}{path.lower()}"
+    return "empty:"
+
+
+def _rank_hint_sort_key(entry: dict[str, Any]) -> tuple[float, int]:
+    hint = entry.get("rank_hint")
+    try:
+        rank = float(hint) if hint is not None else float("inf")
+    except (TypeError, ValueError):
+        rank = float("inf")
+    # Prefer longer content as secondary signal when hints tie / missing
+    content_len = len(entry.get("content") or "")
+    return (rank, -content_len)
+
+
+def dedupe_pending_events(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Cluster near-duplicate events; keep best rank_hint, attach related_urls."""
+    clusters: dict[str, list[dict[str, Any]]] = {}
+    order: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict) or not entry.get("url"):
+            continue
+        key = normalize_event_key(entry.get("original_title"), entry.get("url"))
+        if key not in clusters:
+            order.append(key)
+            clusters[key] = []
+        clusters[key].append(entry)
+
+    result: list[dict[str, Any]] = []
+    for key in order:
+        group = clusters[key]
+        if len(group) == 1:
+            result.append(group[0])
+            continue
+        primary = min(group, key=_rank_hint_sort_key)
+        related: list[str] = []
+        existing_related = primary.get("related_urls")
+        if isinstance(existing_related, list):
+            related.extend(u for u in existing_related if isinstance(u, str) and u)
+        primary_url = primary.get("url")
+        for other in group:
+            other_url = other.get("url")
+            if (
+                isinstance(other_url, str)
+                and other_url
+                and other_url != primary_url
+                and other_url not in related
+            ):
+                related.append(other_url)
+        out = dict(primary)
+        if related:
+            out["related_urls"] = related
+        result.append(out)
+    return result
 
 
 def date_from_url(url: str) -> str | None:
@@ -980,6 +1081,9 @@ def process_candidate(
     mode: FetchMode = "http",
     browser_on_cloudflare: bool = True,
     browser_fetch_fn: FetchFn | None = None,
+    max_retries: int = DEFAULT_RETRY_MAX,
+    base_delay: float = DEFAULT_RETRY_BASE_DELAY,
+    sleep_fn: Callable[[float], None] | None = None,
 ) -> dict[str, Any] | None:
     """Fetch detail page and build a pending entry, or None on failure.
 
@@ -995,6 +1099,9 @@ def process_candidate(
             mode=mode,
             browser_on_cloudflare=browser_on_cloudflare,
             browser_fetch_fn=browser_fetch_fn,
+            max_retries=max_retries,
+            base_delay=base_delay,
+            sleep_fn=sleep_fn,
         )
     except FetchError as e:
         append_error_log(ai_trends_dir, e.method, e.url, e.reason)
@@ -1043,6 +1150,11 @@ def run(
     content_min: int = CONTENT_MIN,
     search_fn: SearchFn | None = None,
     search_cfg: dict[str, Any] | None = None,
+    fetch_concurrency: int | None = None,
+    fetch_concurrency_per_source: int | None = None,
+    max_retries: int = DEFAULT_RETRY_MAX,
+    retry_base_delay: float = DEFAULT_RETRY_BASE_DELAY,
+    sleep_fn: Callable[[float], None] | None = None,
 ) -> dict[str, int]:
     """Core pipeline. Returns counts dict for summary line."""
     for label, d in (("start_date", start_date), ("end_date", end_date)):
@@ -1065,6 +1177,17 @@ def run(
     ttl_days = parse_raw_ttl_days(cfg, raw_ttl_days)
     if search_cfg is None:
         search_cfg = resolve_search_config(cfg)
+    cfg_global, cfg_per_source = parse_concurrency(cfg)
+    global_workers = (
+        max(1, int(fetch_concurrency))
+        if fetch_concurrency is not None
+        else cfg_global
+    )
+    per_source_workers = (
+        max(1, int(fetch_concurrency_per_source))
+        if fetch_concurrency_per_source is not None
+        else cfg_per_source
+    )
 
     fetch_fn = fetch_fn or default_fetch
     sources = load_sources(sources_path)
@@ -1096,6 +1219,7 @@ def run(
     skipped = 0
     errors = 0
     since_save = 0
+    global_sem = threading.Semaphore(global_workers)
 
     def persist_pending() -> None:
         nonlocal since_save
@@ -1178,6 +1302,7 @@ def run(
             persist_pending()
             continue
 
+        to_fetch: list[dict[str, Any]] = []
         for item in items:
             url = item["url"]
             if url in known_urls:
@@ -1231,26 +1356,51 @@ def run(
                 accept_entry(entry, status="cached", source=name)
                 continue
 
-            entry = process_candidate(
-                item,
-                source_name=name,
-                use_proxy=use_proxy,
-                proxy=proxy,
-                fetch_fn=fetch_fn,
-                ai_trends_dir=ai_trends_dir,
-                mode=fetch_mode,
-                browser_on_cloudflare=boc,
-                browser_fetch_fn=browser_fetch_fn,
-            )
-            if entry is None:
-                record_state(url, "error", name)
-                errors += 1
-                continue
-            accept_entry(entry, status="fetched", source=name)
+            to_fetch.append(item)
+
+        def _fetch_one(item: dict[str, Any]) -> dict[str, Any] | None:
+            with global_sem:
+                return process_candidate(
+                    item,
+                    source_name=name,
+                    use_proxy=use_proxy,
+                    proxy=proxy,
+                    fetch_fn=fetch_fn,
+                    ai_trends_dir=ai_trends_dir,
+                    mode=fetch_mode,
+                    browser_on_cloudflare=boc,
+                    browser_fetch_fn=browser_fetch_fn,
+                    max_retries=max_retries,
+                    base_delay=retry_base_delay,
+                    sleep_fn=sleep_fn,
+                )
+
+        if to_fetch:
+            workers = min(per_source_workers, len(to_fetch))
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = {pool.submit(_fetch_one, item): item for item in to_fetch}
+                for fut in as_completed(futures):
+                    item = futures[fut]
+                    url = item["url"]
+                    try:
+                        entry = fut.result()
+                    except Exception as e:  # noqa: BLE001 — isolate worker failures
+                        append_error_log(
+                            ai_trends_dir, "fetch", url, str(e) or type(e).__name__
+                        )
+                        record_state(url, "error", name)
+                        errors += 1
+                        continue
+                    if entry is None:
+                        record_state(url, "error", name)
+                        errors += 1
+                        continue
+                    accept_entry(entry, status="fetched", source=name)
 
         # Persist after each source
         persist_pending()
 
+    pending = dedupe_pending_events(pending)
     persist_pending()
     return {
         "sources": len(sources),

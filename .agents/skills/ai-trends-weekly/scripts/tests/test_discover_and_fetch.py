@@ -15,6 +15,7 @@ from discover_and_fetch import (  # noqa: E402
     CONTENT_MIN,
     FetchError,
     date_allows,
+    dedupe_pending_events,
     extract_links,
     extract_text,
     extract_title,
@@ -22,6 +23,7 @@ from discover_and_fetch import (  # noqa: E402
     is_bad_title,
     is_undated,
     lookup_raw_cache,
+    normalize_event_key,
     parse_undated_quota,
     passes_article_gate,
     raw_cache_fresh,
@@ -867,3 +869,81 @@ class TestExtractText:
         }
         assert lookup_raw_cache(ai_trends, url, expired, ttl_days=7, now=now) is None
         assert lookup_raw_cache(ai_trends, "https://missing", index, ttl_days=7, now=now) is None
+
+
+class TestEventDedupe:
+    def test_normalize_title_strips_punct_case(self):
+        assert normalize_event_key("Hello, World!") == normalize_event_key("hello world")
+        assert normalize_event_key("A") != normalize_event_key("B")
+
+    def test_dedupe_keeps_best_rank_and_related_urls(self):
+        long = "x" * 500
+        short = "y" * 100
+        entries = [
+            {
+                "url": "https://a.example/1",
+                "original_title": "OpenAI Ships GPT!",
+                "content": short,
+                "rank_hint": 5,
+            },
+            {
+                "url": "https://b.example/2",
+                "original_title": "openai ships gpt",
+                "content": long,
+                "rank_hint": 1,
+            },
+            {
+                "url": "https://c.example/other",
+                "original_title": "Unrelated Story",
+                "content": long,
+            },
+        ]
+        out = dedupe_pending_events(entries)
+        assert len(out) == 2
+        primary = next(e for e in out if "openai" in e["original_title"].lower())
+        assert primary["url"] == "https://b.example/2"
+        assert primary["related_urls"] == ["https://a.example/1"]
+        assert any(e["url"] == "https://c.example/other" for e in out)
+
+    def test_run_dedupes_near_duplicate_titles(self, week_env):
+        weekly_root, ai_trends, sources_path = week_env(
+            archives=[],
+            sources=[
+                {
+                    "name": "Fixture Blog",
+                    "url": "https://example.com/blog",
+                    "use_proxy": False,
+                    "fallback": "skip",
+                    "url_include": [r"/posts/"],
+                    "allow_undated": False,
+                }
+            ],
+        )
+        list_html = """<!DOCTYPE html><html><body>
+          <a href="/posts/one" data-date="2026-07-20">Same Story Title</a>
+          <a href="/posts/two" data-date="2026-07-20">same story title!</a>
+        </body></html>"""
+        pages = {
+            "https://example.com/blog": list_html,
+            "https://example.com/posts/one": DETAIL_HTML,
+            "https://example.com/posts/two": DETAIL_HTML,
+        }
+        counts = run(
+            START_DATE,
+            END_DATE,
+            weekly_root=weekly_root,
+            sources_path=sources_path,
+            fetch_fn=make_fetch(pages),
+            save_raw=False,
+            fetch_concurrency=2,
+            fetch_concurrency_per_source=2,
+            max_retries=0,
+            sleep_fn=lambda _: None,
+        )
+        pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
+        assert counts["pending"] == 1
+        assert len(pending) == 1
+        assert set(pending[0].get("related_urls") or []) == {
+            "https://example.com/posts/one",
+            "https://example.com/posts/two",
+        } - {pending[0]["url"]}

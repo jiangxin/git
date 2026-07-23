@@ -3,7 +3,7 @@
 
 Usage:
   python3 render_ai_trends.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
-                              [--weekly-root PATH]
+                              [--weekly-root PATH] [--max-per-day K]
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from filter_by_date import extract_date, filter_entries  # noqa: E402
 from json_archives import load_json_array  # noqa: E402
 
 MAX_ITEMS = 50
+DEFAULT_QUALITY_MIN = 5
 
 
 def resolve_ai_trends_dir(end_date: str, weekly_root=None) -> Path:
@@ -77,6 +78,27 @@ def group_by_date(entries: list[dict[str, Any]]) -> list[tuple[str, list[dict[st
     return [(day, buckets[day]) for day in ordered_days]
 
 
+def apply_max_per_day(
+    entries: list[dict[str, Any]],
+    max_per_day: int | None,
+) -> list[dict[str, Any]]:
+    """Keep at most *max_per_day* items per publish_date (order preserved).
+
+    ``None`` or non-positive → no cap (backward compatible).
+    """
+    if max_per_day is None or max_per_day <= 0:
+        return entries
+    counts: dict[str, int] = defaultdict(int)
+    out: list[dict[str, Any]] = []
+    for entry in entries:
+        day = extract_date(entry.get("publish_date")) or str(entry.get("publish_date") or "")
+        if counts[day] >= max_per_day:
+            continue
+        counts[day] += 1
+        out.append(entry)
+    return out
+
+
 def format_item(entry: dict[str, Any]) -> str:
     """One Markdown bullet for the weekly body."""
     title = entry.get("cn_title") or entry.get("original_title") or "(untitled)"
@@ -94,9 +116,14 @@ def format_reference(index: int, entry: dict[str, Any]) -> str:
     return f"{index}. [{title}]({url})"
 
 
-def render_markdown(end_date: str, entries: list[dict[str, Any]]) -> str:
+def render_markdown(
+    end_date: str,
+    entries: list[dict[str, Any]],
+    *,
+    max_per_day: int | None = None,
+) -> str:
     """Build AI-trends.md: Top-N by rank, displayed grouped by date (newest first)."""
-    items = entries[:MAX_ITEMS]
+    items = apply_max_per_day(entries[:MAX_ITEMS], max_per_day)
     lines: list[str] = [
         f"## {end_date} AI 行业动态周报",
         "",
@@ -128,7 +155,31 @@ def render_markdown(end_date: str, entries: list[dict[str, Any]]) -> str:
     return "\n".join(lines)
 
 
-def run(start_date: str, end_date: str, weekly_root=None) -> Path:
+def emit_quality_warning(
+    in_range_count: int,
+    *,
+    quality_min: int = DEFAULT_QUALITY_MIN,
+    stream=None,
+) -> bool:
+    """Print QUALITY_WARNING when in-range count is below threshold. Returns True if warned."""
+    if quality_min <= 0 or in_range_count >= quality_min:
+        return False
+    out = stream if stream is not None else sys.stderr
+    print(
+        f"QUALITY_WARNING: in_range={in_range_count} < min={quality_min}",
+        file=out,
+    )
+    return True
+
+
+def run(
+    start_date: str,
+    end_date: str,
+    weekly_root=None,
+    *,
+    max_per_day: int | None = None,
+    quality_min: int = DEFAULT_QUALITY_MIN,
+) -> Path:
     """Filter, sort, render, and write AI-trends.md. Returns output path."""
     ai_trends = resolve_ai_trends_dir(end_date, weekly_root)
     archives_path = ai_trends / "archives.json"
@@ -145,8 +196,10 @@ def run(start_date: str, end_date: str, weekly_root=None) -> Path:
             file=sys.stderr,
         )
 
+    emit_quality_warning(len(in_range), quality_min=quality_min)
+
     sorted_entries = sort_entries(in_range)
-    md = render_markdown(end_date, sorted_entries)
+    md = render_markdown(end_date, sorted_entries, max_per_day=max_per_day)
 
     week_dir = ai_trends.parent
     out_path = week_dir / "AI-trends.md"
@@ -168,6 +221,20 @@ def main() -> int:
         default=None,
         help="Override weekly/ directory path",
     )
+    parser.add_argument(
+        "--max-per-day",
+        type=int,
+        default=None,
+        metavar="K",
+        help="Optional cap of items per publish_date after Top-50 (default: no limit)",
+    )
+    parser.add_argument(
+        "--quality-min",
+        type=int,
+        default=DEFAULT_QUALITY_MIN,
+        metavar="M",
+        help=f"Stderr QUALITY_WARNING when in-range count < M (default: {DEFAULT_QUALITY_MIN})",
+    )
     args = parser.parse_args()
 
     for label, d in (("start-date", args.start_date), ("end-date", args.end_date)):
@@ -177,7 +244,13 @@ def main() -> int:
             print(f"ERROR: invalid {label} (expected YYYY-MM-DD): {d!r}", file=sys.stderr)
             return 2
 
-    out = run(args.start_date, args.end_date, weekly_root=args.weekly_root)
+    out = run(
+        args.start_date,
+        args.end_date,
+        weekly_root=args.weekly_root,
+        max_per_day=args.max_per_day,
+        quality_min=args.quality_min,
+    )
     print(f"WROTE: {out}")
     return 0
 

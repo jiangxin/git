@@ -12,6 +12,8 @@ from fetch_backends import (  # noqa: E402
     FetchError,
     fetch_browser,
     fetch_html,
+    fetch_html_with_backoff,
+    is_retryable_fetch_error,
     method_label,
     parse_browser_on_cloudflare,
     parse_fetch_mode,
@@ -186,6 +188,61 @@ class TestFetchHtmlBackends:
             )
         assert "playwright not installed" in ei.value.reason
         assert ei.value.method == "browser(direct)"
+
+
+class TestBackoffRetry:
+    def test_is_retryable_429_and_5xx(self):
+        assert is_retryable_fetch_error(FetchError("u", "m", "HTTP 429"))
+        assert is_retryable_fetch_error(FetchError("u", "m", "HTTP 503"))
+        assert not is_retryable_fetch_error(FetchError("u", "m", "HTTP 404"))
+        assert not is_retryable_fetch_error(FetchError("u", "m", "Cloudflare challenge"))
+
+    def test_backoff_retries_then_succeeds(self):
+        calls = {"n": 0}
+        sleeps: list[float] = []
+
+        def http_fn(url, *, proxy=None, use_proxy_flag=False, timeout=30):
+            calls["n"] += 1
+            if calls["n"] < 3:
+                raise FetchError(url, "curl(direct)", "HTTP 503")
+            return OK_HTML
+
+        html, method = fetch_html_with_backoff(
+            "https://example.com/retry",
+            mode="http",
+            use_proxy=False,
+            proxy=None,
+            browser_on_cloudflare=False,
+            http_fetch_fn=http_fn,
+            max_retries=3,
+            base_delay=0.1,
+            sleep_fn=sleeps.append,
+        )
+        assert "Real article body" in html
+        assert calls["n"] == 3
+        assert sleeps == [0.1, 0.2]
+        assert method.startswith("curl")
+
+    def test_non_retryable_fails_immediately(self):
+        calls = {"n": 0}
+
+        def http_fn(url, *, proxy=None, use_proxy_flag=False, timeout=30):
+            calls["n"] += 1
+            raise FetchError(url, "curl(direct)", "HTTP 404")
+
+        with pytest.raises(FetchError) as ei:
+            fetch_html_with_backoff(
+                "https://example.com/404",
+                mode="http",
+                use_proxy=False,
+                proxy=None,
+                browser_on_cloudflare=False,
+                http_fetch_fn=http_fn,
+                max_retries=3,
+                sleep_fn=lambda _: None,
+            )
+        assert ei.value.reason == "HTTP 404"
+        assert calls["n"] == 1
 
 
 @pytest.mark.skip(reason="optional live Playwright; enable manually when chromium installed")
