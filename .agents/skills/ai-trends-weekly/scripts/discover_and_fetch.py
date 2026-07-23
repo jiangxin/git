@@ -17,13 +17,11 @@ import hashlib
 import json
 import re
 import sys
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from urllib.parse import urljoin, urlparse
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -31,7 +29,15 @@ sys.path.insert(0, str(SCRIPT_DIR))
 # __file__ parents[2] == skills/  →  skills/_shared/scripts
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_shared" / "scripts"))
 
-from check_cloudflare import is_cloudflare  # noqa: E402
+from fetch_backends import (  # noqa: E402
+    FetchError,
+    FetchFn,
+    FetchMode,
+    fetch_html,
+    fetch_http,
+    parse_browser_on_cloudflare,
+    parse_fetch_mode,
+)
 from filter_by_date import extract_date  # noqa: E402
 from json_archives import load_json_array, save_json_atomic  # noqa: E402
 from repo_config import load_repo_config  # noqa: E402
@@ -67,15 +73,6 @@ _META_CONTENT_ATTR = re.compile(
     re.I,
 )
 _TITLE_TAG = re.compile(r"(?is)<title\b[^>]*>(.*?)</title>")
-USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/120.0.0.0 Safari/537.36"
-)
-DEFAULT_HEADERS = {
-    "User-Agent": USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-}
 SKIP_EXTENSIONS = {
     ".css",
     ".js",
@@ -93,17 +90,8 @@ SKIP_EXTENSIONS = {
 }
 _URL_DATE = re.compile(r"/(20\d{2})[/-](\d{1,2})[/-](\d{1,2})(?:/|$)")
 
-FetchFn = Callable[..., str]
-
-
-class FetchError(Exception):
-    """HTTP or Cloudflare failure while fetching a URL."""
-
-    def __init__(self, url: str, method: str, reason: str):
-        super().__init__(reason)
-        self.url = url
-        self.method = method
-        self.reason = reason
+# Back-compat aliases for tests / callers
+default_fetch = fetch_http
 
 
 def default_sources_path() -> Path:
@@ -267,64 +255,26 @@ def clear_fetch_artifacts(ai_trends_dir: Path) -> None:
     save_json_atomic([], ai_trends_dir / "pending.json")
 
 
-def proxy_attempts(use_proxy: Any, proxy: str | None) -> list[bool]:
-    """Return ordered list of whether to use proxy for each attempt."""
-    has_proxy = bool(proxy)
-    if use_proxy is True:
-        return [True] if has_proxy else [False]
-    if use_proxy is False:
-        return [False, True] if has_proxy else [False]
-    # "auto" or anything else: direct first, then proxy
-    return [False, True] if has_proxy else [False]
-
-
-def method_label(use_proxy_flag: bool) -> str:
-    return "curl(proxy)" if use_proxy_flag else "curl(direct)"
-
-
-def default_fetch(url: str, *, proxy: str | None, use_proxy_flag: bool, timeout: int = 30) -> str:
-    """Fetch URL via urllib with browser-like headers. Raises FetchError."""
-    method = method_label(use_proxy_flag)
-    handlers = []
-    if use_proxy_flag and proxy:
-        handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
-    else:
-        handlers.append(urllib.request.ProxyHandler({}))
-    opener = urllib.request.build_opener(*handlers)
-    req = urllib.request.Request(url, headers=DEFAULT_HEADERS)
-    try:
-        with opener.open(req, timeout=timeout) as resp:
-            charset = resp.headers.get_content_charset() or "utf-8"
-            return resp.read().decode(charset, errors="replace")
-    except urllib.error.HTTPError as e:
-        raise FetchError(url, method, f"HTTP {e.code}") from e
-    except Exception as e:  # noqa: BLE001 — surface as fetch failure
-        raise FetchError(url, method, str(e) or type(e).__name__) from e
-
-
 def fetch_with_policy(
     url: str,
     *,
     use_proxy: Any,
     proxy: str | None,
     fetch_fn: FetchFn,
+    mode: FetchMode = "http",
+    browser_on_cloudflare: bool = True,
+    browser_fetch_fn: FetchFn | None = None,
 ) -> tuple[str, str]:
-    """Try fetch attempts per use_proxy; return (html, method_label)."""
-    last_err: FetchError | None = None
-    for flag in proxy_attempts(use_proxy, proxy):
-        method = method_label(flag)
-        try:
-            html = fetch_fn(url, proxy=proxy, use_proxy_flag=flag)
-        except FetchError as e:
-            last_err = e
-            continue
-        if is_cloudflare(html):
-            last_err = FetchError(url, method, "Cloudflare challenge")
-            continue
-        return html, method
-    if last_err is None:
-        last_err = FetchError(url, "curl", "fetch failed")
-    raise last_err
+    """Fetch via http/browser backends; optional Cloudflare→browser downgrade."""
+    return fetch_html(
+        url,
+        mode=mode,
+        use_proxy=use_proxy,
+        proxy=proxy,
+        browser_on_cloudflare=browser_on_cloudflare,
+        http_fetch_fn=fetch_fn,
+        browser_fetch_fn=browser_fetch_fn,
+    )
 
 
 def date_from_url(url: str) -> str | None:
@@ -471,10 +421,19 @@ def fetch_feed_items(
     use_proxy: Any,
     proxy: str | None,
     fetch_fn: FetchFn,
+    mode: FetchMode = "http",
+    browser_on_cloudflare: bool = True,
+    browser_fetch_fn: FetchFn | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch and parse one RSS/Atom URL; raises FetchError on transport failure."""
     body, _method = fetch_with_policy(
-        feed_url, use_proxy=use_proxy, proxy=proxy, fetch_fn=fetch_fn
+        feed_url,
+        use_proxy=use_proxy,
+        proxy=proxy,
+        fetch_fn=fetch_fn,
+        mode=mode,
+        browser_on_cloudflare=browser_on_cloudflare,
+        browser_fetch_fn=browser_fetch_fn,
     )
     items = parse_feed(body, base_url=feed_url)
     if not items:
@@ -489,10 +448,19 @@ def discover_via_html(
     use_proxy: Any,
     proxy: str | None,
     fetch_fn: FetchFn,
+    mode: FetchMode = "http",
+    browser_on_cloudflare: bool = True,
+    browser_fetch_fn: FetchFn | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch list HTML and extract links; raises FetchError on failure."""
     list_html, _method = fetch_with_policy(
-        list_url, use_proxy=use_proxy, proxy=proxy, fetch_fn=fetch_fn
+        list_url,
+        use_proxy=use_proxy,
+        proxy=proxy,
+        fetch_fn=fetch_fn,
+        mode=mode,
+        browser_on_cloudflare=browser_on_cloudflare,
+        browser_fetch_fn=browser_fetch_fn,
     )
     return extract_links(list_html, list_url, date_attr=date_attr)
 
@@ -504,6 +472,9 @@ def discover_via_aggregate(
     use_proxy: Any,
     proxy: str | None,
     fetch_fn: FetchFn,
+    mode: FetchMode = "http",
+    browser_on_cloudflare: bool = True,
+    browser_fetch_fn: FetchFn | None = None,
 ) -> list[dict[str, Any]]:
     """Try ``fallback_rss_url`` then a few same-origin feed probes."""
     candidates: list[str] = []
@@ -518,7 +489,13 @@ def discover_via_aggregate(
     for feed_url in candidates:
         try:
             return fetch_feed_items(
-                feed_url, use_proxy=use_proxy, proxy=proxy, fetch_fn=fetch_fn
+                feed_url,
+                use_proxy=use_proxy,
+                proxy=proxy,
+                fetch_fn=fetch_fn,
+                mode=mode,
+                browser_on_cloudflare=browser_on_cloudflare,
+                browser_fetch_fn=browser_fetch_fn,
             )
         except FetchError as e:
             last_err = e
@@ -538,6 +515,9 @@ def discover_source_items(
     fetch_fn: FetchFn,
     search_cfg: dict[str, Any] | None = None,
     search_fn: SearchFn | None = None,
+    mode: FetchMode | None = None,
+    browser_on_cloudflare: bool | None = None,
+    browser_fetch_fn: FetchFn | None = None,
 ) -> tuple[list[dict[str, Any]], list[tuple[str, str, str]]]:
     """RSS-first discovery with HTML + fallback. Returns (items, error_triples).
 
@@ -551,6 +531,12 @@ def discover_source_items(
 
     date_attr = source.get("date_attr") if isinstance(source.get("date_attr"), str) else None
     fallback = source.get("fallback") or "skip"
+    fetch_mode = mode if mode is not None else parse_fetch_mode(source)
+    boc = (
+        browser_on_cloudflare
+        if browser_on_cloudflare is not None
+        else parse_browser_on_cloudflare(source)
+    )
     errors: list[tuple[str, str, str]] = []
     items: list[dict[str, Any]] = []
 
@@ -558,7 +544,13 @@ def discover_source_items(
     if isinstance(rss_url, str) and rss_url.startswith(("http://", "https://")):
         try:
             items = fetch_feed_items(
-                rss_url, use_proxy=use_proxy, proxy=proxy, fetch_fn=fetch_fn
+                rss_url,
+                use_proxy=use_proxy,
+                proxy=proxy,
+                fetch_fn=fetch_fn,
+                mode=fetch_mode,
+                browser_on_cloudflare=boc,
+                browser_fetch_fn=browser_fetch_fn,
             )
         except FetchError as e:
             errors.append((e.method, e.url, e.reason))
@@ -571,6 +563,9 @@ def discover_source_items(
                 use_proxy=use_proxy,
                 proxy=proxy,
                 fetch_fn=fetch_fn,
+                mode=fetch_mode,
+                browser_on_cloudflare=boc,
+                browser_fetch_fn=browser_fetch_fn,
             )
         except FetchError as e:
             errors.append((e.method, e.url, e.reason))
@@ -591,6 +586,9 @@ def discover_source_items(
                 use_proxy=use_proxy,
                 proxy=proxy,
                 fetch_fn=fetch_fn,
+                mode=fetch_mode,
+                browser_on_cloudflare=boc,
+                browser_fetch_fn=browser_fetch_fn,
             )
         except FetchError as e:
             errors.append((e.method, e.url, e.reason))
@@ -979,6 +977,9 @@ def process_candidate(
     proxy: str | None,
     fetch_fn: FetchFn,
     ai_trends_dir: Path,
+    mode: FetchMode = "http",
+    browser_on_cloudflare: bool = True,
+    browser_fetch_fn: FetchFn | None = None,
 ) -> dict[str, Any] | None:
     """Fetch detail page and build a pending entry, or None on failure.
 
@@ -987,7 +988,13 @@ def process_candidate(
     url = item["url"]
     try:
         html, _method = fetch_with_policy(
-            url, use_proxy=use_proxy, proxy=proxy, fetch_fn=fetch_fn
+            url,
+            use_proxy=use_proxy,
+            proxy=proxy,
+            fetch_fn=fetch_fn,
+            mode=mode,
+            browser_on_cloudflare=browser_on_cloudflare,
+            browser_fetch_fn=browser_fetch_fn,
         )
     except FetchError as e:
         append_error_log(ai_trends_dir, e.method, e.url, e.reason)
@@ -1026,6 +1033,7 @@ def run(
     sources_path: Path | None = None,
     proxy: str | None = None,
     fetch_fn: FetchFn | None = None,
+    browser_fetch_fn: FetchFn | None = None,
     save_raw: bool = True,
     resume: bool = True,
     fresh: bool = False,
@@ -1145,6 +1153,8 @@ def run(
         allow_undated = bool(source.get("allow_undated", False))
         undated_quota = parse_undated_quota(source, allow_undated=allow_undated)
         undated_used = 0
+        fetch_mode = parse_fetch_mode(source)
+        boc = parse_browser_on_cloudflare(source)
 
         items, discover_errors = discover_source_items(
             source,
@@ -1155,6 +1165,9 @@ def run(
             fetch_fn=fetch_fn,
             search_cfg=search_cfg,
             search_fn=search_fn,
+            mode=fetch_mode,
+            browser_on_cloudflare=boc,
+            browser_fetch_fn=browser_fetch_fn,
         )
         for method, err_url, reason in discover_errors:
             append_error_log(ai_trends_dir, method, err_url, reason)
@@ -1225,6 +1238,9 @@ def run(
                 proxy=proxy,
                 fetch_fn=fetch_fn,
                 ai_trends_dir=ai_trends_dir,
+                mode=fetch_mode,
+                browser_on_cloudflare=boc,
+                browser_fetch_fn=browser_fetch_fn,
             )
             if entry is None:
                 record_state(url, "error", name)

@@ -409,7 +409,18 @@ class TestDiscoverAndFetchRun:
         assert counts["errors"] == 0
 
     def test_cloudflare_list_page_skips_source(self, week_env):
-        weekly_root, ai_trends, sources_path = week_env(archives=[])
+        weekly_root, ai_trends, sources_path = week_env(
+            archives=[],
+            sources=[
+                {
+                    "name": "Fixture Blog",
+                    "url": "https://example.com/blog",
+                    "use_proxy": False,
+                    "fallback": "skip",
+                    "browser_on_cloudflare": False,
+                }
+            ],
+        )
         pages = {"https://example.com/blog": CF_HTML}
         counts = run(
             START_DATE,
@@ -429,6 +440,37 @@ class TestDiscoverAndFetchRun:
         error_log = (ai_trends / "error.log").read_text(encoding="utf-8")
         assert "Cloudflare challenge" in error_log
         assert "https://example.com/blog" in error_log
+
+    def test_cloudflare_downgrades_to_browser_fetch(self, week_env):
+        weekly_root, ai_trends, sources_path = week_env(archives=[])
+        pages = {
+            "https://example.com/blog": CF_HTML,
+            "https://example.com/posts/in-range": DETAIL_HTML,
+        }
+        browser_calls: list[str] = []
+
+        def browser_fn(url, *, proxy=None, use_proxy_flag=False, timeout=30):
+            browser_calls.append(url)
+            if url == "https://example.com/blog":
+                return LIST_HTML
+            if url not in pages:
+                raise FetchError(url, "browser(direct)", f"missing: {url}")
+            return pages[url]
+
+        counts = run(
+            START_DATE,
+            END_DATE,
+            weekly_root=weekly_root,
+            sources_path=sources_path,
+            proxy=None,
+            fetch_fn=make_fetch(pages),
+            browser_fetch_fn=browser_fn,
+            save_raw=False,
+        )
+        assert "https://example.com/blog" in browser_calls
+        assert counts["pending"] == 1
+        pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
+        assert pending[0]["url"] == "https://example.com/posts/in-range"
 
     def test_resume_merges_pending_and_skips_refetch(self, week_env):
         weekly_root, ai_trends, sources_path = week_env(archives=[])
