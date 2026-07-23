@@ -3,7 +3,6 @@
 import json
 import sys
 import pytest
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
