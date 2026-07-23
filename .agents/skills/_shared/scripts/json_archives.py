@@ -83,3 +83,55 @@ def merge_by_key(archives: list, new_entries: list, key: str) -> tuple[list, int
             existing_keys.add(k)
             added += 1
     return merged, added
+
+
+# Fields refreshed when upserting an existing url (summary re-run).
+UPSERT_FIELDS = (
+    "en_summary",
+    "cn_title",
+    "cn_summary",
+    "rank_hint",
+    "collected_at",
+    "original_title",
+)
+
+
+def merge_by_key_upsert(
+    archives: list,
+    new_entries: list,
+    key: str,
+    fields: tuple[str, ...] = UPSERT_FIELDS,
+) -> tuple[list, int, int]:
+    """Append new urls; for existing keys, refresh selected summary fields.
+
+    Returns:
+        (merged_list, added_count, updated_count)
+    """
+    index_by_key: dict = {}
+    merged = list(archives)
+    for i, entry in enumerate(merged):
+        k = entry.get(key) if isinstance(entry, dict) else None
+        if k is not None and k not in index_by_key:
+            index_by_key[k] = i
+
+    added = 0
+    updated = 0
+    for entry in new_entries:
+        if not isinstance(entry, dict):
+            continue
+        k = entry.get(key)
+        if k is None:
+            continue
+        if k in index_by_key:
+            idx = index_by_key[k]
+            refreshed = dict(merged[idx])
+            for field in fields:
+                if field in entry:
+                    refreshed[field] = entry[field]
+            merged[idx] = refreshed
+            updated += 1
+        else:
+            merged.append(entry)
+            index_by_key[k] = len(merged) - 1
+            added += 1
+    return merged, added, updated

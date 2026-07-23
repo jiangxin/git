@@ -28,45 +28,83 @@ arguments:
 
 权威列表位于 skill 内 **`references/sources.json`**（由 `discover_and_fetch.py` 默认读取）。**禁止**在运行本 skill 时修改该文件或另写一份源列表。
 
-每个数据源字段：
+### 必填字段
 
 | 字段 | 说明 |
 |------|------|
 | `name` | 展示名，写入条目 `source` |
-| `url` | 列表页 URL |
+| `url` | 列表页 URL（RSS 失败或未配置时使用） |
 | `use_proxy` | `true` / `false` / `"auto"`：必须代理 / 直连 / 优先直连失败再代理 |
-| `fallback` | `"search"` \| `"aggregate"` \| `"skip"`（首版仅作语义标记；脚本遇失败记 `error.log` 并跳过，不触发 WebSearch） |
+| `fallback` | `"search"` \| `"aggregate"` \| `"skip"`（列表失败时由脚本执行，见下） |
+
+### 可选字段
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `rss_url` | string | 优先用于发现条目的 RSS/Atom |
+| `fallback_rss_url` | string | `fallback=aggregate` 时优先尝试的备选 RSS |
+| `url_include` | string[] | 详情 URL 正则；**命中任一**才保留；缺省用内置启发式 |
+| `url_exclude` | string[] | 命中任一则丢弃 |
+| `max_links` | number | 每源最多保留候选条数 |
+| `allow_undated` | bool | 默认 `false`：无 `publish_date` 不抓详情 |
+| `undated_quota` | number | 仅当 `allow_undated=true` 时，无日期最多抓 N 条 |
+| `fetch` | `"http"` \| `"browser"` | 默认 `http`；`browser` 走 Playwright |
+| `browser_on_cloudflare` | bool | 默认 `true`：HTTP 判 Cloudflare 时可降级 browser 重试一次 |
+| `date_attr` | string | HTML 列表页取日期的属性名（若有） |
 
 示例（完整列表见 `references/sources.json`，勿在此内嵌全量）：
 
 ```json
 [
   {
+    "name": "OpenAI News",
+    "url": "https://openai.com/news",
+    "use_proxy": false,
+    "fallback": "search",
+    "rss_url": "https://openai.com/news/rss.xml",
+    "url_include": ["/index/", "/research/"]
+  },
+  {
     "name": "Anthropic News",
     "url": "https://www.anthropic.com/news",
     "use_proxy": true,
-    "fallback": "aggregate"
-  },
-  {
-    "name": "OpenAI Blog",
-    "url": "https://openai.com/blog",
-    "use_proxy": false,
-    "fallback": "search"
+    "fallback": "aggregate",
+    "fetch": "browser",
+    "url_include": ["/news/"]
   }
 ]
 ```
 
-## 代理配置
+## 代理与仓库配置
 
-在**仓库根目录**（与 `weekly/` 同级）维护 `config.json`。`discover_and_fetch.py` 通过 `load_repo_config` 读取 **`proxy`**（HTTP/HTTPS 代理 URL；`null` 或空表示不走代理），并按各源 `use_proxy` 决定是否使用。
+在**仓库根目录**（与 `weekly/` 同级）维护 `config.json`。`discover_and_fetch.py` 通过 `load_repo_config` 读取：
 
-检视当前配置：
+| 键 | 说明 |
+|------|------|
+| `proxy` | HTTP/HTTPS 代理 URL；`null` 或空表示不走代理 |
+| `fetch_concurrency` | 详情抓取全局并发上限（可选，有合理默认） |
+| `fetch_concurrency_per_source` | 每源并发上限（可选） |
+| `raw_ttl_days` | `raw/index.jsonl` 缓存 TTL 天数（默认 7） |
+| `search_api` | 受限搜索：`{"provider":"serper","api_key_env":"SERPER_API_KEY"}`（可选） |
+
+检视代理：
 
 ```bash
 jq ".proxy" <config.json
 ```
 
-Agent **无需**自行用 curl/`WebFetch` 按源爬取；代理仅由发现脚本消费。
+Agent **无需**自行用 curl/`WebFetch` 按源爬取；代理与搜索密钥仅由脚本消费。
+
+### Playwright（browser 通道）
+
+源配置 `fetch: "browser"`，或 HTTP 遇 Cloudflare 且 `browser_on_cloudflare` 允许时，脚本经 **Python Playwright** 取页面。环境需：
+
+```bash
+pip install playwright
+playwright install chromium
+```
+
+未安装时该源/URL 记入 `error.log`，不拖垮整次运行。不必调用 `playwright-cli` skill。
 
 ## 工作流程总览
 
@@ -74,13 +112,17 @@ Agent **无需**自行用 curl/`WebFetch` 按源爬取；代理仅由发现脚�
 setup_week.py
     → start_date end_date，创建 weekly/<end_date>/ai-trends/
 discover_and_fetch.py --start-date --end-date
-    → pending.json（可选 raw/）；失败写入 error.log
-Agent: pending.json → new.json（仅补摘要字段）
+    → 每源：RSS → HTML 列表 → fallback →（http|browser）详情
+    → URL 过滤 + 日期策略 + 有效稿门禁
+    → pending.json / fetch_state.jsonl / raw/（增量；默认 --resume）
+Agent: pending.json → new.json（对每一条补摘要）
 merge_archives.py --end-date
-    → archives.json（删除 new.json）
+    → archives.json（可选 --upsert；删除 new.json）
 render_ai_trends.py --start-date --end-date
-    → AI-trends.md（内部按 publish_date 过滤，复用 filter_by_date 逻辑）
+    → AI-trends.md（Top-50 + 按日分组；可选 --max-per-day）
 ```
+
+**存量不动**：不清洗、不回写已有周目录中的历史 `archives.json` 噪音；门禁与过滤仅作用于新入库数据。
 
 ### 1. 确定收集周期与初始化目录
 
@@ -105,27 +147,61 @@ read -r start_date end_date < <(python3 .agents/skills/ai-trends-weekly/scripts/
 python3 .agents/skills/ai-trends-weekly/scripts/discover_and_fetch.py \
   --start-date "$start_date" --end-date "$end_date"
 # stdout 示例: sources=N pending=M skipped=K errors=E
+# 默认 --resume；全量重跑用 --fresh
 ```
 
 可选参数：
 
-- `--sources PATH`：覆盖默认 `references/sources.json`
-- `--weekly-root PATH`：覆盖 `weekly/` 根目录
-- `--no-raw`：不写 `raw/<sha1>.txt` 正文缓存
+| 参数 | 说明 |
+|------|------|
+| `--sources PATH` | 覆盖默认 `references/sources.json` |
+| `--weekly-root PATH` | 覆盖 `weekly/` 根目录 |
+| `--no-raw` | 不写 `raw/<sha1>.txt` 正文缓存 |
+| `--resume` | 默认：加载 `fetch_state.jsonl`，合并已有 `pending.json`，跳过已终态 URL |
+| `--fresh` | 清空 `fetch_state.jsonl` 与 `pending.json` 后全量重跑 |
+| `--retry-errors` | 对 state 中 `error` 的 URL 再试 |
 
-行为摘要：
+#### 每源发现顺序
 
-- 读 `references/sources.json` 与根目录 `config.json` 的 `proxy`
-- 拉列表页、抽链、相对 `archives.json` 去重、按 `[start_date, end_date]` 过滤、抓详情正文
-- **覆盖写** `weekly/$end_date/ai-trends/pending.json`（每次运行整文件重写）
-- HTTP / Cloudflare 失败追加 `error.log` 并跳过该源/URL；首版**不做** WebSearch 降级
-- 可选写入 `raw/<sha1>.txt`
+1. 若有 `rss_url` → 拉 RSS/Atom，解析 link/title/date。
+2. 否则（或 RSS 失败 / 0 条）→ 拉 `url` 列表页（`fetch: http|browser`）。
+3. 若仍失败或 0 条，按 `fallback`：
+   - `skip` → 记 `error.log`，下一源；
+   - `aggregate` → 尝试 `fallback_rss_url` 或同域有限 `/feed`/`/rss` 探测；
+   - `search` → **受限搜索**（预定义 `site:` + 源名 + 日期窗）；无 API 密钥则记 error 并跳过该支路，**不得**由 Agent 手工 WebSearch 替代。
+
+列表/详情 HTTP 遇 Cloudflare 且 `browser_on_cloudflare` 为真时，同一 URL 自动 browser 重试一次。
+
+#### 日期策略（列表阶段即生效）
+
+1. 能解析且落在 `[start_date, end_date]` → 允许。
+2. 能解析但越界 → 拒绝（不发详情）。
+3. 无法解析：`allow_undated=false`（默认）→ 拒绝；为 `true` 则计入该源 `undated_quota`，超额拒绝。
+
+**无日期默认不抓**；不得因「详情可能补全日期」而放行列表候选。
+
+#### URL 过滤与有效稿门禁
+
+- `url_include` / `url_exclude`；无 include 时用内置启发式（已知媒体路径模式，或同站路径深度≥2 且排除 `/tag/` `/category/` 等）。
+- 写入 `pending` 前还须：正文长度 ≥ 约 400 字符、标题非空且非纯 URL。
+- 不满足则 `fetch_state` 记 `skipped_filter` / `skipped_date`，**不进** `pending`（也不会进 archives）。
+
+#### 缓存与断点
+
+| 产物 | 行为 |
+|------|------|
+| `fetch_state.jsonl` | 每行 `{url,status,source,at,sha1?}`；`fetched`/`skipped_*`/`cached` 在 resume 时跳过 |
+| `raw/<sha1>.txt` | 抽取后正文纯文本 |
+| `raw/index.jsonl` | `{url,sha1,source,fetched_at,publish_date,title}`；TTL 内命中则组装 pending，不 HTTP |
+| `pending.json` | 增量原子保存；resume 按 url 合并，避免覆盖丢失 |
+
+失败追加 `error.log`：`[ts] FAILED <method> <url> - <reason>`。
 
 若 `pending=0`：可跳过第 3 节摘要，直接进入第 5 节渲染（仍可基于已有 `archives.json` 出周报）。
 
 ### 3. Agent 摘要：`pending.json` → `new.json`
 
-**这是 Agent 在本 skill 中的唯一内容职责。**须对 `pending.json` **每一条**补齐摘要字段后写入 `new.json`，禁止只处理子集或仅精修部分条目。
+**这是 Agent 在本 skill 中的唯一内容职责。**须对 `pending.json` **每一条**补齐摘要字段后写入 `new.json`，禁止只处理子集或仅精修部分条目。（pending 已收紧，条数通常为数十～百级。）
 
 #### 输入（`pending.json`，脚本已写）
 
@@ -142,7 +218,7 @@ python3 .agents/skills/ai-trends-weekly/scripts/discover_and_fetch.py \
 }
 ```
 
-`publish_date` 可为 `null`。正文不足时可参考同周 `raw/` 下对应缓存；**不要**为补全而重新全源爬取。
+`publish_date` 在通过门禁的条目上通常已解析；正文不足时可参考同周 `raw/` 下对应缓存；**不要**为补全而重新全源爬取。
 
 #### 输出（`new.json`，Agent 写出）
 
@@ -190,9 +266,11 @@ python3 .agents/skills/ai-trends-weekly/scripts/discover_and_fetch.py \
 ```bash
 python3 .agents/skills/ai-trends-weekly/scripts/merge_archives.py --end-date "$end_date"
 # stdout: MERGED: N new entries added, T total in archives.json
+# 修摘要重跑时可加 --upsert（同 url 更新摘要字段，不清洗历史噪音）
 ```
 
-- 按 `url` 去重后追加到 `archives.json`（原子写入）
+- 默认按 `url` 去重后追加到 `archives.json`（原子写入）
+- `--upsert`：同 url 时更新 `en_summary` / `cn_*` / `rank_hint` / `collected_at` 等
 - 成功后删除 `new.json`
 - JSON 解析失败时脚本输出诊断并含 `JSON_REPAIR_NEEDED`；修复后重跑本步
 
@@ -204,15 +282,18 @@ python3 .agents/skills/ai-trends-weekly/scripts/merge_archives.py --end-date "$e
 python3 .agents/skills/ai-trends-weekly/scripts/render_ai_trends.py \
   --start-date "$start_date" --end-date "$end_date"
 # stdout: WROTE: .../weekly/<end_date>/AI-trends.md
+# 可选: --max-per-day K   --quality-min M（默认 5）
 ```
 
 脚本内部：
 
 - 读 `archives.json`，按 `publish_date` 落在 **`[start_date, end_date]`** 过滤（与 `_shared/scripts/filter_by_date.py` 同源逻辑；被剔除项打印到 stderr）
 - 选取：按 `rank_hint` 升序（缺省视为很大），同优先级再按 `publish_date` 降序，最多 **50** 条
+- 可选 `--max-per-day K`：Top-50 之后按日再封顶（默认不限制）
 - 展示：正文按 `publish_date` 分组（`#### YYYY-MM-DD`），日期从新到旧；同日内仍按 `rank_hint` 升序
 - 条目格式：`* **[cn_title](url)**：cn_summary。📰 source 📅 publish_date`
 - 「### 参考来源」与正文收录条目一致，链到 `original_title`
+- 区间内有效条数 `< --quality-min`（默认 5）时 stderr 打印 `QUALITY_WARNING`
 - Agent 须对 **pending.json 中每一条** 补齐摘要字段，不得只摘要子集
 
 如需单独调试日期过滤，可调用：
@@ -233,21 +314,26 @@ weekly/
   <YYYY-MM-DD>/              # end_date（setup_week.py 创建）
     AI-trends.md             # render_ai_trends.py 生成
     ai-trends/
-      archives.json          # 历史存档
-      pending.json           # discover_and_fetch 产出（覆盖写）
+      archives.json          # 历史存档（存量不清洗）
+      pending.json           # discover_and_fetch 产出（增量 / resume 合并）
+      fetch_state.jsonl      # 断点状态（追加）
       new.json               # Agent 摘要产出；merge 后删除
       error.log              # URL/抓取失败日志（追加）
-      raw/<sha1>.txt         # 可选正文缓存
+      raw/<sha1>.txt         # 抽取后正文缓存
+      raw/index.jsonl        # raw URL 索引（TTL 缓存）
 .agents/skills/ai-trends-weekly/
   references/sources.json    # 权威数据源列表
   scripts/
     setup_week.py
     discover_and_fetch.py
+    fetch_backends.py        # http / Playwright
+    url_filter.py
+    restricted_search.py
     merge_archives.py
     render_ai_trends.py
     check_url.py             # 可选：单 URL 查重
     check_cloudflare.py      # 由发现脚本复用
-config.json                  # 仓库根：proxy、start_day、end_day 等
+config.json                  # 仓库根：proxy、concurrency、raw_ttl、search_api 等
 ```
 
 ## 辅助脚本（按需）

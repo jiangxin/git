@@ -11,6 +11,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from render_ai_trends import (  # noqa: E402
+    DEFAULT_QUALITY_MIN,
+    apply_max_per_day,
+    emit_quality_warning,
     format_item,
     group_by_date,
     render_markdown,
@@ -181,3 +184,79 @@ def test_run_within_day_rank_order(week_env):
     md = run(START_DATE, END_DATE, weekly_root=weekly_root).read_text(encoding="utf-8")
     day_block = md.split("#### 2026-05-05")[1].split("###")[0]
     assert day_block.index("中文标题 2") < day_block.index("中文标题 1")
+
+
+def test_apply_max_per_day_caps_each_day():
+    entries = [
+        make_entry(1, publish_date="2026-05-08", rank_hint=1),
+        make_entry(2, publish_date="2026-05-08", rank_hint=2),
+        make_entry(3, publish_date="2026-05-08", rank_hint=3),
+        make_entry(4, publish_date="2026-05-07", rank_hint=1),
+        make_entry(5, publish_date="2026-05-07", rank_hint=2),
+    ]
+    capped = apply_max_per_day(entries, 2)
+    assert [e["url"] for e in capped] == [
+        "https://example.com/article-1",
+        "https://example.com/article-2",
+        "https://example.com/article-4",
+        "https://example.com/article-5",
+    ]
+    assert apply_max_per_day(entries, None) == entries
+    assert apply_max_per_day(entries, 0) == entries
+
+
+def test_render_max_per_day_after_top50():
+    entries = sort_entries(
+        [
+            make_entry(1, publish_date="2026-05-08", rank_hint=1),
+            make_entry(2, publish_date="2026-05-08", rank_hint=2),
+            make_entry(3, publish_date="2026-05-08", rank_hint=3),
+            make_entry(4, publish_date="2026-05-07", rank_hint=1),
+        ]
+    )
+    md = render_markdown(END_DATE, entries, max_per_day=1)
+    assert md.count("* **[") == 2
+    assert "article-1" in md
+    assert "article-4" in md
+    assert "article-2" not in md
+
+
+def test_run_max_per_day(week_env):
+    archives = [
+        make_entry(1, publish_date="2026-05-08", rank_hint=1),
+        make_entry(2, publish_date="2026-05-08", rank_hint=2),
+        make_entry(3, publish_date="2026-05-07", rank_hint=1),
+        make_entry(4, publish_date="2026-05-07", rank_hint=2),
+    ]
+    weekly_root, _ = week_env(archives)
+    md = run(
+        START_DATE, END_DATE, weekly_root=weekly_root, max_per_day=1
+    ).read_text(encoding="utf-8")
+    assert "article-1" in md
+    assert "article-3" in md
+    assert "article-2" not in md
+    assert "article-4" not in md
+
+
+def test_quality_warning_when_few_in_range(week_env, capsys):
+    archives = [make_entry(1, publish_date="2026-05-05", rank_hint=1)]
+    weekly_root, _ = week_env(archives)
+    run(START_DATE, END_DATE, weekly_root=weekly_root, quality_min=5)
+    err = capsys.readouterr().err
+    assert "QUALITY_WARNING" in err
+    assert "in_range=1" in err
+
+
+def test_quality_warning_not_emitted_when_enough(week_env, capsys):
+    archives = [
+        make_entry(i, publish_date="2026-05-05", rank_hint=i) for i in range(1, 6)
+    ]
+    weekly_root, _ = week_env(archives)
+    run(START_DATE, END_DATE, weekly_root=weekly_root, quality_min=DEFAULT_QUALITY_MIN)
+    assert "QUALITY_WARNING" not in capsys.readouterr().err
+
+
+def test_emit_quality_warning_helper():
+    assert emit_quality_warning(2, quality_min=5) is True
+    assert emit_quality_warning(5, quality_min=5) is False
+    assert emit_quality_warning(0, quality_min=0) is False

@@ -4,11 +4,11 @@
 
 流程：
 1. 反序列化 new.json 和 archives.json（任一解析失败即报错退出，以便大模型修复）
-2. 按 url 去重后追加
+2. 按 url 去重后追加（可选 --upsert 同 url 更新摘要字段）
 3. 写入 archives.json.tmp，成功后原子替换 archives.json
 4. 删除 new.json
 
-用法: python3 merge_archives.py --end-date YYYY-MM-DD [--weekly-root PATH]
+用法: python3 merge_archives.py --end-date YYYY-MM-DD [--weekly-root PATH] [--upsert]
 不指定 --weekly-root 时，通过脚本相对位置推断 repo root 下的 weekly/ 目录。
 """
 
@@ -17,7 +17,12 @@ import argparse
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_shared" / "scripts"))
-from json_archives import load_json_array, merge_by_key, save_json_atomic  # noqa: F401 — re-exported for tests
+from json_archives import (  # noqa: F401 — re-exported for tests
+    load_json_array,
+    merge_by_key,
+    merge_by_key_upsert,
+    save_json_atomic,
+)
 
 
 def resolve_ai_trends_dir(end_date: str, weekly_root=None):
@@ -40,12 +45,19 @@ def resolve_ai_trends_dir(end_date: str, weekly_root=None):
     return ai_trends
 
 
-def merge(archives, new_entries):
-    """将 new_entries 按 url 去重后追加到 archives，返回合并结果。"""
+def merge(archives, new_entries, *, upsert: bool = False):
+    """将 new_entries 按 url 合并到 archives。
+
+    默认仅追加新 url（兼容）。``upsert=True`` 时同 url 刷新摘要字段。
+    返回 ``(merged, added)``；upsert 时 ``added`` 仍为新增条数。
+    """
+    if upsert:
+        merged, added, _updated = merge_by_key_upsert(archives, new_entries, "url")
+        return merged, added
     return merge_by_key(archives, new_entries, "url")
 
 
-def run(end_date: str, weekly_root=None):
+def run(end_date: str, weekly_root=None, *, upsert: bool = False):
     """核心流程，供 main() 和测试调用。
 
     Returns:
@@ -65,7 +77,7 @@ def run(end_date: str, weekly_root=None):
     archives = load_json_array(archives_path, "archives.json")
     new_entries = load_json_array(new_path, "new.json")
 
-    merged, added = merge(archives, new_entries)
+    merged, added = merge(archives, new_entries, upsert=upsert)
     save_json_atomic(merged, archives_path)
     new_path.unlink()
 
@@ -90,9 +102,14 @@ def main():
         default=None,
         help="覆盖 weekly 目录路径（默认自动推断）",
     )
+    parser.add_argument(
+        "--upsert",
+        action="store_true",
+        help="同 url 时更新摘要字段（en_summary/cn_*/rank_hint/collected_at 等）",
+    )
     args = parser.parse_args()
 
-    added, total = run(args.end_date, weekly_root=args.weekly_root)
+    added, total = run(args.end_date, weekly_root=args.weekly_root, upsert=args.upsert)
     print(f"MERGED: {added} new entries added, {total} total in archives.json")
 
 
