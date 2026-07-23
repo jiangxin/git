@@ -2,27 +2,48 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from discover_and_fetch import (  # noqa: E402
+    CONTENT_MIN,
     FetchError,
     date_allows,
     extract_links,
     extract_text,
+    extract_title,
     format_summary,
+    is_bad_title,
     is_undated,
+    lookup_raw_cache,
     parse_undated_quota,
+    passes_article_gate,
+    raw_cache_fresh,
+    raw_index_path,
     run,
+    url_sha1,
+    write_raw,
 )
 from check_cloudflare import is_cloudflare  # noqa: E402
 
 END_DATE = "2026-07-24"
 START_DATE = "2026-07-18"
+
+# Body long enough to pass CONTENT_MIN gate (≥400 chars).
+_DETAIL_BODY = (
+    "Hello world content for testing. "
+    "This paragraph expands the article body so the content length gate "
+    "accepts fixture pages used across discover_and_fetch unit tests. "
+    "Additional sentences keep the extracted text well above the minimum "
+    "threshold while remaining easy to assert on in tests. "
+) * 3
+assert len(_DETAIL_BODY) >= CONTENT_MIN
 
 LIST_HTML = """<!DOCTYPE html>
 <html><head><title>Blog</title></head>
@@ -48,15 +69,27 @@ LIST_HTML = """<!DOCTYPE html>
 </body></html>
 """
 
-DETAIL_HTML = """<!DOCTYPE html>
-<html><head><title>Detail</title></head>
+DETAIL_HTML = f"""<!DOCTYPE html>
+<html><head>
+  <title>Detail Page Title</title>
+  <meta property="og:title" content="OG Detail Title" />
+</head>
 <body>
+  <nav>Skip nav chrome</nav>
   <script>var x = 1;</script>
-  <style>.x{color:red}</style>
+  <style>.x{{color:red}}</style>
   <article>
     <h1>Article Body</h1>
-    <p>Hello world content for testing.</p>
+    <p>{_DETAIL_BODY}</p>
   </article>
+  <footer>Skip footer chrome</footer>
+</body></html>
+"""
+
+SHORT_DETAIL_HTML = """<!DOCTYPE html>
+<html><head><title>https://example.com/posts/short</title></head>
+<body>
+  <article><p>Too short.</p></article>
 </body></html>
 """
 
@@ -164,6 +197,45 @@ class TestCloudflare:
         assert is_cloudflare(LIST_HTML) is False
 
 
+class TestArticleGateAndTitle:
+    def test_passes_with_long_body_and_title(self):
+        url = "https://example.com/posts/in-range"
+        assert passes_article_gate(
+            title="In Range Article",
+            content=_DETAIL_BODY,
+            url=url,
+        )
+
+    def test_rejects_short_content(self):
+        url = "https://example.com/posts/short"
+        assert not passes_article_gate(
+            title="Short",
+            content="Too short.",
+            url=url,
+        )
+
+    def test_rejects_url_title(self):
+        url = "https://example.com/posts/x"
+        assert is_bad_title(url, url)
+        assert is_bad_title(None, url)
+        assert is_bad_title("  ", url)
+        assert not passes_article_gate(
+            title=url,
+            content=_DETAIL_BODY,
+            url=url,
+        )
+
+    def test_extract_title_prefers_og(self):
+        assert extract_title(DETAIL_HTML) == "OG Detail Title"
+
+    def test_extract_text_skips_nav_and_prefers_article(self):
+        text = extract_text(DETAIL_HTML)
+        assert "Hello world content" in text
+        assert "Skip nav chrome" not in text
+        assert "Skip footer chrome" not in text
+        assert "var x" not in text
+
+
 class TestDiscoverAndFetchRun:
     def test_archives_dedupe_and_date_filters(self, week_env):
         weekly_root, ai_trends, sources_path = week_env(
@@ -209,6 +281,11 @@ class TestDiscoverAndFetchRun:
 
         raw_files = list((ai_trends / "raw").glob("*.txt"))
         assert len(raw_files) >= 1
+        index_path = raw_index_path(ai_trends)
+        assert index_path.is_file()
+        index_line = json.loads(index_path.read_text(encoding="utf-8").strip().splitlines()[-1])
+        assert index_line["url"] == "https://example.com/posts/in-range"
+        assert index_line["sha1"] == url_sha1("https://example.com/posts/in-range")
 
         assert counts["sources"] == 1
         assert counts["pending"] == 1
@@ -565,6 +642,149 @@ class TestDiscoverAndFetchRun:
         assert counts["pending"] == 1
         assert pending[0]["url"] == "https://example.com/posts/in-range"
 
+    def test_raw_cache_hit_skips_http(self, week_env):
+        list_html = """<!DOCTYPE html><html><body>
+          <a href="/posts/in-range" data-date="2026-07-20">In Range Article</a>
+        </body></html>"""
+        weekly_root, ai_trends, sources_path = week_env(archives=[])
+        url = "https://example.com/posts/in-range"
+        digest = url_sha1(url)
+        write_raw(ai_trends, url, _DETAIL_BODY)
+        fetched_at = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        index_path = raw_index_path(ai_trends)
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(
+            json.dumps(
+                {
+                    "url": url,
+                    "sha1": digest,
+                    "source": "Fixture Blog",
+                    "fetched_at": fetched_at,
+                    "publish_date": "2026-07-20",
+                    "title": "In Range Article",
+                },
+                ensure_ascii=False,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        pages = {"https://example.com/blog": list_html}
+        fetch_log: list[str] = []
+
+        def tracking_fetch(
+            url_arg: str, *, proxy=None, use_proxy_flag: bool = False, timeout: int = 30
+        ):
+            fetch_log.append(url_arg)
+            if url_arg not in pages:
+                raise FetchError(url_arg, "curl(direct)", f"unexpected refetch: {url_arg}")
+            return pages[url_arg]
+
+        counts = run(
+            START_DATE,
+            END_DATE,
+            weekly_root=weekly_root,
+            sources_path=sources_path,
+            fetch_fn=tracking_fetch,
+            save_raw=True,
+            resume=True,
+            raw_ttl_days=7,
+        )
+        assert url not in fetch_log
+        assert fetch_log == ["https://example.com/blog"]
+        pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
+        assert len(pending) == 1
+        assert pending[0]["url"] == url
+        assert pending[0]["content"] == _DETAIL_BODY
+        assert counts["pending"] == 1
+        assert counts["errors"] == 0
+        state_lines = [
+            json.loads(ln)
+            for ln in (ai_trends / "fetch_state.jsonl").read_text(encoding="utf-8").splitlines()
+            if ln.strip()
+        ]
+        assert any(r["url"] == url and r["status"] == "cached" for r in state_lines)
+
+    def test_short_content_skipped_filter_not_pending(self, week_env):
+        list_html = """<!DOCTYPE html><html><body>
+          <a href="/posts/short" data-date="2026-07-20">Short Piece</a>
+        </body></html>"""
+        weekly_root, ai_trends, sources_path = week_env(archives=[])
+        pages = {
+            "https://example.com/blog": list_html,
+            "https://example.com/posts/short": SHORT_DETAIL_HTML,
+        }
+        counts = run(
+            START_DATE,
+            END_DATE,
+            weekly_root=weekly_root,
+            sources_path=sources_path,
+            fetch_fn=make_fetch(pages),
+            save_raw=True,
+        )
+        pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
+        assert pending == []
+        assert counts["pending"] == 0
+        assert counts["skipped"] >= 1
+        assert counts["errors"] == 0
+        state_lines = [
+            json.loads(ln)
+            for ln in (ai_trends / "fetch_state.jsonl").read_text(encoding="utf-8").splitlines()
+            if ln.strip()
+        ]
+        assert any(
+            r["url"] == "https://example.com/posts/short" and r["status"] == "skipped_filter"
+            for r in state_lines
+        )
+        # Junk must not be indexed for cache reuse
+        index_path = raw_index_path(ai_trends)
+        assert not index_path.is_file() or "posts/short" not in index_path.read_text(
+            encoding="utf-8"
+        )
+
+    def test_expired_raw_cache_refetches(self, week_env):
+        list_html = """<!DOCTYPE html><html><body>
+          <a href="/posts/in-range" data-date="2026-07-20">In Range Article</a>
+        </body></html>"""
+        weekly_root, ai_trends, sources_path = week_env(archives=[])
+        url = "https://example.com/posts/in-range"
+        digest = url_sha1(url)
+        write_raw(ai_trends, url, "stale cached body " + ("x" * 400))
+        old = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        index_path = raw_index_path(ai_trends)
+        index_path.parent.mkdir(parents=True, exist_ok=True)
+        index_path.write_text(
+            json.dumps(
+                {
+                    "url": url,
+                    "sha1": digest,
+                    "source": "Fixture Blog",
+                    "fetched_at": old,
+                    "publish_date": "2026-07-20",
+                    "title": "In Range Article",
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        assert not raw_cache_fresh(old, ttl_days=7)
+        pages = {
+            "https://example.com/blog": list_html,
+            url: DETAIL_HTML,
+        }
+        counts = run(
+            START_DATE,
+            END_DATE,
+            weekly_root=weekly_root,
+            sources_path=sources_path,
+            fetch_fn=make_fetch(pages),
+            save_raw=True,
+            raw_ttl_days=7,
+        )
+        pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
+        assert counts["pending"] == 1
+        assert "Hello world content" in pending[0]["content"]
+        assert "stale cached body" not in pending[0]["content"]
+
 
 class TestExtractText:
     def test_strips_script_style_and_truncates(self):
@@ -575,3 +795,33 @@ class TestExtractText:
         truncated = extract_text(DETAIL_HTML, max_chars=20)
         assert len(truncated) <= 20
         assert truncated == full[:20]
+
+    def test_lookup_raw_cache_hit_and_miss(self, tmp_path):
+        ai_trends = tmp_path / "ai-trends"
+        url = "https://example.com/a"
+        digest = hashlib.sha1(url.encode()).hexdigest()
+        write_raw(ai_trends, url, "body text")
+        now = datetime.now(timezone.utc)
+        fresh = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+        index = {
+            url: {
+                "url": url,
+                "sha1": digest,
+                "source": "S",
+                "fetched_at": fresh,
+                "publish_date": "2026-07-20",
+                "title": "T",
+            }
+        }
+        hit = lookup_raw_cache(ai_trends, url, index, ttl_days=7, now=now)
+        assert hit is not None
+        assert hit["content"] == "body text"
+        assert hit["original_title"] == "T"
+        expired = {
+            url: {
+                **index[url],
+                "fetched_at": (now - timedelta(days=10)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            }
+        }
+        assert lookup_raw_cache(ai_trends, url, expired, ttl_days=7, now=now) is None
+        assert lookup_raw_cache(ai_trends, "https://missing", index, ttl_days=7, now=now) is None

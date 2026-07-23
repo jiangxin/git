@@ -20,6 +20,7 @@ import sys
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from html import unescape
 from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any, Callable
@@ -37,11 +38,26 @@ from repo_config import load_repo_config  # noqa: E402
 from url_filter import url_allowed  # noqa: E402
 
 CONTENT_MAX = 12000
+CONTENT_MIN = 400
+DEFAULT_RAW_TTL_DAYS = 7
 PENDING_SAVE_EVERY = 20
 FETCH_STATE_FILENAME = "fetch_state.jsonl"
+RAW_INDEX_FILENAME = "index.jsonl"
 TERMINAL_SKIP_STATUSES = frozenset(
     {"fetched", "skipped_date", "skipped_filter", "cached"}
 )
+_ARTICLE_BLOCK = re.compile(
+    r"(?is)<(article|main)\b[^>]*>(.*?)</\1>"
+)
+_META_TITLE_PROP = re.compile(
+    r"<meta\b[^>]*\b(?:property|name)=[\"'](og:title|twitter:title)[\"'][^>]*>",
+    re.I,
+)
+_META_CONTENT_ATTR = re.compile(
+    r"\bcontent=[\"']([^\"']+)[\"']",
+    re.I,
+)
+_TITLE_TAG = re.compile(r"(?is)<title\b[^>]*>(.*?)</title>")
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -404,8 +420,24 @@ def extract_links(
     return collector.links
 
 
+_SKIP_TEXT_TAGS = frozenset(
+    {
+        "script",
+        "style",
+        "noscript",
+        "svg",
+        "nav",
+        "footer",
+        "header",
+        "aside",
+        "form",
+        "iframe",
+    }
+)
+
+
 class TextExtractor(HTMLParser):
-    """Strip script/style and collect visible text."""
+    """Strip chrome tags and collect visible text (readability heuristic)."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -413,11 +445,11 @@ class TextExtractor(HTMLParser):
         self._parts: list[str] = []
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        if tag in ("script", "style", "noscript", "svg"):
+        if tag in _SKIP_TEXT_TAGS:
             self._skip_depth += 1
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in ("script", "style", "noscript", "svg") and self._skip_depth:
+        if tag in _SKIP_TEXT_TAGS and self._skip_depth:
             self._skip_depth -= 1
 
     def handle_data(self, data: str) -> None:
@@ -425,17 +457,266 @@ class TextExtractor(HTMLParser):
             self._parts.append(data.strip())
 
 
-def extract_text(html: str, max_chars: int = CONTENT_MAX) -> str:
+def _html_to_text(html: str) -> str:
     parser = TextExtractor()
     try:
         parser.feed(html)
         parser.close()
     except Exception:  # noqa: BLE001
         pass
-    text = "\n".join(parser._parts)
+    return "\n".join(parser._parts)
+
+
+def extract_text(html: str, max_chars: int = CONTENT_MAX) -> str:
+    """Extract readable body text; prefer ``<article>`` / ``<main>`` blocks."""
+    blocks = _ARTICLE_BLOCK.findall(html)
+    if blocks:
+        focused = "\n".join(body for _tag, body in blocks)
+        text = _html_to_text(focused)
+        if len(text.strip()) >= CONTENT_MIN // 4:
+            if len(text) > max_chars:
+                return text[:max_chars]
+            return text
+    text = _html_to_text(html)
     if len(text) > max_chars:
         return text[:max_chars]
     return text
+
+
+def extract_title(html: str) -> str | None:
+    """Prefer ``og:title`` / ``twitter:title``, then ``<title>``."""
+    for match in _META_TITLE_PROP.finditer(html):
+        tag = match.group(0)
+        content_m = _META_CONTENT_ATTR.search(tag)
+        if content_m:
+            title = unescape(content_m.group(1)).strip()
+            if title:
+                return " ".join(title.split())
+    title_m = _TITLE_TAG.search(html)
+    if title_m:
+        title = unescape(re.sub(r"<[^>]+>", "", title_m.group(1))).strip()
+        if title:
+            return " ".join(title.split())
+    return None
+
+
+def is_bad_title(title: str | None, url: str) -> bool:
+    """True when title is empty, whitespace-only, or just the URL."""
+    if title is None:
+        return True
+    cleaned = " ".join(title.split()).strip()
+    if not cleaned:
+        return True
+    url_norm = url.rstrip("/")
+    if cleaned == url or cleaned == url_norm:
+        return True
+    if cleaned.startswith(("http://", "https://")):
+        return True
+    return False
+
+
+def resolve_title(html: str, *, list_title: str | None, url: str) -> str:
+    """Pick best title from list link text vs page meta/title."""
+    page_title = extract_title(html)
+    if list_title and not is_bad_title(list_title, url):
+        return " ".join(list_title.split()).strip()
+    if page_title and not is_bad_title(page_title, url):
+        return page_title
+    if list_title and list_title.strip():
+        return " ".join(list_title.split()).strip()
+    return page_title or url
+
+
+def passes_article_gate(
+    *,
+    title: str | None,
+    content: str | None,
+    url: str,
+    min_chars: int = CONTENT_MIN,
+) -> bool:
+    """Content/title gate for new pending entries (short/junk → reject)."""
+    body = (content or "").strip()
+    if len(body) < min_chars:
+        return False
+    if is_bad_title(title, url):
+        return False
+    return True
+
+
+def parse_raw_ttl_days(cfg: dict[str, Any] | None, override: int | None = None) -> int:
+    if override is not None:
+        return max(0, int(override))
+    if cfg:
+        raw = cfg.get("raw_ttl_days")
+        if isinstance(raw, bool):
+            pass
+        elif isinstance(raw, (int, float)):
+            return max(0, int(raw))
+        elif isinstance(raw, str) and raw.strip().isdigit():
+            return max(0, int(raw.strip()))
+    return DEFAULT_RAW_TTL_DAYS
+
+
+def parse_iso_timestamp(value: str) -> datetime | None:
+    text = (value or "").strip()
+    if not text:
+        return None
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        ts = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if ts.tzinfo is None:
+        ts = ts.replace(tzinfo=timezone.utc)
+    return ts
+
+
+def raw_cache_fresh(
+    fetched_at: str,
+    ttl_days: int,
+    *,
+    now: datetime | None = None,
+) -> bool:
+    """True when ``fetched_at`` is within ``ttl_days`` of now."""
+    ts = parse_iso_timestamp(fetched_at)
+    if ts is None:
+        return False
+    current = now or datetime.now(timezone.utc)
+    return (current - ts).total_seconds() <= ttl_days * 86400
+
+
+def raw_index_path(ai_trends_dir: Path) -> Path:
+    return ai_trends_dir / "raw" / RAW_INDEX_FILENAME
+
+
+def load_raw_index(path: Path) -> dict[str, dict[str, Any]]:
+    """Load url → index record from raw/index.jsonl (later lines win)."""
+    index: dict[str, dict[str, Any]] = {}
+    if not path.is_file():
+        return index
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(row, dict):
+                continue
+            url = row.get("url")
+            if isinstance(url, str) and url:
+                index[url] = row
+    return index
+
+
+def append_raw_index(
+    path: Path,
+    *,
+    url: str,
+    sha1: str,
+    source: str,
+    fetched_at: str,
+    publish_date: str | None,
+    title: str,
+) -> None:
+    """Append one JSONL record to raw/index.jsonl."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    record = {
+        "url": url,
+        "sha1": sha1,
+        "source": source,
+        "fetched_at": fetched_at,
+        "publish_date": publish_date,
+        "title": title,
+    }
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def lookup_raw_cache(
+    ai_trends_dir: Path,
+    url: str,
+    index: dict[str, dict[str, Any]],
+    *,
+    ttl_days: int,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    """Return a pending-shaped entry from raw cache, or None on miss/expiry."""
+    meta = index.get(url)
+    if not meta:
+        return None
+    fetched_at = meta.get("fetched_at")
+    if not isinstance(fetched_at, str) or not raw_cache_fresh(
+        fetched_at, ttl_days, now=now
+    ):
+        return None
+    digest = meta.get("sha1")
+    if not isinstance(digest, str) or not digest:
+        digest = url_sha1(url)
+    raw_path = ai_trends_dir / "raw" / f"{digest}.txt"
+    if not raw_path.is_file():
+        return None
+    content = raw_path.read_text(encoding="utf-8")
+    title = meta.get("title")
+    if not isinstance(title, str) or not title.strip():
+        title = url
+    pub = meta.get("publish_date")
+    if pub is not None and not isinstance(pub, str):
+        pub = None
+    source = meta.get("source")
+    return {
+        "url": url,
+        "original_title": title,
+        "publish_date": pub,
+        "source": source if isinstance(source, str) else "",
+        "content": content,
+        "fetched_at": fetched_at,
+    }
+
+
+def persist_raw_entry(
+    ai_trends_dir: Path,
+    entry: dict[str, Any],
+    *,
+    save_raw: bool,
+    index: dict[str, dict[str, Any]],
+) -> None:
+    """Write raw/<sha1>.txt and append raw/index.jsonl when save_raw."""
+    if not save_raw:
+        return
+    content = entry.get("content") or ""
+    if not content:
+        return
+    url = entry["url"]
+    digest = url_sha1(url)
+    write_raw(ai_trends_dir, url, content)
+    fetched_at = entry.get("fetched_at") or datetime.now(timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    title = entry.get("original_title") or url
+    pub = entry.get("publish_date")
+    source = entry.get("source") or ""
+    record = {
+        "url": url,
+        "sha1": digest,
+        "source": source,
+        "fetched_at": fetched_at,
+        "publish_date": pub if isinstance(pub, str) else None,
+        "title": title,
+    }
+    append_raw_index(
+        raw_index_path(ai_trends_dir),
+        url=url,
+        sha1=digest,
+        source=source,
+        fetched_at=fetched_at,
+        publish_date=pub if isinstance(pub, str) else None,
+        title=title,
+    )
+    index[url] = record
 
 
 def is_undated(publish_date: str | None) -> bool:
@@ -497,9 +778,11 @@ def process_candidate(
     proxy: str | None,
     fetch_fn: FetchFn,
     ai_trends_dir: Path,
-    save_raw: bool,
 ) -> dict[str, Any] | None:
-    """Fetch detail page and build a pending entry, or None on failure."""
+    """Fetch detail page and build a pending entry, or None on failure.
+
+    Does not write raw cache; caller persists after article gate passes.
+    """
     url = item["url"]
     try:
         html, _method = fetch_with_policy(
@@ -510,8 +793,6 @@ def process_candidate(
         return None
 
     content = extract_text(html)
-    if save_raw and content:
-        write_raw(ai_trends_dir, url, content)
 
     pub = item.get("publish_date")
     if pub is None:
@@ -525,14 +806,14 @@ def process_candidate(
             if m:
                 pub = m.group(1)
 
-    title = item.get("original_title") or url
+    title = resolve_title(html, list_title=item.get("original_title"), url=url)
     return {
         "url": url,
         "original_title": title,
         "publish_date": pub,
         "source": source_name,
         "content": content,
-        "fetched_at": datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
+        "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
 
 
@@ -549,6 +830,8 @@ def run(
     fresh: bool = False,
     retry_errors: bool = False,
     pending_save_every: int = PENDING_SAVE_EVERY,
+    raw_ttl_days: int | None = None,
+    content_min: int = CONTENT_MIN,
 ) -> dict[str, int]:
     """Core pipeline. Returns counts dict for summary line."""
     for label, d in (("start_date", start_date), ("end_date", end_date)):
@@ -564,10 +847,11 @@ def run(
         print(f"ERROR: sources.json not found: {sources_path}", file=sys.stderr)
         sys.exit(2)
 
+    cfg = load_repo_config(Path(__file__))
     if proxy is None:
-        cfg = load_repo_config(Path(__file__))
         raw_proxy = cfg.get("proxy")
         proxy = raw_proxy.strip() if isinstance(raw_proxy, str) and raw_proxy.strip() else None
+    ttl_days = parse_raw_ttl_days(cfg, raw_ttl_days)
 
     fetch_fn = fetch_fn or default_fetch
     sources = load_sources(sources_path)
@@ -578,6 +862,7 @@ def run(
 
     state_path = fetch_state_path(ai_trends_dir)
     state = load_fetch_state(state_path) if resume else {}
+    raw_index = load_raw_index(raw_index_path(ai_trends_dir))
 
     archives_path = ai_trends_dir / "archives.json"
     if archives_path.exists():
@@ -608,6 +893,35 @@ def run(
         sha = url_sha1(url) if with_sha1 else None
         append_fetch_state(state_path, url=url, status=status, source=source, sha1=sha)
         state[url] = status
+
+    def accept_entry(entry: dict[str, Any], *, status: str, source: str) -> None:
+        nonlocal pending, since_save, skipped
+        url = entry["url"]
+        if not date_allows(
+            entry.get("publish_date"),
+            start_date,
+            end_date,
+            allow_undated=allow_undated,
+        ):
+            record_state(url, "skipped_date", source, with_sha1=True)
+            skipped += 1
+            return
+        if not passes_article_gate(
+            title=entry.get("original_title"),
+            content=entry.get("content"),
+            url=url,
+            min_chars=content_min,
+        ):
+            record_state(url, "skipped_filter", source, with_sha1=True)
+            skipped += 1
+            return
+        persist_raw_entry(ai_trends_dir, entry, save_raw=save_raw, index=raw_index)
+        record_state(url, status, source, with_sha1=True)
+        pending = merge_pending_by_url(pending, [entry])
+        known_urls.add(url)
+        since_save += 1
+        if since_save >= pending_save_every:
+            persist_pending()
 
     for source in sources:
         if not isinstance(source, dict):
@@ -671,6 +985,27 @@ def run(
                     continue
                 undated_used += 1
 
+            cached = lookup_raw_cache(
+                ai_trends_dir, url, raw_index, ttl_days=ttl_days
+            )
+            if cached is not None:
+                list_title = item.get("original_title")
+                title = (
+                    list_title
+                    if list_title and not is_bad_title(list_title, url)
+                    else cached.get("original_title") or url
+                )
+                entry = {
+                    "url": url,
+                    "original_title": title,
+                    "publish_date": item.get("publish_date") or cached.get("publish_date"),
+                    "source": name,
+                    "content": cached.get("content") or "",
+                    "fetched_at": cached.get("fetched_at"),
+                }
+                accept_entry(entry, status="cached", source=name)
+                continue
+
             entry = process_candidate(
                 item,
                 source_name=name,
@@ -678,28 +1013,12 @@ def run(
                 proxy=proxy,
                 fetch_fn=fetch_fn,
                 ai_trends_dir=ai_trends_dir,
-                save_raw=save_raw,
             )
             if entry is None:
                 record_state(url, "error", name)
                 errors += 1
                 continue
-            # Re-check date after detail enrichment
-            if not date_allows(
-                entry.get("publish_date"),
-                start_date,
-                end_date,
-                allow_undated=allow_undated,
-            ):
-                record_state(url, "skipped_date", name, with_sha1=True)
-                skipped += 1
-                continue
-            record_state(url, "fetched", name, with_sha1=True)
-            pending = merge_pending_by_url(pending, [entry])
-            known_urls.add(url)
-            since_save += 1
-            if since_save >= pending_save_every:
-                persist_pending()
+            accept_entry(entry, status="fetched", source=name)
 
         # Persist after each source
         persist_pending()
