@@ -84,14 +84,10 @@ FALLBACK_RSS = """<?xml version="1.0"?>
 
 @pytest.fixture
 def week_env(tmp_path):
-    def _make(archives=None, sources=None, end_date=END_DATE):
+    def _make(sources=None, end_date=END_DATE):
         weekly_root = tmp_path / "weekly"
         ai_trends = weekly_root / end_date / "ai-trends"
         ai_trends.mkdir(parents=True)
-        (ai_trends / "archives.json").write_text(
-            json.dumps(archives if archives is not None else [], indent=2) + "\n",
-            encoding="utf-8",
-        )
         sources_path = tmp_path / "sources.json"
         if sources is None:
             sources = [
@@ -354,7 +350,6 @@ class TestRunWithRss:
                     "rss_url": "https://example.com/feed.xml",
                     "use_proxy": False,
                     "fallback": "skip",
-                    # example.com has no builtin pattern; allow deep paths via include
                     "url_include": [r"/posts/"],
                 }
             ]
@@ -363,18 +358,15 @@ class TestRunWithRss:
             "https://example.com/feed.xml": RSS_XML,
             "https://example.com/posts/in-range": DETAIL_HTML,
         }
+        from site_store import load_url_index, url_index_path
         counts = run(
-            START_DATE,
-            END_DATE,
-            weekly_root=weekly_root,
-            sources_path=sources_path,
+            START_DATE, END_DATE,
+            weekly_root=weekly_root, sources_path=sources_path,
             fetch_fn=make_fetch(pages),
-            save_raw=False,
         )
-        pending = json.loads((ai_trends / "pending.json").read_text(encoding="utf-8"))
-        assert counts["pending"] == 1
-        assert pending[0]["url"] == "https://example.com/posts/in-range"
-        assert pending[0]["publish_date"] == "2026-07-20"
+        url_idx = load_url_index(url_index_path(ai_trends))
+        assert counts["fetched"] == 1
+        assert "https://example.com/posts/in-range" in url_idx
 
     def test_run_search_fallback_without_key_counts_error(self, week_env):
         weekly_root, ai_trends, sources_path = week_env(
@@ -392,15 +384,11 @@ class TestRunWithRss:
             raise FetchError(url, "curl(direct)", "HTTP 403")
 
         counts = run(
-            START_DATE,
-            END_DATE,
-            weekly_root=weekly_root,
-            sources_path=sources_path,
-            fetch_fn=fetch,
-            save_raw=False,
-            search_cfg=None,
+            START_DATE, END_DATE,
+            weekly_root=weekly_root, sources_path=sources_path,
+            fetch_fn=fetch, search_cfg=None,
         )
-        assert counts["pending"] == 0
+        assert counts["fetched"] == 0
         assert counts["errors"] == 1
         log = (ai_trends / "error.log").read_text(encoding="utf-8")
         assert "search API key not configured" in log

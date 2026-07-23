@@ -385,12 +385,14 @@ def resolve_unique_slug(
     source: dict[str, Any],
     taken: set[str] | None = None,
 ) -> SlugResolution:
-    """Return a unique slug for ``source`` within the current week.
+    """Return a unique slug for ``source`` within the current run.
 
     Priority: explicit ``slug`` field; else derive from ``name``.
-    If the chosen slug collides with ``taken`` (or existing ``sites/``
-    children belonging to a different source), append ``-2`` and emit a
-    warning. Callers should log the warning and may skip the source.
+    If the chosen slug collides with ``taken`` (slugs already assigned
+    to other sources in this run), append ``-2`` and emit a warning.
+    The filesystem is NOT checked — slug resolution is deterministic
+    from the source definition, so the same source always gets the
+    same slug across runs.
     """
     name = source.get("name") or "unknown"
     explicit = source.get("slug") if isinstance(source.get("slug"), str) else None
@@ -399,11 +401,6 @@ def resolve_unique_slug(
     existing: set[str] = set()
     if taken is not None:
         existing.update(taken)
-    sites_root = Path(ai_trends_dir) / "sites"
-    if sites_root.is_dir():
-        for child in sites_root.iterdir():
-            if child.is_dir():
-                existing.add(child.name)
 
     if base not in existing:
         return SlugResolution(slug=base, collision=False)

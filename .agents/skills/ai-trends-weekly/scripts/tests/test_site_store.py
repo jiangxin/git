@@ -290,11 +290,8 @@ class TestResolveUniqueSlug:
         result = resolve_unique_slug(ai, {"name": "Foo", "slug": "custom-slug"})
         assert result.slug == "custom-slug"
 
-    def test_collision_appends_suffix(self, tmp_path):
+    def test_collision_from_taken_set(self, tmp_path):
         ai = tmp_path / "ai-trends"
-        sites_root = ai / "sites"
-        sites_root.mkdir(parents=True)
-        (sites_root / "anthropic-news").mkdir()
         result = resolve_unique_slug(
             ai,
             {"name": "Anthropic News"},
@@ -310,3 +307,13 @@ class TestResolveUniqueSlug:
         result = resolve_unique_slug(ai, {"name": "Src"}, taken=taken)
         assert result.slug == "src-4"
         assert result.collision is True
+
+    def test_deterministic_across_runs(self, tmp_path):
+        ai = tmp_path / "ai-trends"
+        r1 = resolve_unique_slug(ai, {"name": "Fixture Blog"})
+        assert r1.slug == "fixture-blog"
+        sites_root = ai / "sites" / "fixture-blog"
+        sites_root.mkdir(parents=True)
+        r2 = resolve_unique_slug(ai, {"name": "Fixture Blog"})
+        assert r2.slug == "fixture-blog"
+        assert r2.collision is False
