@@ -4,175 +4,236 @@
     "url": "https://www.anthropic.com/news",
     "use_proxy": true,
     "fallback": "aggregate",
-    "fallback_rss_url": "https://raw.githubusercontent.com/taobojlen/anthropic-rss-feed/main/anthropic_news_rss.xml"
+    "rss_url": "https://raw.githubusercontent.com/taobojlen/anthropic-rss-feed/main/anthropic_news_rss.xml",
+    "fallback_rss_url": "https://raw.githubusercontent.com/taobojlen/anthropic-rss-feed/main/anthropic_news_rss.xml",
+    "url_include": ["/news/"],
+    "url_exclude": ["/news/tag/", "/news/category/"],
+    "fetch": "browser",
+    "max_links": 40
   },
   {
     "name": "Anthropic Research",
     "url": "https://www.anthropic.com/research",
     "use_proxy": true,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "url_include": ["/research/"],
+    "url_exclude": ["/research/tag/", "/research/category/"],
+    "fetch": "browser",
+    "max_links": 40
   },
   {
     "name": "Anthropic Blog",
     "url": "https://claude.com/blog",
     "use_proxy": true,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "url_include": ["/blog/"],
+    "fetch": "browser",
+    "max_links": 40
   },
   {
     "name": "OpenAI Blog",
     "url": "https://openai.com/blog",
     "use_proxy": false,
     "fallback": "search",
-    "rss_url": "https://openai.com/news/rss.xml"
+    "rss_url": "https://openai.com/news/rss.xml",
+    "url_include": ["/index/", "/research/", "/blog/"],
+    "max_links": 40
   },
   {
     "name": "OpenAI News",
     "url": "https://openai.com/news",
     "use_proxy": false,
     "fallback": "search",
-    "rss_url": "https://openai.com/news/rss.xml"
+    "rss_url": "https://openai.com/news/rss.xml",
+    "url_include": ["/index/", "/research/", "/blog/"],
+    "max_links": 40
   },
   {
     "name": "Google DeepMind Blog",
     "url": "https://deepmind.google/blog",
     "use_proxy": true,
     "fallback": "aggregate",
-    "rss_url": "https://deepmind.google/blog/rss.xml"
+    "rss_url": "https://deepmind.google/blog/rss.xml",
+    "url_include": ["/blog/"],
+    "max_links": 40
   },
   {
     "name": "Google AI Blog",
     "url": "https://blog.google/technology/ai",
     "use_proxy": true,
     "fallback": "aggregate",
-    "rss_url": "https://blog.google/technology/ai/rss/"
+    "rss_url": "https://blog.google/technology/ai/rss/",
+    "url_include": ["/technology/ai/"],
+    "max_links": 40
   },
   {
     "name": "Meta AI Blog",
     "url": "https://ai.meta.com/blog",
     "use_proxy": true,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "url_include": ["/blog/"],
+    "fetch": "browser",
+    "max_links": 40
   },
   {
     "name": "Microsoft AI Blog",
     "url": "https://news.microsoft.com/source/topics/ai",
     "use_proxy": false,
-    "fallback": "search"
+    "fallback": "search",
+    "url_include": ["/source/", "/en-us/"],
+    "url_exclude": ["/topics/", "/tag/", "/category/"],
+    "max_links": 40
   },
   {
     "name": "Cohere Blog",
     "url": "https://cohere.com/blog",
     "use_proxy": false,
-    "fallback": "search"
+    "fallback": "search",
+    "url_include": ["/blog/"],
+    "max_links": 30
   },
   {
     "name": "TechCrunch AI",
     "url": "https://techcrunch.com/category/artificial-intelligence",
     "use_proxy": "auto",
     "fallback": "search",
-    "rss_url": "https://techcrunch.com/category/artificial-intelligence/feed/"
+    "rss_url": "https://techcrunch.com/category/artificial-intelligence/feed/",
+    "url_include": ["/\\d{4}/\\d{2}/\\d{2}/"],
+    "max_links": 50
   },
   {
     "name": "The Verge AI",
     "url": "https://www.theverge.com/ai-artificial-intelligence",
     "use_proxy": "auto",
     "fallback": "search",
-    "rss_url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml"
+    "rss_url": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
+    "url_include": ["/ai-artificial-intelligence/\\d+"],
+    "max_links": 50
   },
   {
     "name": "VentureBeat AI",
     "url": "https://venturebeat.com/ai",
     "use_proxy": "auto",
     "fallback": "search",
-    "rss_url": "https://venturebeat.com/category/ai/feed/"
+    "rss_url": "https://venturebeat.com/category/ai/feed/",
+    "url_include": ["/\\d{4}/\\d{2}/\\d{2}/"],
+    "max_links": 50
   },
   {
     "name": "通义千问 Qwen Blog",
     "url": "https://qwen.ai/blog",
     "use_proxy": false,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "url_include": ["/blog/"],
+    "max_links": 30
   },
   {
     "name": "字节跳动 Seed 博客",
     "url": "https://seed.bytedance.com/zh/blog",
     "use_proxy": false,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "url_include": ["/blog/"],
+    "max_links": 30
   },
   {
     "name": "百度文心 ERNIE Blog",
     "url": "https://ernie.baidu.com/blog/zh/",
     "use_proxy": false,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "url_include": ["/blog/"],
+    "max_links": 30
   },
   {
     "name": "月之暗面 Kimi Blog",
     "url": "https://platform.kimi.com/blog",
     "use_proxy": false,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "url_include": ["/blog/"],
+    "max_links": 30
   },
   {
     "name": "深度求索 DeepSeek",
     "url": "https://www.deepseek.com/zh/",
     "use_proxy": false,
-    "fallback": "search"
+    "fallback": "search",
+    "max_links": 20
   },
   {
     "name": "智谱 AI 新闻",
     "url": "https://www.zhipuai.cn/news",
     "use_proxy": false,
-    "fallback": "search"
+    "fallback": "search",
+    "url_include": ["/news/"],
+    "max_links": 30
   },
   {
     "name": "MiniMax 新闻",
     "url": "https://www.minimaxi.com/news",
     "use_proxy": false,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "url_include": ["/news/"],
+    "max_links": 30
   },
   {
     "name": "MiniMax Research",
     "url": "https://www.minimax.io/blog",
     "use_proxy": false,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "url_include": ["/blog/"],
+    "max_links": 30
   },
   {
     "name": "腾讯混元",
     "url": "https://hunyuan.tencent.com/blog",
     "use_proxy": false,
-    "fallback": "search"
+    "fallback": "search",
+    "url_include": ["/blog/"],
+    "max_links": 30
   },
   {
     "name": "腾讯 AI Lab 新闻",
     "url": "https://ai.tencent.com/ailab/zh/news/",
     "use_proxy": false,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "url_include": ["/news/"],
+    "max_links": 30
   },
   {
     "name": "零一万物 Blog",
     "url": "https://www.lingyiwanwu.com/blog",
     "use_proxy": false,
-    "fallback": "aggregate"
+    "fallback": "aggregate",
+    "url_include": ["/blog/"],
+    "max_links": 30
   },
   {
     "name": "百川智能",
     "url": "https://www.baichuan-ai.com/",
     "use_proxy": false,
-    "fallback": "search"
+    "fallback": "search",
+    "max_links": 20
   },
   {
     "name": "阿里云开发者社区 AI",
     "url": "https://developer.aliyun.com/group/ai",
     "use_proxy": false,
-    "fallback": "search"
+    "fallback": "search",
+    "url_include": ["/article/"],
+    "max_links": 40
   },
   {
     "name": "每日AI快讯",
     "url": "https://ai-bot.cn/daily-ai-news/",
     "use_proxy": false,
-    "fallback": "skip"
+    "fallback": "skip",
+    "url_include": ["/daily-ai-news/", "/\\d{4}/"],
+    "max_links": 30
   },
   {
     "name": "大黑 AI 速报",
     "url": "https://news.daheiai.com/",
     "use_proxy": false,
-    "fallback": "skip"
+    "fallback": "skip",
+    "max_links": 30
   }
 ]
