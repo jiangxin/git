@@ -1,179 +1,111 @@
 """Tests for check_url.py."""
 
+import json
 import sys
 from pathlib import Path
 
 import pytest
 
-# Add parent directory to path so we can import the module
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from check_url import get_archives_path, load_archives, check_url, main
+from check_url import get_url_index, check_url, main  # noqa: E402
+from site_store import url_index_path  # noqa: E402
 
 
-class TestLoadArchives:
-    """测试 archives.json 加载逻辑。"""
+@pytest.fixture
+def url_env(tmp_path):
+    def _make(urls=None, end_date="2026-07-24"):
+        weekly_root = tmp_path / "weekly"
+        ai_trends = weekly_root / end_date / "ai-trends"
+        ai_trends.mkdir(parents=True)
+        idx = url_index_path(ai_trends)
+        if urls:
+            lines = [
+                json.dumps({"url": u, "site": "s", "hash": "h", "at": "2026-07-20T00:00:00Z"})
+                for u in urls
+            ]
+            idx.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return weekly_root, ai_trends
+    return _make
 
-    def test_valid_json(self, make_archives, sample_entries):
-        """有效 JSON 正常加载。"""
-        tmp_path, archives_path = make_archives(sample_entries)
-        data = load_archives(archives_path)
-        assert len(data) == 2
-        assert data[0]["url"] == "https://example.com/article-1"
 
-    def test_empty_file(self, make_archives, capsys):
-        """空文件报错。"""
-        tmp_path, archives_path = make_archives("")
-        with pytest.raises(SystemExit) as exc_info:
-            load_archives(archives_path)
-        assert exc_info.value.code == 3
-        captured = capsys.readouterr()
-        assert "empty" in captured.err.lower()
+class TestGetUrlIndex:
+    def test_missing_end_date_exits(self):
+        with pytest.raises(SystemExit):
+            get_url_index("")
 
-    def test_malformed_json(self, make_archives, capsys):
-        """JSON 格式错误时输出详细错误信息。"""
-        tmp_path, archives_path = make_archives('{"bad": json}')
-        with pytest.raises(SystemExit) as exc_info:
-            load_archives(archives_path)
-        assert exc_info.value.code == 3
-        captured = capsys.readouterr()
-        assert "JSON parse failed" in captured.err
-        assert "JSON_REPAIR_NEEDED" in captured.err
+    def test_missing_file_exits(self, tmp_path):
+        weekly_root = tmp_path / "weekly"
+        weekly_root.mkdir()
+        with pytest.raises(SystemExit) as exc:
+            get_url_index("2026-07-24", root_override=weekly_root)
+        assert exc.value.code == 2
 
-    def test_not_a_list(self, make_archives, capsys):
-        """根节点不是数组时报错。"""
-        tmp_path, archives_path = make_archives({"key": "value"})
-        with pytest.raises(SystemExit) as exc_info:
-            load_archives(archives_path)
-        assert exc_info.value.code == 3
-        captured = capsys.readouterr()
-        assert "not an array" in captured.err.lower()
+    def test_loads_index(self, url_env):
+        weekly_root, _ = url_env(urls=["https://e.com/1"])
+        idx = get_url_index("2026-07-24", root_override=weekly_root)
+        assert "https://e.com/1" in idx
 
 
 class TestCheckUrl:
-    """测试 URL 查重逻辑。"""
+    def test_found(self):
+        idx = {"https://e.com/1": {"url": "https://e.com/1", "site": "s"}}
+        assert check_url(idx, "https://e.com/1") is not None
 
-    def test_url_found(self, sample_entries):
-        """已存在的 URL 返回条目。"""
-        entry = check_url(sample_entries, "https://example.com/article-1")
-        assert entry is not None
-        assert entry["cn_title"] == "测试文章一"
+    def test_not_found(self):
+        idx = {"https://e.com/1": {"url": "https://e.com/1", "site": "s"}}
+        assert check_url(idx, "https://e.com/2") is None
 
-    def test_url_not_found(self, sample_entries):
-        """不存在的 URL 返回 None。"""
-        entry = check_url(sample_entries, "https://example.com/nonexistent")
-        assert entry is None
-
-    def test_url_exact_match(self, sample_entries):
-        """URL 必须完全匹配。"""
-        entry = check_url(sample_entries, "https://example.com/article-1/")
-        assert entry is None
+    def test_exact_match(self):
+        idx = {"https://e.com/1": {"url": "https://e.com/1", "site": "s"}}
+        assert check_url(idx, "https://e.com/1/") is None
 
 
 class TestMain:
-    """测试命令行入口。"""
-
     @staticmethod
     def _run(argv):
         old_argv = sys.argv
         try:
             sys.argv = argv
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-            return exc_info.value.code
+            main()
         finally:
             sys.argv = old_argv
 
-    def test_url_found_output(self, make_archives, sample_entries, capsys):
-        """FOUND 输出格式正确。"""
-        weekly_root, _ = make_archives(sample_entries)
-        self._run(
-            [
-                "check_url.py",
-                "--end-date",
-                "2026-05-10",
-                "--weekly-root",
-                str(weekly_root),
-                "https://example.com/article-1",
-            ]
-        )
-        captured = capsys.readouterr()
-        assert "FOUND" in captured.out
-        assert "测试文章一" in captured.out
+    def test_found_output(self, url_env, capsys):
+        weekly_root, _ = url_env(urls=["https://e.com/1"])
+        self._run([
+            "check_url.py", "--end-date", "2026-07-24",
+            "--weekly-root", str(weekly_root),
+            "https://e.com/1",
+        ])
+        out = capsys.readouterr().out
+        assert "FOUND" in out
+        assert "Site:" in out
 
-    def test_url_not_found_output(self, make_archives, sample_entries, capsys):
-        """NOT_FOUND 输出格式正确。"""
-        weekly_root, _ = make_archives(sample_entries)
-        self._run(
-            [
-                "check_url.py",
-                "--end-date",
-                "2026-05-10",
-                "--weekly-root",
-                str(weekly_root),
-                "https://example.com/nonexistent",
-            ]
-        )
-        captured = capsys.readouterr()
-        assert "NOT_FOUND" in captured.out
+    def test_not_found_output(self, url_env, capsys):
+        weekly_root, _ = url_env(urls=["https://e.com/1"])
+        self._run([
+            "check_url.py", "--end-date", "2026-07-24",
+            "--weekly-root", str(weekly_root),
+            "https://e.com/missing",
+        ])
+        assert "NOT_FOUND" in capsys.readouterr().out
 
-    def test_no_arguments(self, capsys):
-        """无参数时 argparse 报错退出。"""
-        old_argv = sys.argv
-        try:
-            sys.argv = ["check_url.py"]
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-            assert exc_info.value.code != 0
-        finally:
-            sys.argv = old_argv
-
-    def test_batch_mode(self, make_archives, sample_entries, tmp_path, capsys):
-        """批量检查多个 URL。"""
-        weekly_root, _ = make_archives(sample_entries)
-
+    def test_batch_mode(self, url_env, tmp_path, capsys):
+        weekly_root, _ = url_env(urls=["https://e.com/1", "https://e.com/2"])
         url_file = tmp_path / "urls.txt"
         url_file.write_text(
-            "https://example.com/article-1\n"
-            "https://example.com/nonexistent\n"
-            "# This is a comment\n"
-            "https://example.com/article-2\n"
+            "https://e.com/1\n"
+            "https://e.com/missing\n"
+            "# comment\n"
+            "https://e.com/2\n"
         )
-
-        self._run(
-            [
-                "check_url.py",
-                "--end-date",
-                "2026-05-10",
-                "--weekly-root",
-                str(weekly_root),
-                "--file",
-                str(url_file),
-            ]
-        )
-        captured = capsys.readouterr()
-        lines = captured.out.strip().splitlines()
-        found_lines = [l for l in lines if l.startswith("FOUND:")]
-        not_found_lines = [l for l in lines if l.startswith("NOT_FOUND:")]
-        assert len(found_lines) == 2
-        assert len(not_found_lines) == 1
-
-    def test_missing_week_directory(self, tmp_path, capsys):
-        """周目录不存在时报错。"""
-        weekly_root = tmp_path / "weekly"
-        weekly_root.mkdir()
-
-        with pytest.raises(SystemExit) as exc_info:
-            get_archives_path("2026-05-10", root_override=weekly_root)
-        assert exc_info.value.code == 2
-        captured = capsys.readouterr()
-        assert "archives.json" in captured.err
-
-    def test_missing_archives_json(self, tmp_path, capsys):
-        """有周目录但无 archives.json 时报错。"""
-        weekly_root = tmp_path / "weekly"
-        (weekly_root / "2026-05-10" / "ai-trends").mkdir(parents=True)
-
-        with pytest.raises(SystemExit) as exc_info:
-            get_archives_path("2026-05-10", root_override=weekly_root)
-        assert exc_info.value.code == 2
-        assert "archives.json" in capsys.readouterr().err
+        self._run([
+            "check_url.py", "--end-date", "2026-07-24",
+            "--weekly-root", str(weekly_root),
+            "--file", str(url_file),
+        ])
+        out = capsys.readouterr().out
+        found = [line for line in out.splitlines() if line.startswith("FOUND:")]
+        not_found = [line for line in out.splitlines() if line.startswith("NOT_FOUND:")]
+        assert len(found) == 2
+        assert len(not_found) == 1
