@@ -236,6 +236,7 @@ class ClaimResult:
     meta_file: Path
     body_file: Path
     winner_site: str | None = None
+    url_index_won: bool = True
 
 
 def claim_url(
@@ -253,10 +254,13 @@ def claim_url(
     1. ``O_EXCL`` create ``<hash>.meta.json`` — this is the claim.
     2. Write ``<hash>.body.txt``.
     3. Append row to site ``index.jsonl``.
-    4. Append row to global ``url_index.jsonl`` (locked).
+    4. Append row to global ``url_index.jsonl`` (locked, first-writer-wins).
 
     Returns a ``ClaimResult``; ``won=False`` means another site had already
     created the meta file (caller should treat the URL as skipped).
+    ``url_index_won=False`` means this site created the article files but
+    another site won the global url_index race (caller should still count
+    this as a skip for cross-site dedup).
     """
     digest = url_hash(url)
     m_path = meta_path(ai_trends_dir, slug, digest)
@@ -282,6 +286,7 @@ def claim_url(
             meta_file=m_path,
             body_file=b_path,
             winner_site=winner_site,
+            url_index_won=False,
         )
 
     b_path.parent.mkdir(parents=True, exist_ok=True)
@@ -294,7 +299,7 @@ def claim_url(
         hash=digest,
         at=meta_payload.get("fetched_at"),
     )
-    append_url_index(
+    idx_won = append_url_index(
         url_index_path(ai_trends_dir),
         url=url,
         site=slug,
@@ -307,6 +312,7 @@ def claim_url(
         meta_file=m_path,
         body_file=b_path,
         winner_site=slug,
+        url_index_won=idx_won,
     )
 
 

@@ -69,6 +69,7 @@ CONTENT_MIN = 400
 DEFAULT_BODY_TTL_DAYS = 7
 DEFAULT_FETCH_CONCURRENCY = 4
 DEFAULT_FETCH_CONCURRENCY_PER_SOURCE = 2
+DEFAULT_SOURCE_CONCURRENCY = 4
 TERMINAL_SKIP_STATUSES = frozenset(
     {"fetched", "skipped_date", "skipped_filter", "cached"}
 )
@@ -196,6 +197,18 @@ def parse_concurrency(cfg: dict[str, Any] | None) -> tuple[int, int]:
     elif isinstance(raw_p, str) and raw_p.strip().isdigit():
         per_source = max(1, int(raw_p))
     return global_n, per_source
+
+
+def parse_source_concurrency(cfg: dict[str, Any] | None) -> int:
+    n = DEFAULT_SOURCE_CONCURRENCY
+    if not cfg:
+        return n
+    raw = cfg.get("source_concurrency")
+    if isinstance(raw, (int, float)) and not isinstance(raw, bool):
+        n = max(1, int(raw))
+    elif isinstance(raw, str) and raw.strip().isdigit():
+        n = max(1, int(raw.strip()))
+    return n
 
 
 def normalize_event_key(title: str | None, url: str | None = None) -> str:
@@ -877,6 +890,7 @@ def run(
     search_cfg: dict[str, Any] | None = None,
     fetch_concurrency: int | None = None,
     fetch_concurrency_per_source: int | None = None,
+    source_concurrency: int | None = None,
     max_retries: int = DEFAULT_RETRY_MAX,
     retry_base_delay: float = DEFAULT_RETRY_BASE_DELAY,
     sleep_fn: Callable[[float], None] | None = None,
@@ -912,6 +926,11 @@ def run(
         if fetch_concurrency_per_source is not None
         else cfg_per_source
     )
+    cfg_source_conc = parse_source_concurrency(cfg)
+    source_workers = min(
+        max(1, int(source_concurrency)) if source_concurrency is not None else cfg_source_conc,
+        max(1, len([s for s in load_sources(sources_path) if isinstance(s, dict)])),
+    )
 
     fetch_fn = fetch_fn or default_fetch
     sources = load_sources(sources_path)
@@ -922,27 +941,33 @@ def run(
 
     url_index = load_url_index(url_index_path(ai_trends_dir)) if resume else {}
     known_urls: set[str] = set(url_index.keys())
+    known_urls_lock = threading.Lock()
     taken_slugs: set[str] = set()
-
-    fetched_count = 0
-    skipped = 0
-    errors = 0
+    taken_slugs_lock = threading.Lock()
+    counters_lock = threading.Lock()
+    counters = {"fetched": 0, "skipped": 0, "errors": 0}
     global_sem = threading.Semaphore(global_workers)
 
-    for source in sources:
+    resolved_slugs: list[tuple[int, str]] = []
+    for i, source in enumerate(sources):
         if not isinstance(source, dict):
-            errors += 1
+            resolved_slugs.append((i, ""))
             continue
+        with taken_slugs_lock:
+            slug_res = resolve_unique_slug(ai_trends_dir, source, taken=taken_slugs)
+            slug = slug_res.slug
+            taken_slugs.add(slug)
+        resolved_slugs.append((i, slug))
+
+    def _process_source(source: dict, slug: str) -> None:
+        nonlocal counters
         name = source.get("name") or "unknown"
         list_url = source.get("url")
         if not isinstance(list_url, str) or not list_url.startswith(("http://", "https://")):
             append_error_log(ai_trends_dir, "config", str(list_url), "invalid source url")
-            errors += 1
-            continue
-
-        slug_res = resolve_unique_slug(ai_trends_dir, source, taken=taken_slugs)
-        slug = slug_res.slug
-        taken_slugs.add(slug)
+            with counters_lock:
+                counters["errors"] += 1
+            return
 
         use_proxy = source.get("use_proxy", "auto")
         url_include = source.get("url_include")
@@ -973,17 +998,21 @@ def run(
             append_error_log(ai_trends_dir, method, err_url, reason)
         if not items:
             if discover_errors:
-                errors += 1
-            continue
+                with counters_lock:
+                    counters["errors"] += 1
+            return
 
         to_fetch: list[dict[str, Any]] = []
         for item in items:
             url = item["url"]
-            if url in known_urls:
-                skipped += 1
-                continue
+            with known_urls_lock:
+                if url in known_urls:
+                    with counters_lock:
+                        counters["skipped"] += 1
+                    continue
             if should_skip_from_site_index(url, site_index, retry_errors=retry_errors):
-                skipped += 1
+                with counters_lock:
+                    counters["skipped"] += 1
                 continue
             if not url_allowed(
                 url,
@@ -995,7 +1024,8 @@ def run(
                     site_idx_path, url=url, status="skipped_filter", hash=url_hash(url),
                 )
                 site_index[url] = {"url": url, "status": "skipped_filter"}
-                skipped += 1
+                with counters_lock:
+                    counters["skipped"] += 1
                 continue
             pub = item.get("publish_date")
             if not date_allows(pub, start_date, end_date, allow_undated=allow_undated):
@@ -1003,7 +1033,8 @@ def run(
                     site_idx_path, url=url, status="skipped_date", hash=url_hash(url),
                 )
                 site_index[url] = {"url": url, "status": "skipped_date"}
-                skipped += 1
+                with counters_lock:
+                    counters["skipped"] += 1
                 continue
             if is_undated(pub):
                 if undated_used >= undated_quota:
@@ -1011,7 +1042,8 @@ def run(
                         site_idx_path, url=url, status="skipped_date", hash=url_hash(url),
                     )
                     site_index[url] = {"url": url, "status": "skipped_date"}
-                    skipped += 1
+                    with counters_lock:
+                        counters["skipped"] += 1
                     continue
                 undated_used += 1
 
@@ -1038,12 +1070,15 @@ def run(
                     },
                     body=cached.get("content") or "",
                 )
-                if result.won:
-                    fetched_count += 1
-                    known_urls.add(url)
+                if result.won and result.url_index_won:
+                    with counters_lock:
+                        counters["fetched"] += 1
+                    with known_urls_lock:
+                        known_urls.add(url)
                     site_index[url] = {"url": url, "status": "cached", "hash": result.hash}
                 else:
-                    skipped += 1
+                    with counters_lock:
+                        counters["skipped"] += 1
                 continue
 
             to_fetch.append(item)
@@ -1082,14 +1117,16 @@ def run(
                             site_idx_path, url=url, status="error", hash=url_hash(url),
                         )
                         site_index[url] = {"url": url, "status": "error"}
-                        errors += 1
+                        with counters_lock:
+                            counters["errors"] += 1
                         continue
                     if entry is None:
                         append_site_index(
                             site_idx_path, url=url, status="error", hash=url_hash(url),
                         )
                         site_index[url] = {"url": url, "status": "error"}
-                        errors += 1
+                        with counters_lock:
+                            counters["errors"] += 1
                         continue
                     if not date_allows(
                         entry.get("publish_date"), start_date, end_date,
@@ -1099,7 +1136,8 @@ def run(
                             site_idx_path, url=url, status="skipped_date", hash=url_hash(url),
                         )
                         site_index[url] = {"url": url, "status": "skipped_date"}
-                        skipped += 1
+                        with counters_lock:
+                            counters["skipped"] += 1
                         continue
                     if not passes_article_gate(
                         title=entry.get("original_title"),
@@ -1111,7 +1149,8 @@ def run(
                             site_idx_path, url=url, status="skipped_filter", hash=url_hash(url),
                         )
                         site_index[url] = {"url": url, "status": "skipped_filter"}
-                        skipped += 1
+                        with counters_lock:
+                            counters["skipped"] += 1
                         continue
                     result = claim_url(
                         ai_trends_dir,
@@ -1126,18 +1165,37 @@ def run(
                         },
                         body=entry.get("content") or "",
                     )
-                    if result.won:
-                        fetched_count += 1
-                        known_urls.add(url)
+                    if result.won and result.url_index_won:
+                        with counters_lock:
+                            counters["fetched"] += 1
+                        with known_urls_lock:
+                            known_urls.add(url)
                         site_index[url] = {"url": url, "status": "fetched", "hash": result.hash}
                     else:
-                        skipped += 1
+                        with counters_lock:
+                            counters["skipped"] += 1
+
+    valid_sources = [
+        (s, slug) for (i, slug), s in zip(resolved_slugs, sources)
+        if isinstance(s, dict) and slug
+    ]
+    if source_workers <= 1 or len(valid_sources) <= 1:
+        for source, slug in valid_sources:
+            _process_source(source, slug)
+    else:
+        with ThreadPoolExecutor(max_workers=source_workers) as pool:
+            futs = [
+                pool.submit(_process_source, source, slug)
+                for source, slug in valid_sources
+            ]
+            for fut in futs:
+                fut.result()
 
     return {
         "sources": len(sources),
-        "fetched": fetched_count,
-        "skipped": skipped,
-        "errors": errors,
+        "fetched": counters["fetched"],
+        "skipped": counters["skipped"],
+        "errors": counters["errors"],
     }
 
 

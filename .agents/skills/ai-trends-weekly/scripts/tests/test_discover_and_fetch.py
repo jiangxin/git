@@ -423,6 +423,46 @@ class TestDiscoverAndFetchRun:
         assert counts["fetched"] == 1
         assert counts["skipped"] >= 1
 
+    def test_cross_source_parallel_smoke(self, tmp_path):
+        weekly_root = tmp_path / "weekly"
+        ai_trends = weekly_root / END_DATE / "ai-trends"
+        ai_trends.mkdir(parents=True)
+        sources_path = tmp_path / "sources.json"
+        sources = [
+            {"name": "Source A", "url": "https://a.com/blog", "use_proxy": False, "fallback": "skip", "url_include": [r"/posts/"]},
+            {"name": "Source B", "url": "https://b.com/blog", "use_proxy": False, "fallback": "skip", "url_include": [r"/posts/"]},
+            {"name": "Source C", "url": "https://c.com/blog", "use_proxy": False, "fallback": "skip", "url_include": [r"/posts/"]},
+        ]
+        sources_path.write_text(json.dumps(sources, indent=2) + "\n")
+        import threading
+        fetch_lock = threading.Lock()
+        fetch_starts: list[float] = []
+
+        def slow_fetch(url, **kw):
+            import time
+            with fetch_lock:
+                fetch_starts.append(time.monotonic())
+            if url.endswith("/blog"):
+                return f'<a href="/posts/art-{url.split("//")[1].split(".")[0]}" data-date="2026-07-20">Art</a>'
+            if "/posts/" in url:
+                return DETAIL_HTML
+            raise FetchError(url, "curl(direct)", f"unexpected: {url}")
+
+        import time
+        time.monotonic()
+        counts = run(
+            START_DATE, END_DATE,
+            weekly_root=weekly_root, sources_path=sources_path,
+            fetch_fn=slow_fetch,
+            source_concurrency=3,
+            fetch_concurrency=3,
+            fetch_concurrency_per_source=1,
+        )
+        url_idx = load_url_index(url_index_path(ai_trends))
+        assert counts["fetched"] == 3
+        assert len(url_idx) == 3
+        assert counts["errors"] == 0
+
 
 class TestExtractText:
     def test_strips_script_style_and_truncates(self):
