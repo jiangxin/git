@@ -125,7 +125,7 @@ python3 .agents/skills/ai-trends-weekly/scripts/discover_and_fetch.py \
 
 ### 3. Agent 摘要：`pending.json` → `new.json`
 
-**这是 Agent 在本 skill 中的唯一内容职责。**
+**这是 Agent 在本 skill 中的唯一内容职责。**须对 `pending.json` **每一条**补齐摘要字段后写入 `new.json`，禁止只处理子集或仅精修部分条目。
 
 #### 输入（`pending.json`，脚本已写）
 
@@ -209,10 +209,11 @@ python3 .agents/skills/ai-trends-weekly/scripts/render_ai_trends.py \
 脚本内部：
 
 - 读 `archives.json`，按 `publish_date` 落在 **`[start_date, end_date]`** 过滤（与 `_shared/scripts/filter_by_date.py` 同源逻辑；被剔除项打印到 stderr）
-- 排序：`rank_hint` 升序（缺省视为很大），再 `publish_date` 降序
-- 最多 **50** 条；正文前 **10** 条外露，第 11–50 条放入 `<details><summary>更多…（共 N 篇）</summary>…</details>`
+- 选取：按 `rank_hint` 升序（缺省视为很大），同优先级再按 `publish_date` 降序，最多 **50** 条
+- 展示：正文按 `publish_date` 分组（`#### YYYY-MM-DD`），日期从新到旧；同日内仍按 `rank_hint` 升序
 - 条目格式：`* **[cn_title](url)**：cn_summary。📰 source 📅 publish_date`
 - 「### 参考来源」与正文收录条目一致，链到 `original_title`
+- Agent 须对 **pending.json 中每一条** 补齐摘要字段，不得只摘要子集
 
 如需单独调试日期过滤，可调用：
 

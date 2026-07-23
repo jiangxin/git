@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -20,7 +21,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_shared" / "script
 from filter_by_date import extract_date, filter_entries  # noqa: E402
 from json_archives import load_json_array  # noqa: E402
 
-VISIBLE_COUNT = 10
 MAX_ITEMS = 50
 
 
@@ -55,7 +55,7 @@ def rank_hint_value(entry: dict[str, Any]) -> float:
 
 
 def sort_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Sort by rank_hint ascending, then publish_date descending (stable)."""
+    """Sort by rank_hint ascending, then publish_date descending (for Top-N pick)."""
     by_date = sorted(
         entries,
         key=lambda e: extract_date(e.get("publish_date")) or "",
@@ -64,11 +64,24 @@ def sort_entries(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return sorted(by_date, key=rank_hint_value)
 
 
+def group_by_date(entries: list[dict[str, Any]]) -> list[tuple[str, list[dict[str, Any]]]]:
+    """Group entries by publish_date (newest first); within a day keep rank_hint order."""
+    buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for entry in entries:
+        day = extract_date(entry.get("publish_date")) or str(entry.get("publish_date") or "")
+        buckets[day].append(entry)
+    # Within each day: rank_hint asc, then keep relative order
+    for day, group in buckets.items():
+        buckets[day] = sorted(group, key=rank_hint_value)
+    ordered_days = sorted(buckets.keys(), reverse=True)
+    return [(day, buckets[day]) for day in ordered_days]
+
+
 def format_item(entry: dict[str, Any]) -> str:
     """One Markdown bullet for the weekly body."""
     title = entry.get("cn_title") or entry.get("original_title") or "(untitled)"
     url = entry.get("url") or ""
-    summary = entry.get("cn_summary") or ""
+    summary = (entry.get("cn_summary") or "").rstrip("。. ")
     source = entry.get("source") or ""
     day = extract_date(entry.get("publish_date")) or str(entry.get("publish_date") or "")
     return f"* **[{title}]({url})**：{summary}。📰 {source} 📅 {day}"
@@ -82,7 +95,7 @@ def format_reference(index: int, entry: dict[str, Any]) -> str:
 
 
 def render_markdown(end_date: str, entries: list[dict[str, Any]]) -> str:
-    """Build AI-trends.md content from sorted, capped entries."""
+    """Build AI-trends.md: Top-N by rank, displayed grouped by date (newest first)."""
     items = entries[:MAX_ITEMS]
     lines: list[str] = [
         f"## {end_date} AI 行业动态周报",
@@ -91,31 +104,19 @@ def render_markdown(end_date: str, entries: list[dict[str, Any]]) -> str:
         "",
     ]
 
-    visible = items[:VISIBLE_COUNT]
-    rest = items[VISIBLE_COUNT:]
-
-    for i, entry in enumerate(visible):
-        lines.append(format_item(entry))
-        if i < len(visible) - 1 or rest:
+    groups = group_by_date(items)
+    for gi, (day, group) in enumerate(groups):
+        lines.append(f"#### {day}")
+        lines.append("")
+        for i, entry in enumerate(group):
+            lines.append(format_item(entry))
+            if i < len(group) - 1:
+                lines.append("")
+        if gi < len(groups) - 1:
+            lines.append("")
             lines.append("")
 
-    if rest:
-        n = len(rest)
-        lines.append("<details>")
-        lines.append(f"<summary>更多…（共 {n} 篇）</summary>")
-        lines.append("")
-        for i, entry in enumerate(rest):
-            lines.append(format_item(entry))
-            if i < len(rest) - 1:
-                lines.append("")
-        lines.append("")
-        lines.append("</details>")
-        lines.append("")
-
-    if not visible:
-        # Keep a blank line before 参考来源 when body is empty
-        pass
-    elif not rest:
+    if items:
         lines.append("")
 
     lines.append("### 参考来源")
