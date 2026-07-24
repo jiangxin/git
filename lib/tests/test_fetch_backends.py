@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -10,6 +11,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from fetch_backends import (  # noqa: E402
     FetchError,
+    _get_storage_state_path,
+    _load_storage_state,
+    _save_storage_state,
     fetch_browser,
     fetch_html,
     fetch_html_with_backoff,
@@ -274,3 +278,81 @@ class TestParseLastModified:
 
     def test_invalid_format(self):
         assert parse_last_modified("not a date") is None
+
+
+class TestStorageState:
+    def test_load_nonexistent_file(self, tmp_path):
+        """Loading a non-existent file should return None."""
+        path = tmp_path / "nonexistent.json"
+        assert _load_storage_state(path) is None
+
+    def test_load_valid_file(self, tmp_path):
+        """Loading a valid storage_state file should return the data."""
+        path = tmp_path / "state.json"
+        test_data = {"cookies": [{"name": "test", "value": "123"}]}
+        path.write_text(json.dumps(test_data))
+        
+        result = _load_storage_state(path)
+        assert result == test_data
+
+    def test_load_corrupted_file(self, tmp_path):
+        """Loading a corrupted file should return None."""
+        path = tmp_path / "corrupted.json"
+        path.write_text("{ invalid json }")
+        
+        assert _load_storage_state(path) is None
+
+    def test_save_and_load_roundtrip(self, tmp_path):
+        """Saving and loading should preserve the data."""
+        path = tmp_path / "state.json"
+        test_data = {
+            "cookies": [{"name": "session", "value": "abc123"}],
+            "origins": []
+        }
+        
+        _save_storage_state(path, test_data)
+        loaded = _load_storage_state(path)
+        
+        assert loaded == test_data
+
+    def test_save_creates_parent_dirs(self, tmp_path):
+        """Saving should create parent directories if they don't exist."""
+        path = tmp_path / "subdir" / "nested" / "state.json"
+        test_data = {"cookies": []}
+        
+        _save_storage_state(path, test_data)
+        
+        assert path.exists()
+        assert _load_storage_state(path) == test_data
+
+    def test_get_storage_state_path_with_config(self, tmp_path, monkeypatch):
+        """Should read path from config.json."""
+        config_path = tmp_path / "config.json"
+        state_path = tmp_path / "state.json"
+        config_path.write_text(json.dumps({
+            "playwright_storage_state": str(state_path)
+        }))
+        
+        # Mock the config file location
+        import fetch_backends
+        original_load = fetch_backends.load_repo_config
+        
+        def mock_load(*args, **kwargs):
+            return json.loads(config_path.read_text())
+        
+        monkeypatch.setattr(fetch_backends, "load_repo_config", mock_load)
+        
+        result = _get_storage_state_path()
+        assert result == state_path
+
+    def test_get_storage_state_path_without_config(self, monkeypatch):
+        """Should return None when config doesn't have the key."""
+        import fetch_backends
+        
+        def mock_load(*args, **kwargs):
+            return {}
+        
+        monkeypatch.setattr(fetch_backends, "load_repo_config", mock_load)
+        
+        result = _get_storage_state_path()
+        assert result is None

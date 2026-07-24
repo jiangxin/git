@@ -7,13 +7,17 @@ browser retry when HTTP hits a Cloudflare challenge.
 
 from __future__ import annotations
 
+import fcntl
+import json
 import re
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any, Callable, Literal
 
 from check_cloudflare import is_cloudflare
+from repo_config import load_repo_config
 
 FetchMode = Literal["http", "browser"]
 FetchFn = Callable[..., str]
@@ -178,6 +182,48 @@ def fetch_last_modified(
         return None
 
 
+def _get_storage_state_path() -> Path | None:
+    """Read playwright_storage_state from config.json and return expanded path."""
+    try:
+        cfg = load_repo_config(Path(__file__))
+        raw = cfg.get("playwright_storage_state")
+        if not raw or not isinstance(raw, str):
+            return None
+        return Path(raw).expanduser()
+    except Exception:
+        return None
+
+
+def _load_storage_state(path: Path) -> dict[str, Any] | None:
+    """Load storage_state from file, returning None on any error."""
+    if not path.is_file():
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            try:
+                data = json.load(f)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        return data if isinstance(data, dict) else None
+    except (json.JSONDecodeError, OSError, ValueError):
+        return None
+
+
+def _save_storage_state(path: Path, state: dict[str, Any]) -> None:
+    """Save storage_state to file with exclusive locking."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                json.dump(state, f, ensure_ascii=False, indent=2)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        pass
+
+
 def fetch_browser(
     url: str,
     *,
@@ -201,6 +247,12 @@ def fetch_browser(
     if use_proxy_flag and proxy:
         context_kwargs["proxy"] = {"server": proxy}
 
+    storage_state_path = _get_storage_state_path()
+    if storage_state_path:
+        loaded_state = _load_storage_state(storage_state_path)
+        if loaded_state:
+            context_kwargs["storage_state"] = loaded_state
+
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(**launch_kwargs)
@@ -213,6 +265,14 @@ def fetch_browser(
                     timeout=max(timeout, 1) * 1000,
                 )
                 html = page.content()
+                
+                if storage_state_path:
+                    try:
+                        state = context.storage_state()
+                        _save_storage_state(storage_state_path, state)
+                    except Exception:
+                        pass
+                
                 context.close()
                 return html
             finally:
