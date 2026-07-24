@@ -1,8 +1,9 @@
-"""HTML pagination: detect next-page URLs and paginate listing pages."""
+"""HTML and RSS pagination: detect next-page URLs and paginate listing pages."""
 
 from __future__ import annotations
 
 import re
+import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
@@ -177,5 +178,131 @@ def paginate_html_discovery(
             if not next_url or next_url in seen_urls:
                 break
             current_url = next_url
+
+    return all_items, errors
+
+
+def _detect_feed_next_url(xml_text: str, feed_url: str) -> str | None:
+    """Detect next-page URL from Atom <link rel="next"> tag.
+
+    Returns None if no next link found or if XML is malformed.
+    """
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        return None
+
+    tag = root.tag.rsplit("}", 1)[-1].lower() if "}" in root.tag else root.tag.lower()
+    if tag != "feed":
+        return None  # Not Atom
+
+    for child in root:
+        child_tag = child.tag.rsplit("}", 1)[-1].lower() if "}" in child.tag else child.tag.lower()
+        if child_tag == "link":
+            rel = (child.attrib.get("rel") or "").strip().lower()
+            href = (child.attrib.get("href") or "").strip()
+            if rel == "next" and href:
+                return urljoin(feed_url, href)
+    return None
+
+
+def _build_paged_url(feed_url: str, page: int) -> str:
+    """Build a WordPress-style paged URL: feed_url?paged=N."""
+    parsed = urlparse(feed_url)
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    query["paged"] = [str(page)]
+    new_qs = urlencode(
+        {k: v[0] if len(v) == 1 else v for k, v in query.items()},
+        doseq=True,
+    )
+    return urlunparse((
+        parsed.scheme, parsed.netloc, parsed.path,
+        parsed.params, new_qs, "",
+    ))
+
+
+def paginate_feed_discovery(
+    feed_url: str,
+    *,
+    fetch_feed_fn: Callable[[str], str],
+    parse_feed_fn: Callable[[str, str], list[dict[str, Any]]],
+    max_pages: int,
+    start_date: str,
+) -> tuple[list[dict[str, Any]], list[tuple[str, str, str]]]:
+    """Paginate through RSS/Atom feeds, aggregating all discovered items.
+
+    Supports two pagination strategies:
+    1. Atom <link rel="next"> (detected automatically)
+    2. WordPress ?paged=N (tried for RSS feeds without Atom next link)
+
+    Falls back to single-page behavior if neither strategy works.
+
+    Args:
+        feed_url: The URL of the first feed page.
+        fetch_feed_fn: Callable that fetches a URL and returns XML content.
+        parse_feed_fn: Callable that parses XML into items.
+            Takes (xml_text, base_url) and returns list of item dicts.
+        max_pages: Maximum number of pages to fetch (>= 1).
+        start_date: Date string (YYYY-MM-DD). Items older than this trigger
+            early-stop when all items on a page are older.
+
+    Returns:
+        A tuple of (all_items, errors) where errors is a list of
+        (method, url, reason) tuples for failed page fetches.
+    """
+    all_items: list[dict[str, Any]] = []
+    errors: list[tuple[str, str, str]] = []
+    seen_urls: set[str] = set()
+    current_url = feed_url
+    use_paged = False
+    page_num = 0
+
+    for page_idx in range(max_pages):
+        try:
+            xml_text = fetch_feed_fn(current_url)
+        except Exception as exc:
+            # If we're trying WordPress paged for the first time and it fails,
+            # silently stop (the feed just doesn't support paged pagination).
+            if use_paged and page_idx == 1:
+                break
+            errors.append(("pagination", current_url, str(exc)))
+            break
+
+        items = parse_feed_fn(xml_text, current_url)
+
+        # Dedupe
+        new_items = []
+        for item in items:
+            url = item.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                new_items.append(item)
+        all_items.extend(new_items)
+
+        # Date early-stop
+        if _all_items_older_than(new_items, start_date):
+            break
+
+        # Find next page
+        if page_idx < max_pages - 1:
+            # Strategy 1: Atom <link rel="next">
+            next_url = _detect_feed_next_url(xml_text, current_url)
+            if next_url:
+                current_url = next_url
+                continue
+
+            # Strategy 2: WordPress ?paged=N
+            if page_idx == 0:
+                # First page: try paged=2 and see if it returns different items
+                use_paged = True
+            if use_paged:
+                page_num = page_idx + 2
+                candidate = _build_paged_url(feed_url, page_num)
+                if candidate == current_url:
+                    break  # No progress
+                current_url = candidate
+                continue
+
+            break  # No pagination strategy worked
 
     return all_items, errors
