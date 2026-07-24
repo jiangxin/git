@@ -9,9 +9,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urljoin
 
-# filter_by_date lives in skills/_shared/scripts
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "_shared" / "scripts"))
-from filter_by_date import extract_date  # noqa: E402
+from filter_by_date import extract_date
 
 
 def _local(tag: str) -> str:

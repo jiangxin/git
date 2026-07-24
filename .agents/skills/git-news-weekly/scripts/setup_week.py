@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create weekly/<end_date>/ai-trends/ directory for the AI trends skill.
+"""Create weekly/<end_date>/git-news/ directory for the Git news skill.
 
 Usage:
     python3 setup_week.py [<YYYY-MM-DD>]
@@ -24,7 +24,7 @@ from week_bounds import (
     resolve_anchor_datetime,
 )
 
-SKILL_SUBDIR = "ai-trends"
+SKILL_SUBDIR = "git-news"
 
 
 def setup_week(weekly_root, end_date):

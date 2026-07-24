@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Render weekly/<end_date>/AI-trends.md from per-site article sidecars.
+"""Render weekly/<end_date>/Git-news.md from per-site article sidecars.
 
 Thin wrapper around lib/render_report.run_report().
 
 Usage:
-    python3 render_ai_trends.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
-                                [--weekly-root PATH] [--max-per-day K]
+    python3 render_git_news.py --start-date YYYY-MM-DD --end-date YYYY-MM-DD
+                               [--weekly-root PATH] [--max-per-day K]
 """
 
 from __future__ import annotations
@@ -21,16 +21,16 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from render_report import run_report  # noqa: E402
 
-SKILL_SUBDIR = "ai-trends"
-OUTPUT_FILENAME = "AI-trends.md"
-TITLE = "AI 行业动态周报"
-SUBTITLE = "本周 AI 行业动态"
+SKILL_SUBDIR = "git-news"
+OUTPUT_FILENAME = "Git-news.md"
+TITLE = "Git 技术动态周报"
+SUBTITLE = "本周 Git 技术动态"
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Render AI-trends.md from per-site article sidecars.",
-        epilog="示例: python3 render_ai_trends.py --start-date 2026-05-03 --end-date 2026-05-10",
+        description="Render Git-news.md from per-site article sidecars.",
+        epilog="示例: python3 render_git_news.py --start-date 2026-05-03 --end-date 2026-05-10",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--start-date", required=True, help="Start date YYYY-MM-DD (inclusive)")

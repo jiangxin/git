@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check summary completeness for all fetched articles in ai-trends.
+"""Check summary completeness for all fetched articles in git-news.
 
 Thin wrapper around lib/check_helpers.
 
@@ -24,7 +24,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from check_helpers import check_summaries, format_result, resolve_skill_dir  # noqa: E402
 
-SKILL_SUBDIR = "ai-trends"
+SKILL_SUBDIR = "git-news"
 
 
 def main() -> None:

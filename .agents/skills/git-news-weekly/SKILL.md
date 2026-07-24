@@ -1,10 +1,10 @@
 ---
-name: ai-trends-weekly
+name: git-news-weekly
 disable-model-invocation: true
 description: >
-  Explicit invocation only (e.g. `/ai-trends-weekly`); never auto-triggered by conversation context or keywords.
-  Collects AI industry news for the configured week interval [start_date, end_date] (see config.json start_day/end_day) and compiles them into the "AI 行业动态" section of the weekly report.
-  Produces `weekly/<YYYY-MM-DD>/AI-trends.md` summarizing that week's AI news.
+  Explicit invocation only (e.g. `/git-news-weekly`); never auto-triggered by conversation context or keywords.
+  Collects Git technology news and blog posts for the configured week interval [start_date, end_date] (see config.json start_day/end_day) and compiles them into the "Git 技术动态" section of the weekly report.
+  Produces `weekly/<YYYY-MM-DD>/Git-news.md` summarizing that week's Git tech news.
   Accepts an optional `date` argument (YYYY-MM-DD); defaults to today if omitted. See "参数与周期变量" in the body for details.
 arguments:
   - name: date
@@ -13,11 +13,11 @@ arguments:
     description: 锚定周报的参考日期；传给 `setup_week.py` 以计算收集闭区间 [start_date, end_date]（与脚本参数一致时可省略，脚本默认本地今天）。
 ---
 
-# AI Trends Weekly
+# Git News Weekly
 
-本 skill 已设置 `disable-model-invocation: true`，须由用户显式加载（如 `/ai-trends-weekly`）后按本文执行。
+本 skill 已设置 `disable-model-invocation: true`，须由用户显式加载（如 `/git-news-weekly`）后按本文执行。
 
-**编排原则**：发现链接、抓取正文、渲染 Markdown 均由脚本完成；Agent **仅**为已抓取文章补写 `.summary.md` sidecar。不得自行遍历数据源做 WebFetch/curl 爬取，不得手写整份 `AI-trends.md` 结构。
+**编排原则**：发现链接、抓取正文、渲染 Markdown 均由脚本完成；Agent **仅**为已抓取文章补写 `.summary.md` sidecar。不得自行遍历数据源做 WebFetch/curl 爬取，不得手写整份 `Git-news.md` 结构。
 
 ## 参数与周期变量
 
@@ -78,7 +78,7 @@ playwright install chromium
 ## 目录布局
 
 ```text
-weekly/<end_date>/ai-trends/
+weekly/<end_date>/git-news/
   url_index.jsonl                 # 全局：url → {site, hash, at}；先写胜
   error.log                       # URL/抓取失败日志
   sites/<slug>/
@@ -87,7 +87,7 @@ weekly/<end_date>/ai-trends/
       <hash>.body.txt             # 抽取后正文
       <hash>.meta.json            # 抓取元数据
       <hash>.summary.md           # Agent sidecar（YAML front matter）
-  AI-trends.md                    # render 输出（在 weekly/<end_date>/）
+  Git-news.md                     # render 输出（在 weekly/<end_date>/）
 ```
 
 **停止写入**（新跑不再产生）：`pending.json`、`new.json`、`fetch_state.jsonl`、`raw/`、`archives.json`。历史周目录文件可残留，脚本不读。
@@ -101,8 +101,8 @@ weekly/<end_date>/ai-trends/
   "url": "https://example.com/a",
   "original_title": "...",
   "publish_date": "2026-07-20",
-  "source": "Anthropic News",
-  "site": "anthropic-news",
+  "source": "GitHub Blog",
+  "site": "github-blog",
   "hash": "<sha1>",
   "fetched_at": "2026-07-23T11:00:00Z",
   "status": "fetched"
@@ -141,16 +141,16 @@ rank_hint: 1
 
 ```text
 setup_week.py
-    → start_date end_date，创建 weekly/<end_date>/ai-trends/
-discover_and_fetch.py --start-date --end-date
+    → start_date end_date，创建 weekly/<end_date>/git-news/
+discover_and_fetch.py --start-date --end-date --sources <path>
     → 站间并行：RSS → HTML → fallback → 详情抓取
     → URL 过滤 + 日期策略 + 有效稿门禁
     → sites/<slug>/articles/ + url_index.jsonl（增量；默认 --resume）
 Agent: 扫描缺 .summary.md 的文章，逐篇写 sidecar
 check_summaries.py --end-date
     → 断言：所有 fetched/cached 条目均有合法 summary
-render_ai_trends.py --start-date --end-date
-    → AI-trends.md（Top-50 + 按日分组；可选 --max-per-day）
+render_git_news.py --start-date --end-date
+    → Git-news.md（Top-50 + 按日分组；可选 --max-per-day）
 render_index.py
     → weekly/index.html（所有周期 HTML 报告导航索引）
 ```
@@ -158,7 +158,7 @@ render_index.py
 ### 1. 确定收集周期与初始化目录
 
 ```bash
-read -r start_date end_date < <(python3 .agents/skills/ai-trends-weekly/scripts/setup_week.py "${date:-$(date +%F)}")
+read -r start_date end_date < <(python3 .agents/skills/git-news-weekly/scripts/setup_week.py "${date:-$(date +%F)}")
 ```
 
 ### 2. 发现链接并抓取正文
@@ -166,8 +166,8 @@ read -r start_date end_date < <(python3 .agents/skills/ai-trends-weekly/scripts/
 ```bash
 python3 lib/discover_and_fetch.py \
   --start-date "$start_date" --end-date "$end_date" \
-  --skill-subdir ai-trends \
-  --sources .agents/skills/ai-trends-weekly/references/sources.json
+  --skill-subdir git-news \
+  --sources .agents/skills/git-news-weekly/references/sources.json
 # stdout: sources=N fetched=M skipped=K errors=E
 ```
 
@@ -186,14 +186,14 @@ python3 lib/discover_and_fetch.py \
 #### 禁止项
 
 - **不得**修改 `references/sources.json` 或另建源列表
-- **不得**用手写 Markdown 生成整份 `AI-trends.md`（必须由 `render_ai_trends.py` 产出）
+- **不得**用手写 Markdown 生成整份 `Git-news.md`（必须由 `render_git_news.py` 产出）
 - **不得**自行循环 WebFetch/curl 遍历全部数据源
 - **不得**写入 `pending.json` / `new.json`
 
 ### 4. 校验摘要完备性
 
 ```bash
-python3 .agents/skills/ai-trends-weekly/scripts/check_summaries.py --end-date "$end_date"
+python3 .agents/skills/git-news-weekly/scripts/check_summaries.py --end-date "$end_date"
 # stdout: OK: summarized=N missing=0 sites=S
 # missing>0 时非零退出
 ```
@@ -203,9 +203,9 @@ python3 .agents/skills/ai-trends-weekly/scripts/check_summaries.py --end-date "$
 ### 5. 渲染周报 Markdown
 
 ```bash
-python3 .agents/skills/ai-trends-weekly/scripts/render_ai_trends.py \
+python3 .agents/skills/git-news-weekly/scripts/render_git_news.py \
   --start-date "$start_date" --end-date "$end_date"
-# stdout: WROTE: .../weekly/<end_date>/AI-trends.md
+# stdout: WROTE: .../weekly/<end_date>/Git-news.md
 ```
 
 可选参数：`--weekly-root PATH`、`--max-per-day K`、`--quality-min M`（入围文章数 < M 时 stderr 输出 QUALITY_WARNING，默认 5）。
@@ -225,9 +225,9 @@ python3 lib/render_index.py
 
 ```bash
 # 检查 URL 是否已收录
-python3 .agents/skills/ai-trends-weekly/scripts/check_url.py --end-date "$end_date" <URL>
+python3 .agents/skills/git-news-weekly/scripts/check_url.py --end-date "$end_date" <URL>
 # 批量检查（一行一个 URL）
-python3 .agents/skills/ai-trends-weekly/scripts/check_url.py --end-date "$end_date" --file urls.txt
+python3 .agents/skills/git-news-weekly/scripts/check_url.py --end-date "$end_date" --file urls.txt
 ```
 
 可选参数：`--weekly-root PATH`、`--file FILE`

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check whether a URL exists in url_index.jsonl for ai-trends.
+"""Check whether a URL exists in url_index.jsonl for git-news.
 
 Thin wrapper around lib/check_helpers.
 
@@ -22,7 +22,7 @@ sys.path.insert(0, str(REPO_ROOT / "lib"))
 
 from check_helpers import check_url, get_url_index  # noqa: E402
 
-SKILL_SUBDIR = "ai-trends"
+SKILL_SUBDIR = "git-news"
 
 
 def main():
