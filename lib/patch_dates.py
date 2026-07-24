@@ -149,14 +149,27 @@ def find_undated(end_date: str, skill_subdir: str, weekly_root: Path | None = No
 import argparse
 
 
+def _infer_skill_subdir(weekly_root: Path | None) -> str | None:
+    wr = Path(weekly_root) if weekly_root else REPO_ROOT / "weekly"
+    if wr.is_dir():
+        subs = [
+            d.name for d in wr.iterdir()
+            if d.is_dir() and (d / "sites").is_dir()
+        ]
+        if len(subs) == 1:
+            return subs[0]
+    return None
+
+
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Patch missing publish_date in article meta.json files.",
     )
     p.add_argument("--end-date", default=datetime.now().strftime("%Y-%m-%d"),
                     help="Week dir YYYY-MM-DD (default: today)")
-    p.add_argument("--skill-subdir", required=True,
-                    help="Subdirectory under weekly/<end_date>/ (e.g. ai-trends, git-news)")
+    p.add_argument("--skill-subdir", default=None,
+                    help="Subdirectory under weekly/<end_date>/ (e.g. ai-trends, git-news); "
+                         "auto-inferred from weekly dir when omitted")
     p.add_argument("--weekly-root", default=None,
                     help="Override weekly/ directory path")
     return p.parse_args()
@@ -167,6 +180,13 @@ def main():
     end_date = args.end_date
     skill_subdir = args.skill_subdir
     weekly_root = Path(args.weekly_root) if args.weekly_root else None
+
+    if not skill_subdir:
+        skill_subdir = _infer_skill_subdir(weekly_root)
+    if not skill_subdir:
+        print("ERROR: Cannot determine --skill-subdir automatically.", file=sys.stderr)
+        print("Pass --skill-subdir explicitly (e.g. ai-trends, git-news).", file=sys.stderr)
+        sys.exit(2)
 
     cfg = load_config()
     proxy = cfg.get("proxy")

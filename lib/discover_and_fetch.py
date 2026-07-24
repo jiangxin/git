@@ -144,6 +144,26 @@ def default_sources_path() -> Path:
     return SCRIPT_DIR.parent / "references" / "sources.json"
 
 
+def infer_skill_subdir(sources_path: str | None, weekly_root: Path | None, end_date: str | None = None) -> str | None:
+    if sources_path:
+        p = str(sources_path)
+        if "ai-trends" in p:
+            return "ai-trends"
+        if "git-news" in p:
+            return "git-news"
+    wr = Path(weekly_root) if weekly_root else SCRIPT_DIR.parents[0] / "weekly"
+    if wr.is_dir() and end_date:
+        week_dir = wr / end_date
+        if week_dir.is_dir():
+            subs = [
+                d.name for d in week_dir.iterdir()
+                if d.is_dir() and (d / "sites").is_dir()
+            ]
+            if len(subs) == 1:
+                return subs[0]
+    return None
+
+
 def resolve_skill_dir(end_date: str, skill_subdir: str, weekly_root=None) -> Path:
     if not end_date:
         print("ERROR: end_date is required (YYYY-MM-DD)", file=sys.stderr)
@@ -1381,8 +1401,9 @@ def main() -> None:
     parser.add_argument("--end-date", required=True, help="Week dir / inclusive end YYYY-MM-DD")
     parser.add_argument("--weekly-root", default=None, help="Override weekly/ directory path")
     parser.add_argument(
-        "--skill-subdir", required=True,
-        help="Subdirectory under weekly/<end_date>/ (e.g. ai-trends, git-news)",
+        "--skill-subdir", default=None,
+        help="Subdirectory under weekly/<end_date>/ (e.g. ai-trends, git-news); "
+             "auto-inferred from --sources path or weekly dir when omitted",
     )
     parser.add_argument(
         "--sources", default=None,
@@ -1404,10 +1425,19 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    skill_subdir = args.skill_subdir
+    if not skill_subdir:
+        skill_subdir = infer_skill_subdir(args.sources, args.weekly_root, args.end_date)
+    if not skill_subdir:
+        parser.error(
+            "Cannot determine --skill-subdir automatically. "
+            "Pass --skill-subdir explicitly (e.g. ai-trends, git-news)."
+        )
+
     counts = run(
         args.start_date,
         args.end_date,
-        skill_subdir=args.skill_subdir,
+        skill_subdir=skill_subdir,
         weekly_root=args.weekly_root,
         sources_path=Path(args.sources) if args.sources else None,
         resume=not args.fresh,

@@ -142,10 +142,11 @@ rank_hint: 1
 ```text
 setup_week.py
     → start_date end_date，创建 weekly/<end_date>/ai-trends/
-discover_and_fetch.py --start-date --end-date
+discover_and_fetch.py --start-date --end-date --sources <path>
     → 站间并行：RSS → HTML → fallback → 详情抓取
     → URL 过滤 + 日期策略 + 有效稿门禁
     → sites/<slug>/articles/ + url_index.jsonl（增量；默认 --resume）
+    → --skill-subdir 自动从 --sources 路径推导
 Agent: 扫描缺 .summary.md 的文章，逐篇写 sidecar
 check_summaries.py --end-date
     → 断言：所有 fetched/cached 条目均有合法 summary
@@ -166,12 +167,12 @@ read -r start_date end_date < <(python3 .agents/skills/ai-trends-weekly/scripts/
 ```bash
 python3 lib/discover_and_fetch.py \
   --start-date "$start_date" --end-date "$end_date" \
-  --skill-subdir ai-trends \
   --sources .agents/skills/ai-trends-weekly/references/sources.json
 # stdout: sources=N fetched=M skipped=K errors=E
+# --skill-subdir 自动从 --sources 路径推导，无需显式传递
 ```
 
-可选参数：`--sources PATH`、`--weekly-root PATH`、`--skill-subdir SKILL_SUBDIR`、`--resume`（默认）、`--fresh`、`--retry-errors`
+可选参数：`--sources PATH`、`--weekly-root PATH`、`--skill-subdir SKILL_SUBDIR`（自动推导，通常无需指定）、`--resume`（默认）、`--fresh`、`--retry-errors`
 
 ### 3. Agent 摘要：写 `.summary.md` sidecar
 
