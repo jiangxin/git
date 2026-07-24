@@ -144,6 +144,36 @@ _MONTH_NAMES = {
 default_fetch = fetch_http
 
 
+def _make_browser_fetch_fn(
+    browser_fetch_fn: FetchFn | None,
+    stealth: bool,
+    storage_state: str | None,
+) -> FetchFn:
+    """Create a browser fetch function with source-specific stealth and storage_state."""
+    from fetch_backends import fetch_browser
+    
+    base_fn = browser_fetch_fn or fetch_browser
+    
+    def wrapper(
+        url: str,
+        *,
+        proxy: str | None,
+        use_proxy_flag: bool,
+        timeout: int = 30,
+    ) -> str:
+        # Call the base function with stealth and storage_state parameters
+        return base_fn(
+            url,
+            proxy=proxy,
+            use_proxy_flag=use_proxy_flag,
+            timeout=timeout,
+            stealth=stealth,
+            storage_state=storage_state,
+        )
+    
+    return wrapper
+
+
 def default_sources_path() -> Path:
     return SCRIPT_DIR.parent / "references" / "sources.json"
 
@@ -1210,6 +1240,13 @@ def run(
         src_max_pages = source.get("max_pages")
         eff_max_pages = int(src_max_pages) if src_max_pages is not None else default_max_pages
 
+        # Create source-specific browser fetch function with stealth and storage_state
+        source_stealth = bool(source.get("stealth", False))
+        source_storage_state = source.get("storage_state")
+        source_browser_fetch_fn = _make_browser_fetch_fn(
+            browser_fetch_fn, source_stealth, source_storage_state
+        )
+
         site_idx_path = site_index_path(ai_trends_dir, slug)
         site_index = load_site_index(site_idx_path) if resume else {}
 
@@ -1226,7 +1263,7 @@ def run(
             search_fn=search_fn,
             mode=fetch_mode,
             browser_on_cloudflare=boc,
-            browser_fetch_fn=browser_fetch_fn,
+            browser_fetch_fn=source_browser_fetch_fn,
             max_pages=eff_max_pages,
         )
         for method, err_url, reason in discover_errors:

@@ -214,10 +214,21 @@ def fetch_last_modified(
         return None
 
 
-def _get_storage_state_path() -> Path | None:
-    """Read playwright_storage_state from config.json and return expanded path."""
+def _get_storage_state_path(storage_state: str | None = None) -> Path | None:
+    """Read playwright_storage_state from config.json and return expanded path.
+    
+    If storage_state is provided, use it as a key to look up in the states directory.
+    Otherwise, fall back to the global playwright_storage_state config.
+    """
     try:
         cfg = load_repo_config(Path(__file__))
+        
+        # If a specific storage_state key is provided, use the states directory
+        if storage_state:
+            states_dir = cfg.get("playwright_storage_state_dir", "~/.playwright-cli/states")
+            return Path(states_dir).expanduser() / f"{storage_state}.json"
+        
+        # Otherwise, use the global playwright_storage_state config
         raw = cfg.get("playwright_storage_state")
         if not raw or not isinstance(raw, str):
             return None
@@ -263,6 +274,7 @@ def fetch_browser(
     use_proxy_flag: bool,
     timeout: int = 30,
     stealth: bool = False,
+    storage_state: str | None = None,
 ) -> str:
     """Fetch URL via Playwright Chromium. Raises FetchError if unavailable."""
     method = method_label(use_proxy_flag, mode="browser")
@@ -280,7 +292,7 @@ def fetch_browser(
     if use_proxy_flag and proxy:
         context_kwargs["proxy"] = {"server": proxy}
 
-    storage_state_path = _get_storage_state_path()
+    storage_state_path = _get_storage_state_path(storage_state)
     if storage_state_path:
         loaded_state = _load_storage_state(storage_state_path)
         if loaded_state:
