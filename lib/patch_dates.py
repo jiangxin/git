@@ -131,8 +131,12 @@ def fetch_date_browser(url: str, proxy: str | None, use_proxy_flag: bool) -> str
         return None
 
 
-def find_undated(end_date: str) -> list[Path]:
-    weekly_dir = REPO_ROOT / "weekly" / end_date / "ai-trends"
+def find_undated(end_date: str, skill_subdir: str, weekly_root: Path | None = None) -> list[Path]:
+    if weekly_root is None:
+        weekly_root = REPO_ROOT / "weekly"
+    else:
+        weekly_root = Path(weekly_root)
+    weekly_dir = weekly_root / end_date / skill_subdir
     results = []
     for meta_path in sorted(weekly_dir.glob("sites/*/articles/*.meta.json")):
         data = json.loads(meta_path.read_text())
@@ -142,17 +146,32 @@ def find_undated(end_date: str) -> list[Path]:
     return results
 
 
+import argparse
+
+
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(
+        description="Patch missing publish_date in article meta.json files.",
+    )
+    p.add_argument("--end-date", default=datetime.now().strftime("%Y-%m-%d"),
+                    help="Week dir YYYY-MM-DD (default: today)")
+    p.add_argument("--skill-subdir", required=True,
+                    help="Subdirectory under weekly/<end_date>/ (e.g. ai-trends, git-news)")
+    p.add_argument("--weekly-root", default=None,
+                    help="Override weekly/ directory path")
+    return p.parse_args()
+
+
 def main():
-    if "--end-date" in sys.argv:
-        idx = sys.argv.index("--end-date")
-        end_date = sys.argv[idx + 1]
-    else:
-        end_date = datetime.now().strftime("%Y-%m-%d")
+    args = _parse_args()
+    end_date = args.end_date
+    skill_subdir = args.skill_subdir
+    weekly_root = Path(args.weekly_root) if args.weekly_root else None
 
     cfg = load_config()
     proxy = cfg.get("proxy")
 
-    items = find_undated(end_date)
+    items = find_undated(end_date, skill_subdir=skill_subdir, weekly_root=weekly_root)
     patched = 0
     skipped = 0
     failed = 0

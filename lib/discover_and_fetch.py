@@ -144,7 +144,7 @@ def default_sources_path() -> Path:
     return SCRIPT_DIR.parent / "references" / "sources.json"
 
 
-def resolve_skill_dir(end_date: str, skill_subdir: str = "ai-trends", weekly_root=None) -> Path:
+def resolve_skill_dir(end_date: str, skill_subdir: str, weekly_root=None) -> Path:
     if not end_date:
         print("ERROR: end_date is required (YYYY-MM-DD)", file=sys.stderr)
         sys.exit(2)
@@ -1017,7 +1017,7 @@ def run(
     start_date: str,
     end_date: str,
     *,
-    skill_subdir: str = "ai-trends",
+    skill_subdir: str,
     weekly_root=None,
     sources_path: Path | None = None,
     proxy: str | None = None,
@@ -1381,8 +1381,8 @@ def main() -> None:
     parser.add_argument("--end-date", required=True, help="Week dir / inclusive end YYYY-MM-DD")
     parser.add_argument("--weekly-root", default=None, help="Override weekly/ directory path")
     parser.add_argument(
-        "--skill-subdir", default="ai-trends",
-        help="Subdirectory under weekly/<end_date>/ (default: ai-trends)",
+        "--skill-subdir", required=True,
+        help="Subdirectory under weekly/<end_date>/ (e.g. ai-trends, git-news)",
     )
     parser.add_argument(
         "--sources", default=None,

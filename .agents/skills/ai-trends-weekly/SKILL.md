@@ -164,11 +164,12 @@ read -r start_date end_date < <(python3 .agents/skills/ai-trends-weekly/scripts/
 ```bash
 python3 lib/discover_and_fetch.py \
   --start-date "$start_date" --end-date "$end_date" \
+  --skill-subdir ai-trends \
   --sources .agents/skills/ai-trends-weekly/references/sources.json
 # stdout: sources=N fetched=M skipped=K errors=E
 ```
 
-可选参数：`--sources PATH`、`--weekly-root PATH`、`--resume`（默认）、`--fresh`、`--retry-errors`
+可选参数：`--sources PATH`、`--weekly-root PATH`、`--skill-subdir SKILL_SUBDIR`、`--resume`（默认）、`--fresh`、`--retry-errors`
 
 ### 3. Agent 摘要：写 `.summary.md` sidecar
 
@@ -195,6 +196,8 @@ python3 .agents/skills/ai-trends-weekly/scripts/check_summaries.py --end-date "$
 # missing>0 时非零退出
 ```
 
+可选参数：`--weekly-root WEEKLY_ROOT`
+
 ### 5. 渲染周报 Markdown
 
 ```bash
@@ -203,6 +206,8 @@ python3 .agents/skills/ai-trends-weekly/scripts/render_ai_trends.py \
 # stdout: WROTE: .../weekly/<end_date>/AI-trends.md
 ```
 
+可选参数：`--weekly-root PATH`、`--max-per-day K`、`--quality-min M`（入围文章数 < M 时 stderr 输出 QUALITY_WARNING，默认 5）。
+
 脚本从 `sites/*/articles/*.meta.json` + `.summary.md` 聚合，按日期过滤、rank_hint 排序、Top-50、按日分组渲染。
 
 ## 辅助脚本
@@ -210,4 +215,8 @@ python3 .agents/skills/ai-trends-weekly/scripts/render_ai_trends.py \
 ```bash
 # 检查 URL 是否已收录
 python3 .agents/skills/ai-trends-weekly/scripts/check_url.py --end-date "$end_date" <URL>
+# 批量检查（一行一个 URL）
+python3 .agents/skills/ai-trends-weekly/scripts/check_url.py --end-date "$end_date" --file urls.txt
 ```
+
+可选参数：`--weekly-root PATH`、`--file FILE`
