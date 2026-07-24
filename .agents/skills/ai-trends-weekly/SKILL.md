@@ -162,8 +162,9 @@ read -r start_date end_date < <(python3 .agents/skills/ai-trends-weekly/scripts/
 ### 2. 发现链接并抓取正文
 
 ```bash
-python3 .agents/skills/ai-trends-weekly/scripts/discover_and_fetch.py \
-  --start-date "$start_date" --end-date "$end_date"
+python3 lib/discover_and_fetch.py \
+  --start-date "$start_date" --end-date "$end_date" \
+  --sources .agents/skills/ai-trends-weekly/references/sources.json
 # stdout: sources=N fetched=M skipped=K errors=E
 ```
 
