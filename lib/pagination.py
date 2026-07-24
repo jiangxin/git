@@ -1,9 +1,10 @@
-"""HTML pagination: detect next-page URLs from listing pages."""
+"""HTML pagination: detect next-page URLs and paginate listing pages."""
 
 from __future__ import annotations
 
 import re
 from html.parser import HTMLParser
+from typing import Any, Callable
 from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
 
 
@@ -103,3 +104,78 @@ def discover_next_page_url(html: str, base_url: str) -> str | None:
     except Exception:
         return None
     return parser.get_result()
+
+
+def _all_items_older_than(
+    items: list[dict[str, Any]], start_date: str
+) -> bool:
+    """Check if all dated items are older than start_date."""
+    dated = [
+        item for item in items
+        if item.get("publish_date") and item["publish_date"] < start_date
+    ]
+    return len(dated) > 0 and len(dated) == len([
+        item for item in items if item.get("publish_date")
+    ])
+
+
+def paginate_html_discovery(
+    list_url: str,
+    *,
+    fetch_page_fn: Callable[[str], str],
+    extract_links_fn: Callable[[str, str], list[dict[str, Any]]],
+    max_pages: int,
+    start_date: str,
+) -> tuple[list[dict[str, Any]], list[tuple[str, str, str]]]:
+    """Paginate through HTML listing pages, aggregating all discovered items.
+
+    Args:
+        list_url: The URL of the first listing page.
+        fetch_page_fn: Callable that fetches a URL and returns HTML content.
+            May raise exceptions on failure.
+        extract_links_fn: Callable that extracts items from HTML.
+            Takes (html, base_url) and returns list of item dicts.
+        max_pages: Maximum number of pages to fetch (>= 1).
+        start_date: Date string (YYYY-MM-DD). Items older than this trigger
+            early-stop when all items on a page are older.
+
+    Returns:
+        A tuple of (all_items, errors) where errors is a list of
+        (method, url, reason) tuples for failed page fetches.
+    """
+    all_items: list[dict[str, Any]] = []
+    errors: list[tuple[str, str, str]] = []
+    seen_urls: set[str] = set()
+    current_url = list_url
+
+    for page_num in range(max_pages):
+        try:
+            html = fetch_page_fn(current_url)
+        except Exception as exc:
+            errors.append(("pagination", current_url, str(exc)))
+            break
+
+        items = extract_links_fn(html, current_url)
+
+        # Dedupe against previously seen URLs
+        new_items = []
+        for item in items:
+            url = item.get("url", "")
+            if url and url not in seen_urls:
+                seen_urls.add(url)
+                new_items.append(item)
+        all_items.extend(new_items)
+
+        # Date early-stop: if all dated items on this page are older than
+        # start_date, stop paginating (assuming descending order)
+        if _all_items_older_than(new_items, start_date):
+            break
+
+        # Find next page URL
+        if page_num < max_pages - 1:
+            next_url = discover_next_page_url(html, current_url)
+            if not next_url or next_url in seen_urls:
+                break
+            current_url = next_url
+
+    return all_items, errors
