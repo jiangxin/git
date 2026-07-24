@@ -279,9 +279,12 @@ h1 {{ margin-bottom: 8px; }}
 .article-item .meta {{ font-size: 12px; color: #888; }}
 .article-item a {{ color: #2563eb; text-decoration: none; }}
 .article-item a:hover {{ text-decoration: underline; }}
+.back-link {{ display: inline-flex; align-items: center; gap: 6px; color: #667eea; text-decoration: none; font-size: 14px; margin-bottom: 16px; transition: all 0.15s; }}
+.back-link:hover {{ color: #764ba2; gap: 10px; }}
 </style>
 </head>
 <body>
+<a href="index.html" class="back-link">← 本期周报</a>
 <h1>{page_title}</h1>
 <h2>{html_mod.escape(subtitle)}</h2>
 <div class="source-filter">

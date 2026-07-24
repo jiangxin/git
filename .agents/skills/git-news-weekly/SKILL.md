@@ -151,6 +151,8 @@ check_summaries.py --end-date
     → 断言：所有 fetched/cached 条目均有合法 summary
 render_git_news.py --start-date --end-date
     → Git-news.md（Top-50 + 按日分组；可选 --max-per-day）
+render_index.py
+    → weekly/index.html（所有周期 HTML 报告导航索引）
 ```
 
 ### 1. 确定收集周期与初始化目录
@@ -209,6 +211,15 @@ python3 .agents/skills/git-news-weekly/scripts/render_git_news.py \
 可选参数：`--weekly-root PATH`、`--max-per-day K`、`--quality-min M`（入围文章数 < M 时 stderr 输出 QUALITY_WARNING，默认 5）。
 
 脚本从 `sites/*/articles/*.meta.json` + `.summary.md` 聚合，按日期过滤、rank_hint 排序、Top-50、按日分组渲染。
+
+### 6. 生成索引页面
+
+```bash
+python3 lib/render_index.py
+# stdout: WROTE: .../weekly/index.html
+```
+
+扫描 `weekly/` 下所有周期目录，为每个周期中存在的 HTML 报告生成导航索引。
 
 ## 辅助脚本
 
