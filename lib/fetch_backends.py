@@ -7,13 +7,17 @@ browser retry when HTTP hits a Cloudflare challenge.
 
 from __future__ import annotations
 
+import fcntl
+import json
 import re
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any, Callable, Literal
 
 from check_cloudflare import is_cloudflare
+from repo_config import load_repo_config
 
 FetchMode = Literal["http", "browser"]
 FetchFn = Callable[..., str]
@@ -30,6 +34,38 @@ DEFAULT_HEADERS = {
 _RETRYABLE_HTTP = re.compile(r"\bHTTP (429|5\d{2})\b")
 DEFAULT_RETRY_MAX = 3
 DEFAULT_RETRY_BASE_DELAY = 0.5
+
+STEALTH_JS = """
+// Override navigator.webdriver
+Object.defineProperty(navigator, 'webdriver', {
+    get: () => undefined
+});
+
+// Override navigator.plugins to appear non-empty
+Object.defineProperty(navigator, 'plugins', {
+    get: () => [1, 2, 3, 4, 5]
+});
+
+// Override navigator.languages
+Object.defineProperty(navigator, 'languages', {
+    get: () => ['en-US', 'en']
+});
+
+// Override WebGL vendor and renderer
+const getParameter = WebGLRenderingContext.prototype.getParameter;
+WebGLRenderingContext.prototype.getParameter = function(parameter) {
+    if (parameter === 37445) {
+        return 'Intel Inc.';
+    }
+    if (parameter === 37446) {
+        return 'Intel Iris OpenGL Engine';
+    }
+    return getParameter.call(this, parameter);
+};
+
+// Hide automation-related properties
+delete navigator.__proto__.webdriver;
+"""
 
 
 class FetchError(Exception):
@@ -178,12 +214,67 @@ def fetch_last_modified(
         return None
 
 
+def _get_storage_state_path(storage_state: str | None = None) -> Path | None:
+    """Read playwright_storage_state from config.json and return expanded path.
+    
+    If storage_state is provided, use it as a key to look up in the states directory.
+    Otherwise, fall back to the global playwright_storage_state config.
+    """
+    try:
+        cfg = load_repo_config(Path(__file__))
+        
+        # If a specific storage_state key is provided, use the states directory
+        if storage_state:
+            states_dir = cfg.get("playwright_storage_state_dir", "~/.playwright-cli/states")
+            return Path(states_dir).expanduser() / f"{storage_state}.json"
+        
+        # Otherwise, use the global playwright_storage_state config
+        raw = cfg.get("playwright_storage_state")
+        if not raw or not isinstance(raw, str):
+            return None
+        return Path(raw).expanduser()
+    except Exception:
+        return None
+
+
+def _load_storage_state(path: Path) -> dict[str, Any] | None:
+    """Load storage_state from file, returning None on any error."""
+    if not path.is_file():
+        return None
+    try:
+        with open(path, encoding="utf-8") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_SH)
+            try:
+                data = json.load(f)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+        return data if isinstance(data, dict) else None
+    except (json.JSONDecodeError, OSError, ValueError):
+        return None
+
+
+def _save_storage_state(path: Path, state: dict[str, Any]) -> None:
+    """Save storage_state to file with exclusive locking."""
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                json.dump(state, f, ensure_ascii=False, indent=2)
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+    except OSError:
+        pass
+
+
 def fetch_browser(
     url: str,
     *,
     proxy: str | None,
     use_proxy_flag: bool,
     timeout: int = 30,
+    stealth: bool = False,
+    storage_state: str | None = None,
 ) -> str:
     """Fetch URL via Playwright Chromium. Raises FetchError if unavailable."""
     method = method_label(use_proxy_flag, mode="browser")
@@ -201,18 +292,36 @@ def fetch_browser(
     if use_proxy_flag and proxy:
         context_kwargs["proxy"] = {"server": proxy}
 
+    storage_state_path = _get_storage_state_path(storage_state)
+    if storage_state_path:
+        loaded_state = _load_storage_state(storage_state_path)
+        if loaded_state:
+            context_kwargs["storage_state"] = loaded_state
+
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(**launch_kwargs)
             try:
                 context = browser.new_context(**context_kwargs)
                 page = context.new_page()
+                
+                if stealth:
+                    page.add_init_script(STEALTH_JS)
+                
                 page.goto(
                     url,
                     wait_until="domcontentloaded",
                     timeout=max(timeout, 1) * 1000,
                 )
                 html = page.content()
+                
+                if storage_state_path:
+                    try:
+                        state = context.storage_state()
+                        _save_storage_state(storage_state_path, state)
+                    except Exception:
+                        pass
+                
                 context.close()
                 return html
             finally:

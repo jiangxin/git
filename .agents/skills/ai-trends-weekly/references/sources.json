@@ -9,6 +9,8 @@
     "url_exclude": ["/news/tag/", "/news/category/", "/news/team/", "/news/page/"],
     "fetch": "browser",
     "browser_on_cloudflare": true,
+    "stealth": true,
+    "storage_state": "anthropic",
     "max_links": 40
   },
   {
@@ -20,6 +22,8 @@
     "url_exclude": ["/research/tag/", "/research/category/", "/research/team/", "/research/page/"],
     "fetch": "browser",
     "browser_on_cloudflare": true,
+    "stealth": true,
+    "storage_state": "anthropic",
     "allow_undated": true,
     "undated_quota": 15,
     "max_links": 40
@@ -33,6 +37,8 @@
     "url_exclude": ["/blog/tag/", "/blog/category/", "/blog/page/"],
     "fetch": "browser",
     "browser_on_cloudflare": true,
+    "stealth": true,
+    "storage_state": "anthropic",
     "allow_undated": true,
     "undated_quota": 15,
     "max_links": 40
