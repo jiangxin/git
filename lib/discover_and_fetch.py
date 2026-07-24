@@ -1232,6 +1232,13 @@ def run(
                     counters["errors"] += 1
             return
 
+        # Detect if items are sorted by date descending (for early-stop)
+        dated_items = [it for it in items if it.get("publish_date")]
+        items_descending = False
+        if len(dated_items) >= 2:
+            dates = [it["publish_date"] for it in dated_items[:5]]
+            items_descending = all(dates[i] >= dates[i + 1] for i in range(len(dates) - 1))
+
         to_fetch: list[dict[str, Any]] = []
         for item in items:
             url = item["url"]
@@ -1279,6 +1286,10 @@ def run(
                 site_index[url] = {"url": url, "status": "skipped_date"}
                 with counters_lock:
                     counters["skipped"] += 1
+                # Early-stop: if items are descending and this one is before
+                # start_date, all remaining items will also be out of range
+                if items_descending and pub and pub < start_date:
+                    break
                 continue
             if is_undated(pub):
                 if undated_used >= undated_quota:
