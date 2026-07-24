@@ -51,6 +51,10 @@ from restricted_search import (  # noqa: E402
     restricted_search,
 )
 from rss_parse import parse_feed  # noqa: E402
+from pagination import (  # noqa: E402
+    paginate_feed_discovery,
+    paginate_html_discovery,
+)
 from site_store import (  # noqa: E402
     append_site_index,
     body_path,
@@ -564,6 +568,7 @@ def discover_source_items(
     mode: FetchMode | None = None,
     browser_on_cloudflare: bool | None = None,
     browser_fetch_fn: FetchFn | None = None,
+    max_pages: int = 1,
 ) -> tuple[list[dict[str, Any]], list[tuple[str, str, str]]]:
     list_url = source.get("url")
     if not isinstance(list_url, str) or not list_url.startswith(("http://", "https://")):
@@ -580,33 +585,94 @@ def discover_source_items(
     items: list[dict[str, Any]] = []
     rss_url = source.get("rss_url")
     if isinstance(rss_url, str) and rss_url.startswith(("http://", "https://")):
-        try:
-            items = fetch_feed_items(
-                rss_url,
-                use_proxy=use_proxy,
-                proxy=proxy,
-                fetch_fn=fetch_fn,
-                mode=fetch_mode,
-                browser_on_cloudflare=boc,
-                browser_fetch_fn=browser_fetch_fn,
-            )
-        except FetchError as e:
-            errors.append((e.method, e.url, e.reason))
+        if max_pages > 1:
+            def _fetch_feed(url: str) -> str:
+                body, _ = fetch_with_policy(
+                    url,
+                    use_proxy=use_proxy,
+                    proxy=proxy,
+                    fetch_fn=fetch_fn,
+                    mode=fetch_mode,
+                    browser_on_cloudflare=boc,
+                    browser_fetch_fn=browser_fetch_fn,
+                )
+                return body
+
+            def _parse_feed(xml_text: str, base_url: str) -> list[dict[str, Any]]:
+                return parse_feed(xml_text, base_url=base_url)
+
+            try:
+                items, pag_errors = paginate_feed_discovery(
+                    rss_url,
+                    fetch_feed_fn=_fetch_feed,
+                    parse_feed_fn=_parse_feed,
+                    max_pages=max_pages,
+                    start_date=start_date,
+                )
+                errors.extend(pag_errors)
+            except Exception as exc:
+                errors.append(("pagination", rss_url, str(exc)))
+        else:
+            try:
+                items = fetch_feed_items(
+                    rss_url,
+                    use_proxy=use_proxy,
+                    proxy=proxy,
+                    fetch_fn=fetch_fn,
+                    mode=fetch_mode,
+                    browser_on_cloudflare=boc,
+                    browser_fetch_fn=browser_fetch_fn,
+                )
+            except FetchError as e:
+                errors.append((e.method, e.url, e.reason))
     if not items:
-        try:
-            items = discover_via_html(
-                list_url,
-                date_attr=date_attr,
-                use_proxy=use_proxy,
-                proxy=proxy,
-                fetch_fn=fetch_fn,
-                mode=fetch_mode,
-                browser_on_cloudflare=boc,
-                browser_fetch_fn=browser_fetch_fn,
-            )
-        except FetchError as e:
-            errors.append((e.method, e.url, e.reason))
+        if max_pages > 1:
+            def _fetch_page(url: str) -> str:
+                body, _ = fetch_with_policy(
+                    url,
+                    use_proxy=use_proxy,
+                    proxy=proxy,
+                    fetch_fn=fetch_fn,
+                    mode=fetch_mode,
+                    browser_on_cloudflare=boc,
+                    browser_fetch_fn=browser_fetch_fn,
+                )
+                return body
+
+            def _extract(html: str, url: str) -> list[dict[str, Any]]:
+                return extract_links(html, url, date_attr=date_attr)
+
+            try:
+                items, pag_errors = paginate_html_discovery(
+                    list_url,
+                    fetch_page_fn=_fetch_page,
+                    extract_links_fn=_extract,
+                    max_pages=max_pages,
+                    start_date=start_date,
+                )
+                errors.extend(pag_errors)
+            except Exception as exc:
+                errors.append(("pagination", list_url, str(exc)))
+        else:
+            try:
+                items = discover_via_html(
+                    list_url,
+                    date_attr=date_attr,
+                    use_proxy=use_proxy,
+                    proxy=proxy,
+                    fetch_fn=fetch_fn,
+                    mode=fetch_mode,
+                    browser_on_cloudflare=boc,
+                    browser_fetch_fn=browser_fetch_fn,
+                )
+            except FetchError as e:
+                errors.append((e.method, e.url, e.reason))
     if items:
+        # When paginating, don't apply max_links here — date filtering in
+        # _process_source will select the right items. max_links truncation
+        # before date filtering would discard older in-window items.
+        if max_pages > 1:
+            return items, errors
         return apply_max_links(items, parse_max_links(source)), errors
     if fallback == "skip":
         errors.append(("discover", list_url, "list empty; fallback=skip"))
@@ -1053,6 +1119,7 @@ def run(
     fetch_concurrency: int | None = None,
     fetch_concurrency_per_source: int | None = None,
     source_concurrency: int | None = None,
+    max_pages: int | None = None,
     max_retries: int = DEFAULT_RETRY_MAX,
     retry_base_delay: float = DEFAULT_RETRY_BASE_DELAY,
     sleep_fn: Callable[[float], None] | None = None,
@@ -1093,6 +1160,7 @@ def run(
         max(1, int(source_concurrency)) if source_concurrency is not None else cfg_source_conc,
         max(1, len([s for s in load_sources(sources_path) if isinstance(s, dict)])),
     )
+    default_max_pages = max_pages if max_pages is not None else int(cfg.get("default_max_pages", 1))
 
     fetch_fn = fetch_fn or default_fetch
     sources = load_sources(sources_path)
@@ -1139,6 +1207,8 @@ def run(
         undated_used = 0
         fetch_mode = parse_fetch_mode(source)
         boc = parse_browser_on_cloudflare(source)
+        src_max_pages = source.get("max_pages")
+        eff_max_pages = int(src_max_pages) if src_max_pages is not None else default_max_pages
 
         site_idx_path = site_index_path(ai_trends_dir, slug)
         site_index = load_site_index(site_idx_path) if resume else {}
@@ -1157,6 +1227,7 @@ def run(
             mode=fetch_mode,
             browser_on_cloudflare=boc,
             browser_fetch_fn=browser_fetch_fn,
+            max_pages=eff_max_pages,
         )
         for method, err_url, reason in discover_errors:
             append_error_log(ai_trends_dir, method, err_url, reason)
@@ -1165,6 +1236,13 @@ def run(
                 with counters_lock:
                     counters["errors"] += 1
             return
+
+        # Detect if items are sorted by date descending (for early-stop)
+        dated_items = [it for it in items if it.get("publish_date")]
+        items_descending = False
+        if len(dated_items) >= 2:
+            dates = [it["publish_date"] for it in dated_items[:5]]
+            items_descending = all(dates[i] >= dates[i + 1] for i in range(len(dates) - 1))
 
         to_fetch: list[dict[str, Any]] = []
         for item in items:
@@ -1198,7 +1276,7 @@ def run(
                     if cached_date:
                         pub = cached_date
                         item["publish_date"] = pub
-                    else:
+                    elif not allow_undated:
                         append_site_index(
                             site_idx_path, url=url, status="skipped_date", hash=url_hash(url),
                         )
@@ -1213,6 +1291,10 @@ def run(
                 site_index[url] = {"url": url, "status": "skipped_date"}
                 with counters_lock:
                     counters["skipped"] += 1
+                # Early-stop: if items are descending and this one is before
+                # start_date, all remaining items will also be out of range
+                if items_descending and pub and pub < start_date:
+                    break
                 continue
             if is_undated(pub):
                 if undated_used >= undated_quota:
@@ -1423,6 +1505,10 @@ def main() -> None:
         "--retry-errors", action="store_true",
         help="Re-fetch URLs previously recorded as error in site index",
     )
+    parser.add_argument(
+        "--max-pages", type=int, default=None, metavar="N",
+        help="Max pages to fetch per source (default: from config or 1)",
+    )
     args = parser.parse_args()
 
     skill_subdir = args.skill_subdir
@@ -1443,6 +1529,7 @@ def main() -> None:
         resume=not args.fresh,
         fresh=args.fresh,
         retry_errors=args.retry_errors,
+        max_pages=args.max_pages,
     )
     print(format_summary(counts))
 
