@@ -1271,7 +1271,7 @@ def run(
                     if cached_date:
                         pub = cached_date
                         item["publish_date"] = pub
-                    else:
+                    elif not allow_undated:
                         append_site_index(
                             site_idx_path, url=url, status="skipped_date", hash=url_hash(url),
                         )
