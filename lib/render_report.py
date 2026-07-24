@@ -135,12 +135,6 @@ def format_item(entry: dict[str, Any]) -> str:
     return f"* **[{title}]({url})**：{summary}。📰 {source} 📅 {day}"
 
 
-def format_reference(index: int, entry: dict[str, Any]) -> str:
-    title = entry.get("original_title") or entry.get("cn_title") or "(untitled)"
-    url = entry.get("url") or ""
-    return f"{index}. [{title}]({url})"
-
-
 def render_markdown(
     end_date: str,
     entries: list[dict[str, Any]],
@@ -169,11 +163,6 @@ def render_markdown(
             lines.append("")
     if items:
         lines.append("")
-    lines.append("### 参考来源")
-    lines.append("")
-    for i, entry in enumerate(items, start=1):
-        lines.append(format_reference(i, entry))
-    lines.append("")
     return "\n".join(lines)
 
 
@@ -236,12 +225,6 @@ def _html_article_item(entry: dict[str, Any]) -> str:
     )
 
 
-def _html_reference(index: int, entry: dict[str, Any]) -> str:
-    title = html_mod.escape(entry.get("original_title") or entry.get("cn_title") or "(untitled)")
-    url = html_mod.escape(entry.get("url") or "")
-    return f'<li><a href="{url}">{index}. {title}</a></li>'
-
-
 def render_html(
     end_date: str,
     entries: list[dict[str, Any]],
@@ -274,11 +257,6 @@ def render_html(
         articles_parts.append("</div>")
     articles_html = "\n".join(articles_parts)
 
-    refs_parts: list[str] = []
-    for i, entry in enumerate(items, start=1):
-        refs_parts.append(_html_reference(i, entry))
-    refs_html = "\n".join(refs_parts)
-
     page_title = f"{html_mod.escape(end_date)} {title}"
     return f"""<!DOCTYPE html>
 <html lang="zh-CN">
@@ -301,10 +279,6 @@ h1 {{ margin-bottom: 8px; }}
 .article-item .meta {{ font-size: 12px; color: #888; }}
 .article-item a {{ color: #2563eb; text-decoration: none; }}
 .article-item a:hover {{ text-decoration: underline; }}
-.references {{ margin-top: 32px; }}
-.references ol {{ padding-left: 24px; }}
-.references li {{ margin: 4px 0; font-size: 13px; }}
-.references a {{ color: #2563eb; text-decoration: none; }}
 </style>
 </head>
 <body>
@@ -315,12 +289,6 @@ h1 {{ margin-bottom: 8px; }}
 </div>
 <div class="articles">
 {articles_html}
-</div>
-<div class="references">
-<h2>参考来源</h2>
-<ol>
-{refs_html}
-</ol>
 </div>
 <script>
 (function() {{
