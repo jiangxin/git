@@ -52,6 +52,7 @@ arguments:
 | `fetch` | `"http"` \| `"browser"` | 默认 `http`；`browser` 走 Playwright |
 | `browser_on_cloudflare` | bool | 默认 `true`：HTTP 判 Cloudflare 时可降级 browser 重试一次 |
 | `date_attr` | string | HTML 列表页取日期的属性名（若有） |
+| `max_pages` | number | 该源最大翻页数；覆盖 `config.json` 的 `default_max_pages`；默认 1（不翻页） |
 
 ## 代理与仓库配置
 
@@ -64,6 +65,7 @@ arguments:
 | `fetch_concurrency_per_source` | 每源并发上限（默认 2） |
 | `source_concurrency` | 同时跑多少个源（默认 4） |
 | `body_ttl_days` | 正文缓存 TTL 天数（默认 7） |
+| `default_max_pages` | 全局翻页上限（默认 1，即不翻页）；可被源级 `max_pages` 覆盖 |
 | `search_api` | 受限搜索：`{"provider":"serper","api_key_env":"SERPER_API_KEY"}`（可选） |
 
 ### Playwright（browser 通道）
