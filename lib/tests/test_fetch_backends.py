@@ -356,3 +356,22 @@ class TestStorageState:
         
         result = _get_storage_state_path()
         assert result is None
+
+
+class TestStealthMode:
+    def test_stealth_js_defined(self):
+        """STEALTH_JS constant should be defined."""
+        from fetch_backends import STEALTH_JS
+        assert STEALTH_JS is not None
+        assert "navigator.webdriver" in STEALTH_JS
+        assert "navigator.plugins" in STEALTH_JS
+
+    def test_fetch_browser_accepts_stealth_parameter(self):
+        """fetch_browser should accept stealth parameter."""
+        import inspect
+        from fetch_backends import fetch_browser
+        
+        sig = inspect.signature(fetch_browser)
+        params = sig.parameters
+        assert "stealth" in params
+        assert params["stealth"].default is False

@@ -35,6 +35,38 @@ _RETRYABLE_HTTP = re.compile(r"\bHTTP (429|5\d{2})\b")
 DEFAULT_RETRY_MAX = 3
 DEFAULT_RETRY_BASE_DELAY = 0.5
 
+STEALTH_JS = """
+// Override navigator.webdriver
+Object.defineProperty(navigator, 'webdriver', {
+    get: () => undefined
+});
+
+// Override navigator.plugins to appear non-empty
+Object.defineProperty(navigator, 'plugins', {
+    get: () => [1, 2, 3, 4, 5]
+});
+
+// Override navigator.languages
+Object.defineProperty(navigator, 'languages', {
+    get: () => ['en-US', 'en']
+});
+
+// Override WebGL vendor and renderer
+const getParameter = WebGLRenderingContext.prototype.getParameter;
+WebGLRenderingContext.prototype.getParameter = function(parameter) {
+    if (parameter === 37445) {
+        return 'Intel Inc.';
+    }
+    if (parameter === 37446) {
+        return 'Intel Iris OpenGL Engine';
+    }
+    return getParameter.call(this, parameter);
+};
+
+// Hide automation-related properties
+delete navigator.__proto__.webdriver;
+"""
+
 
 class FetchError(Exception):
     """HTTP, browser, or Cloudflare failure while fetching a URL."""
@@ -230,6 +262,7 @@ def fetch_browser(
     proxy: str | None,
     use_proxy_flag: bool,
     timeout: int = 30,
+    stealth: bool = False,
 ) -> str:
     """Fetch URL via Playwright Chromium. Raises FetchError if unavailable."""
     method = method_label(use_proxy_flag, mode="browser")
@@ -259,6 +292,10 @@ def fetch_browser(
             try:
                 context = browser.new_context(**context_kwargs)
                 page = context.new_page()
+                
+                if stealth:
+                    page.add_init_script(STEALTH_JS)
+                
                 page.goto(
                     url,
                     wait_until="domcontentloaded",
