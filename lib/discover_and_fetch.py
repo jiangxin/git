@@ -668,6 +668,11 @@ def discover_source_items(
             except FetchError as e:
                 errors.append((e.method, e.url, e.reason))
     if items:
+        # When paginating, don't apply max_links here — date filtering in
+        # _process_source will select the right items. max_links truncation
+        # before date filtering would discard older in-window items.
+        if max_pages > 1:
+            return items, errors
         return apply_max_links(items, parse_max_links(source)), errors
     if fallback == "skip":
         errors.append(("discover", list_url, "list empty; fallback=skip"))

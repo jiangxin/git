@@ -45,6 +45,7 @@
     "rss_url": "https://openai.com/news/rss.xml",
     "url_include": ["/index/", "/research/"],
     "url_exclude": ["/business/", "/academy/", "/chatgpt/", "/customer-stories/"],
+    "fetch": "browser",
     "browser_on_cloudflare": true,
     "max_links": 40
   },
@@ -56,6 +57,7 @@
     "rss_url": "https://openai.com/news/rss.xml",
     "url_include": ["/index/", "/research/"],
     "url_exclude": ["/business/", "/academy/", "/chatgpt/", "/customer-stories/"],
+    "fetch": "browser",
     "browser_on_cloudflare": true,
     "max_links": 40
   },
