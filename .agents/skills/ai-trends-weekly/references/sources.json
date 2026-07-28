@@ -159,6 +159,7 @@
     ],
     "fetch": "browser",
     "browser_on_cloudflare": true,
+    "stealth": true,
     "allow_undated": true,
     "undated_quota": 15,
     "max_links": 40
@@ -413,30 +414,13 @@
     "name": "腾讯混元",
     "url": "https://hunyuan.tencent.com/blog",
     "use_proxy": false,
-    "fallback": "search",
+    "fallback": "skip",
     "url_include": [
       "/blog/",
       "/news/"
     ],
     "fetch": "browser",
-    "allow_undated": true,
-    "undated_quota": 10,
-    "max_links": 30
-  },
-  {
-    "name": "腾讯 AI Lab 新闻",
-    "url": "https://ai.tencent.com/ailab/zh/news/",
-    "use_proxy": false,
-    "fallback": "aggregate",
-    "url_include": [
-      "/news/",
-      "/ailab/"
-    ],
-    "url_exclude": [
-      "/_next/",
-      "/m/"
-    ],
-    "fetch": "browser",
+    "stealth": true,
     "allow_undated": true,
     "undated_quota": 10,
     "max_links": 30
@@ -459,21 +443,6 @@
     "allow_undated": true,
     "undated_quota": 10,
     "max_links": 30
-  },
-  {
-    "name": "百川智能",
-    "url": "https://www.baichuan-ai.com/",
-    "use_proxy": false,
-    "fallback": "search",
-    "url_include": [
-      "/blog/",
-      "/news/",
-      "/article/"
-    ],
-    "fetch": "browser",
-    "allow_undated": true,
-    "undated_quota": 8,
-    "max_links": 20
   },
   {
     "name": "阿里云开发者社区 AI",
