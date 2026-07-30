@@ -86,6 +86,7 @@ playwright install chromium
 weekly/<end_date>/git-news/
   url_index.jsonl                 # 全局：url → {site, hash, at}；先写胜
   error.log                       # URL/抓取失败日志
+  clusters.json                   # 相似文章聚类结果
   sites/<slug>/
     index.jsonl                   # 该站：url/status/hash/at
     articles/
@@ -93,6 +94,7 @@ weekly/<end_date>/git-news/
       <hash>.meta.json            # 抓取元数据
       <hash>.summary.md           # Agent sidecar（YAML front matter）
   Git-news.md                     # render 输出（在 weekly/<end_date>/）
+  Git-news.html                   # render 输出（在 weekly/<end_date>/）
 ```
 
 **停止写入**（新跑不再产生）：`pending.json`、`new.json`、`fetch_state.jsonl`、`raw/`、`archives.json`。历史周目录文件可残留，脚本不读。
@@ -125,8 +127,12 @@ cn_title: "中文标题"
 cn_summary: "中文概述..."
 collected_at: "2026-07-23T11:30:00"
 rank_hint: 1
+topic_id: "git-lfs-perf"
+topic_label: "Git LFS 性能相关"
 ---
 ```
+
+`topic_id`（可选）：当 Agent 判断本文与已处理的其他文章属同一话题时，赋予相同的话题标识符。渲染时 `cluster_articles.py` 会据此将同话题文章聚合为一个 group，并在报告中折叠展示相似文章。`topic_label`（可选）：话题的中文描述标签。
 
 #### `sites/<slug>/index.jsonl`
 
@@ -155,8 +161,12 @@ discover_and_fetch.py --start-date --end-date --sources <path>
 Agent: 扫描缺 .summary.md 的文章，逐篇写 sidecar
 check_summaries.py --end-date
     → 断言：所有 fetched/cached 条目均有合法 summary
+cluster_articles.py --end-date
+    → 相似文章聚类（摘要 Jaccard + 轻量标题 + topic_id 合并）
+    → clusters.json（聚类结果）
 render_git_news.py --start-date --end-date
-    → Git-news.md（Top-50 + 按日分组；可选 --max-per-day）
+    → Git-news.md + Git-news.html（Top-50 + 按日分组 + 相似文章折叠）
+    → 可选 --max-per-day
 render_index.py
     → weekly/index.html（所有周期 HTML 报告导航索引）
 ```
@@ -186,7 +196,7 @@ python3 lib/discover_and_fetch.py \
 扫描 `sites/*/articles/*.meta.json`，对每个 status∈{fetched, cached} 且缺少合法 `.summary.md` 的文章：
 
 1. 读取同目录 `<hash>.body.txt` 正文
-2. 写入 `<hash>.summary.md`，包含：`en_summary`、`cn_title`、`cn_summary`、`collected_at`（必填），`rank_hint`（可选）
+2. 写入 `<hash>.summary.md`，包含：`en_summary`、`cn_title`、`cn_summary`、`collected_at`（必填），`rank_hint`（可选），同话题时可写 `topic_id` / `topic_label`
 3. **必须**处理每一个待摘要条目，不得只处理子集
 
 #### 禁止项
@@ -206,7 +216,26 @@ python3 .agents/skills/git-news-weekly/scripts/check_summaries.py --end-date "$e
 
 可选参数：`--weekly-root WEEKLY_ROOT`
 
-### 5. 渲染周报 Markdown
+### 5. 相似文章聚类
+
+```bash
+python3 .agents/skills/git-news-weekly/scripts/cluster_articles.py --end-date "$end_date"
+# stdout: CLUSTERED: total=N clusters=M clustered_articles=K singletons=J
+#         WROTE: .../weekly/<end_date>/git-news/clusters.json
+```
+
+脚本对已抓取文章进行相似性聚类，生成 `clusters.json`。聚类方法：
+
+- **摘要 Jaccard 相似度**：对 `cn_summary` 分词后计算 token 集合的 Jaccard 系数（权重 70%）
+- **标题轻量加权**：对中英文标题同样计算 Jaccard（权重 30%），用于同题短标题补强
+- **topic_id 合并**：Agent 在 `.summary.md` 中标注了相同 `topic_id` 的文章直接合并
+- **不使用 URL 相似度**：同站模板化 path 会导致误聚，故不参与加权
+
+相似度超过阈值（默认 0.30）的文章被归为同一簇。`render_git_news.py` 会自动读取 `clusters.json`，在报告渲染时将相似文章折叠展示。
+
+可选参数：`--weekly-root PATH`、`--threshold FLOAT`（默认 0.30）
+
+### 6. 渲染周报 Markdown
 
 ```bash
 python3 .agents/skills/git-news-weekly/scripts/render_git_news.py \
@@ -216,9 +245,9 @@ python3 .agents/skills/git-news-weekly/scripts/render_git_news.py \
 
 可选参数：`--weekly-root PATH`、`--max-per-day K`、`--quality-min M`（入围文章数 < M 时 stderr 输出 QUALITY_WARNING，默认 5）。
 
-脚本从 `sites/*/articles/*.meta.json` + `.summary.md` 聚合，按日期过滤、rank_hint 排序、Top-50、按日分组渲染。
+脚本从 `sites/*/articles/*.meta.json` + `.summary.md` 聚合，按日期过滤、rank_hint 排序、Top-50、按日分组渲染。如果存在 `clusters.json`，首篇按正文展示，相似文章缩进折叠在相关报道块内。
 
-### 6. 生成索引页面
+### 7. 生成索引页面
 
 ```bash
 python3 lib/render_index.py
