@@ -498,5 +498,55 @@
       "/page/"
     ],
     "max_links": 30
+  },
+  {
+    "name": "Addy Osmani (Elevate)",
+    "url": "https://addyo.substack.com/",
+    "use_proxy": true,
+    "fallback": "aggregate",
+    "rss_url": "https://addyo.substack.com/feed",
+    "url_include": [
+      "/p/"
+    ],
+    "url_exclude": [
+      "/feed",
+      "/about",
+      "/archive"
+    ],
+    "max_links": 30
+  },
+  {
+    "name": "The Pragmatic Engineer",
+    "url": "https://newsletter.pragmaticengineer.com/",
+    "use_proxy": true,
+    "fallback": "aggregate",
+    "rss_url": "https://newsletter.pragmaticengineer.com/feed",
+    "url_include": [
+      "/p/"
+    ],
+    "url_exclude": [
+      "/feed",
+      "/about",
+      "/archive"
+    ],
+    "max_links": 30
+  },
+  {
+    "name": "Developers Digest",
+    "url": "https://www.developersdigest.tech/",
+    "use_proxy": false,
+    "fallback": "aggregate",
+    "url_include": [
+      "/blog/"
+    ],
+    "url_exclude": [
+      "/tag/",
+      "/category/",
+      "/page/",
+      "/author/"
+    ],
+    "allow_undated": true,
+    "undated_quota": 10,
+    "max_links": 30
   }
 ]
