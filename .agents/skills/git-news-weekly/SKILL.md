@@ -19,6 +19,13 @@ arguments:
 
 **编排原则**：发现链接、抓取正文、渲染 Markdown 均由脚本完成；Agent **仅**为已抓取文章补写 `.summary.md` sidecar。不得自行遍历数据源做 WebFetch/curl 爬取，不得手写整份 `Git-news.md` 结构。
 
+**执行纪律（必须遵守）**：
+
+1. 工作目录为**仓库根目录**（含 `weekly/`、`lib/`、`.agents/`）。
+2. 按下方 **§1 → §7 顺序完整执行**，不得跳过聚类（§5）或索引（§7）。
+3. 任一步命令非零退出则**停止后续步骤**，修复后从该步重跑；§4 若 `missing>0`，回到 §3 补写摘要后再跑 §4。
+4. 全部完成后核对产出：`weekly/<end_date>/Git-news.md`、`Git-news.html`、`weekly/<end_date>/git-news/clusters.json`、`weekly/index.html`。
+
 ## 参数与周期变量
 
 - **参数 `date`**（可选）：格式 `YYYY-MM-DD`，含义见下节「确定收集周期」。未提供时使用当前日期。
@@ -134,6 +141,8 @@ topic_label: "Git LFS 性能相关"
 ---
 ```
 
+`cn_title`、`cn_summary` **必须使用中文**（周报展示语言）；`en_summary` 使用英文。原文为非中文时，须翻译后再写入中文字段，不得把英文原文直接填入 `cn_title` / `cn_summary`。
+
 `topic_id`（可选）：当 Agent 判断本文与已处理的其他文章属同一话题时，赋予相同的话题标识符。渲染时 `cluster_articles.py` 会据此将同话题文章聚合为一个 group，并在报告中折叠展示相似文章。`topic_label`（可选）：话题的中文描述标签。
 
 #### `sites/<slug>/index.jsonl`
@@ -152,31 +161,35 @@ topic_label: "Git LFS 性能相关"
 
 ## 工作流程总览
 
+**必跑顺序**（不可省略、不可乱序）：
+
 ```text
-setup_week.py
+§1 setup_week.py
     → start_date end_date，创建 weekly/<end_date>/git-news/
-discover_and_fetch.py --start-date --end-date --sources <path>
+§2 discover_and_fetch.py --start-date --end-date --sources <path>
     → 站间并行：RSS → HTML → fallback → 详情抓取
     → URL 过滤 + 日期策略 + 有效稿门禁
     → sites/<slug>/articles/ + url_index.jsonl（增量；默认 --resume）
     → --skill-subdir 自动从 --sources 路径推导
-Agent: 扫描缺 .summary.md 的文章，逐篇写 sidecar
-check_summaries.py --end-date
-    → 断言：所有 fetched/cached 条目均有合法 summary
-cluster_articles.py --end-date
+§3 Agent: 扫描缺 .summary.md 的文章，逐篇写 sidecar
+§4 check_summaries.py --end-date
+    → 断言：所有 fetched/cached 条目均有合法 summary（失败则回 §3）
+§5 cluster_articles.py --end-date
     → 相似文章聚类（摘要 Jaccard + 轻量标题 + topic_id 合并）
     → clusters.json（聚类结果）
-render_git_news.py --start-date --end-date
+§6 render_git_news.py --start-date --end-date
     → Git-news.md + Git-news.html（Top-50 + 按日分组 + 相似文章折叠）
-    → 可选 --max-per-day
-render_index.py
+§7 render_index.py
     → weekly/index.html（所有周期 HTML 报告导航索引）
 ```
 
 ### 1. 确定收集周期与初始化目录
 
+在仓库根目录执行：
+
 ```bash
 read -r start_date end_date < <(python3 .agents/skills/git-news-weekly/scripts/setup_week.py "${date:-$(date +%F)}")
+# 确认已打印两段日期，且存在目录 weekly/$end_date/git-news/
 ```
 
 ### 2. 发现链接并抓取正文
@@ -187,6 +200,7 @@ python3 lib/discover_and_fetch.py \
   --sources .agents/skills/git-news-weekly/references/sources.json
 # stdout: sources=N fetched=M skipped=K errors=E
 # --skill-subdir 自动从 --sources 路径推导，无需显式传递
+# 非零退出则停止；默认同周增量 --resume，无需 --fresh
 ```
 
 可选参数：`--sources PATH`、`--weekly-root PATH`、`--skill-subdir SKILL_SUBDIR`（自动推导，通常无需指定）、`--resume`（默认）、`--fresh`、`--retry-errors`
@@ -195,25 +209,29 @@ python3 lib/discover_and_fetch.py \
 
 **这是 Agent 在本 skill 中的唯一内容职责。**
 
-扫描 `sites/*/articles/*.meta.json`，对每个 status∈{fetched, cached} 且缺少合法 `.summary.md` 的文章：
+扫描路径：`weekly/<end_date>/git-news/sites/*/articles/*.meta.json`。  
+对每个 `status∈{fetched, cached}` 且缺少合法 `.summary.md` 的文章：
 
 1. 读取同目录 `<hash>.body.txt` 正文
-2. 写入 `<hash>.summary.md`，包含：`en_summary`、`cn_title`、`cn_summary`、`collected_at`（必填），`rank_hint`（可选），同话题时可写 `topic_id` / `topic_label`
-3. **必须**处理每一个待摘要条目，不得只处理子集
+2. 写入 `<hash>.summary.md`，包含：`en_summary`（英文）、`cn_title` / `cn_summary`（**必须中文**）、`collected_at`（必填），`rank_hint`（可选），同话题时可写 `topic_id` / `topic_label`
+3. **必须**处理每一个待摘要条目，不得只处理子集；非中文原文须先译成中文再写入 `cn_*` 字段
+4. 全部写完后再进入 §4（不要边写边渲染）
 
 #### 禁止项
 
+- **不得**将英文或其他非中文内容写入 `cn_title` / `cn_summary`
 - **不得**修改 `references/sources.json` 或另建源列表
 - **不得**用手写 Markdown 生成整份 `Git-news.md`（必须由 `render_git_news.py` 产出）
 - **不得**自行循环 WebFetch/curl 遍历全部数据源
 - **不得**写入 `pending.json` / `new.json`
+- **不得**在摘要未全部完成时跳到 §5/§6
 
 ### 4. 校验摘要完备性
 
 ```bash
 python3 .agents/skills/git-news-weekly/scripts/check_summaries.py --end-date "$end_date"
 # stdout: OK: summarized=N missing=0 sites=S
-# missing>0 时非零退出
+# missing>0 或非零退出 → 回到 §3 补齐后重跑本步；不得继续 §5
 ```
 
 可选参数：`--weekly-root WEEKLY_ROOT`
@@ -237,12 +255,13 @@ python3 .agents/skills/git-news-weekly/scripts/cluster_articles.py --end-date "$
 
 可选参数：`--weekly-root PATH`、`--threshold FLOAT`（默认 0.30）
 
-### 6. 渲染周报 Markdown
+### 6. 渲染周报（Markdown + HTML）
 
 ```bash
 python3 .agents/skills/git-news-weekly/scripts/render_git_news.py \
   --start-date "$start_date" --end-date "$end_date"
 # stdout: WROTE: .../weekly/<end_date>/Git-news.md
+# 同时写出 Git-news.html；非零退出则停止
 ```
 
 可选参数：`--weekly-root PATH`、`--max-per-day K`、`--quality-min M`（入围文章数 < M 时 stderr 输出 QUALITY_WARNING，默认 5）。
@@ -257,6 +276,15 @@ python3 lib/render_index.py
 ```
 
 扫描 `weekly/` 下所有周期目录，为每个周期中存在的 HTML 报告生成导航索引。
+
+### 完成检查
+
+全部步骤成功后确认：
+
+- [ ] `weekly/<end_date>/Git-news.md` 与 `Git-news.html` 已更新
+- [ ] `weekly/<end_date>/git-news/clusters.json` 存在（本周跑过 §5）
+- [ ] `weekly/index.html` 已更新
+- [ ] §4 曾输出 `missing=0`
 
 ## 辅助脚本
 
