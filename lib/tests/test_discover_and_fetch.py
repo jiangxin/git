@@ -27,6 +27,7 @@ from discover_and_fetch import (  # noqa: E402
     run,
     url_hash,
 )
+from list_fetch_cache import ListFetchCache  # noqa: E402
 from check_cloudflare import is_cloudflare  # noqa: E402
 from site_store import (  # noqa: E402
     articles_dir,
@@ -298,6 +299,96 @@ class TestDiscoverAndFetchRun:
         )
         assert "https://example.com/posts/in-range" not in fetch_log
         assert counts2["fetched"] == 0
+
+    def test_list_cache_avoids_second_list_fetch(self, week_env, tmp_path, monkeypatch):
+        weekly_root, ai_trends, sources_path = week_env()
+        pages = {
+            "https://example.com/blog": LIST_HTML,
+            "https://example.com/posts/in-range": DETAIL_HTML,
+        }
+        cache = ListFetchCache(cache_dir=tmp_path / "list_cache")
+        monkeypatch.setattr(
+            "discover_and_fetch.ListFetchCache",
+            lambda: cache,
+        )
+        fetch_log: list[str] = []
+
+        def tracking_fetch(url, **kw):
+            fetch_log.append(url)
+            if url not in pages:
+                raise FetchError(url, "curl(direct)", f"unexpected: {url}")
+            return pages[url]
+
+        run(
+            START_DATE, END_DATE,
+            weekly_root=weekly_root, sources_path=sources_path,
+            fetch_fn=tracking_fetch, resume=False,
+            list_cache_ttl_seconds=1800,
+        )
+        first_list_hits = fetch_log.count("https://example.com/blog")
+        assert first_list_hits == 1
+
+        fetch_log.clear()
+        run(
+            START_DATE, END_DATE,
+            weekly_root=weekly_root, sources_path=sources_path,
+            fetch_fn=tracking_fetch, resume=True,
+            list_cache_ttl_seconds=1800,
+        )
+        assert fetch_log.count("https://example.com/blog") == 0
+        assert "https://example.com/posts/in-range" not in fetch_log
+
+    def test_known_url_streak_stops_candidate_scan(self, week_env):
+        weekly_root, ai_trends, sources_path = week_env()
+        # Newest-first list: first 5 already fetched, then a new in-range URL.
+        list_html = """<!DOCTYPE html><html><body>
+          <a href="/posts/old1" data-date="2026-07-23">Old1</a>
+          <a href="/posts/old2" data-date="2026-07-22">Old2</a>
+          <a href="/posts/old3" data-date="2026-07-21">Old3</a>
+          <a href="/posts/old4" data-date="2026-07-20">Old4</a>
+          <a href="/posts/old5" data-date="2026-07-19">Old5</a>
+          <a href="/posts/new" data-date="2026-07-20">Should Not Reach</a>
+        </body></html>"""
+        pages = {"https://example.com/blog": list_html}
+        for i in range(1, 6):
+            pages[f"https://example.com/posts/old{i}"] = DETAIL_HTML
+        pages["https://example.com/posts/new"] = DETAIL_HTML
+
+        # Seed url_index with first five
+        from site_store import claim_url
+        for i in range(1, 6):
+            url = f"https://example.com/posts/old{i}"
+            claim_url(
+                ai_trends,
+                url=url,
+                slug="fixture-blog",
+                meta={
+                    "original_title": f"Old{i}",
+                    "publish_date": f"2026-07-{24-i:02d}",
+                    "source": "Fixture Blog",
+                    "status": "fetched",
+                    "fetched_at": "2026-07-24T00:00:00Z",
+                },
+                body="x" * CONTENT_MIN,
+            )
+
+        fetch_log: list[str] = []
+
+        def tracking_fetch(url, **kw):
+            fetch_log.append(url)
+            if url not in pages:
+                raise FetchError(url, "curl(direct)", f"unexpected: {url}")
+            return pages[url]
+
+        counts = run(
+            START_DATE, END_DATE,
+            weekly_root=weekly_root, sources_path=sources_path,
+            fetch_fn=tracking_fetch, resume=True,
+            known_url_streak_stop=5,
+            list_cache_ttl_seconds=0,
+        )
+        assert "https://example.com/posts/new" not in fetch_log
+        assert counts["fetched"] == 0
 
     def test_fresh_clears_sites_and_url_index(self, week_env):
         weekly_root, ai_trends, sources_path = week_env()

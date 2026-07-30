@@ -8,6 +8,10 @@ Usage:
 
 Stdout summary: sources=N fetched=M skipped=K errors=E
 Default ``--resume`` loads site ``index.jsonl`` + ``url_index.jsonl``.
+Discovery list/RSS pages use a short-TTL body cache (optional ETag /
+If-Modified-Since) and stop paginating when a whole page is already known.
+On newest-first feeds, a consecutive known-URL streak also stops the
+candidate scan early.
 """
 
 from __future__ import annotations
@@ -37,10 +41,12 @@ from fetch_backends import (  # noqa: E402
     FetchMode,
     fetch_html_with_backoff,
     fetch_http,
+    fetch_http_result,
     fetch_http_with_headers,
     fetch_last_modified,
     parse_browser_on_cloudflare,
     parse_fetch_mode,
+    proxy_attempts,
 )
 from filter_by_date import extract_date  # noqa: E402
 from repo_config import load_repo_config  # noqa: E402
@@ -71,6 +77,12 @@ from url_date_cache import (  # noqa: E402
     append_cache as date_cache_append,
     load_cache as date_cache_load,
     lookup_date as date_cache_lookup,
+)
+from list_fetch_cache import (  # noqa: E402
+    DEFAULT_LIST_CACHE_TTL_SECONDS,
+    ListFetchCache,
+    parse_known_url_streak_stop,
+    parse_list_cache_ttl_seconds,
 )
 from url_filter import url_allowed  # noqa: E402
 
@@ -274,6 +286,99 @@ def fetch_with_policy(
         base_delay=base_delay,
         sleep_fn=sleep_fn,
     )
+
+
+def fetch_discover_body(
+    url: str,
+    *,
+    use_proxy: Any,
+    proxy: str | None,
+    fetch_fn: FetchFn,
+    mode: FetchMode = "http",
+    browser_on_cloudflare: bool = True,
+    browser_fetch_fn: FetchFn | None = None,
+    list_cache: ListFetchCache | None = None,
+    list_cache_ttl: int = DEFAULT_LIST_CACHE_TTL_SECONDS,
+) -> str:
+    """Fetch a list/RSS page with optional short-TTL cache and conditional GET."""
+    entry = None
+    if list_cache is not None and list_cache_ttl > 0:
+        entry = list_cache.lookup(url)
+        if entry is not None and entry.is_fresh(list_cache_ttl):
+            return entry.body
+
+    use_http_validators = (
+        list_cache is not None
+        and list_cache_ttl > 0
+        and fetch_fn is default_fetch
+        and mode == "http"
+    )
+
+    if (
+        use_http_validators
+        and entry is not None
+        and (entry.etag or entry.last_modified)
+    ):
+        extra: dict[str, str] = {}
+        if entry.etag:
+            extra["If-None-Match"] = entry.etag
+        if entry.last_modified:
+            extra["If-Modified-Since"] = entry.last_modified
+        for flag in proxy_attempts(use_proxy, proxy):
+            try:
+                result = fetch_http_result(
+                    url,
+                    proxy=proxy,
+                    use_proxy_flag=flag,
+                    extra_headers=extra,
+                )
+                if result.get("not_modified"):
+                    list_cache.touch(url)
+                    return entry.body
+                body = result["body"]
+                list_cache.store(
+                    url,
+                    body,
+                    etag=result.get("etag"),
+                    last_modified=result.get("last_modified"),
+                )
+                return body
+            except FetchError:
+                continue
+
+    if use_http_validators:
+        last_err: FetchError | None = None
+        for flag in proxy_attempts(use_proxy, proxy):
+            try:
+                result = fetch_http_result(
+                    url, proxy=proxy, use_proxy_flag=flag,
+                )
+                body = result["body"]
+                list_cache.store(
+                    url,
+                    body,
+                    etag=result.get("etag"),
+                    last_modified=result.get("last_modified"),
+                )
+                return body
+            except FetchError as e:
+                last_err = e
+                continue
+        if last_err is not None and not browser_on_cloudflare:
+            raise last_err
+
+    body, _method = fetch_with_policy(
+        url,
+        use_proxy=use_proxy,
+        proxy=proxy,
+        fetch_fn=fetch_fn,
+        mode=mode,
+        browser_on_cloudflare=browser_on_cloudflare,
+        browser_fetch_fn=browser_fetch_fn,
+    )
+    if list_cache is not None and list_cache_ttl > 0:
+        list_cache.store(url, body)
+    return body
 
 
 def parse_concurrency(cfg: dict[str, Any] | None) -> tuple[int, int]:
@@ -508,8 +613,10 @@ def fetch_feed_items(
     mode: FetchMode = "http",
     browser_on_cloudflare: bool = True,
     browser_fetch_fn: FetchFn | None = None,
+    list_cache: ListFetchCache | None = None,
+    list_cache_ttl: int = DEFAULT_LIST_CACHE_TTL_SECONDS,
 ) -> list[dict[str, Any]]:
-    body, _method = fetch_with_policy(
+    body = fetch_discover_body(
         feed_url,
         use_proxy=use_proxy,
         proxy=proxy,
@@ -517,6 +624,8 @@ def fetch_feed_items(
         mode=mode,
         browser_on_cloudflare=browser_on_cloudflare,
         browser_fetch_fn=browser_fetch_fn,
+        list_cache=list_cache,
+        list_cache_ttl=list_cache_ttl,
     )
     items = parse_feed(body, base_url=feed_url)
     if not items:
@@ -534,8 +643,10 @@ def discover_via_html(
     mode: FetchMode = "http",
     browser_on_cloudflare: bool = True,
     browser_fetch_fn: FetchFn | None = None,
+    list_cache: ListFetchCache | None = None,
+    list_cache_ttl: int = DEFAULT_LIST_CACHE_TTL_SECONDS,
 ) -> list[dict[str, Any]]:
-    list_html, _method = fetch_with_policy(
+    list_html = fetch_discover_body(
         list_url,
         use_proxy=use_proxy,
         proxy=proxy,
@@ -543,6 +654,8 @@ def discover_via_html(
         mode=mode,
         browser_on_cloudflare=browser_on_cloudflare,
         browser_fetch_fn=browser_fetch_fn,
+        list_cache=list_cache,
+        list_cache_ttl=list_cache_ttl,
     )
     return extract_links(list_html, list_url, date_attr=date_attr)
 
@@ -557,6 +670,8 @@ def discover_via_aggregate(
     mode: FetchMode = "http",
     browser_on_cloudflare: bool = True,
     browser_fetch_fn: FetchFn | None = None,
+    list_cache: ListFetchCache | None = None,
+    list_cache_ttl: int = DEFAULT_LIST_CACHE_TTL_SECONDS,
 ) -> list[dict[str, Any]]:
     candidates: list[str] = []
     fb = source.get("fallback_rss_url")
@@ -576,6 +691,8 @@ def discover_via_aggregate(
                 mode=mode,
                 browser_on_cloudflare=browser_on_cloudflare,
                 browser_fetch_fn=browser_fetch_fn,
+                list_cache=list_cache,
+                list_cache_ttl=list_cache_ttl,
             )
         except FetchError as e:
             last_err = e
@@ -599,6 +716,9 @@ def discover_source_items(
     browser_on_cloudflare: bool | None = None,
     browser_fetch_fn: FetchFn | None = None,
     max_pages: int = 1,
+    known_urls: set[str] | None = None,
+    list_cache: ListFetchCache | None = None,
+    list_cache_ttl: int = DEFAULT_LIST_CACHE_TTL_SECONDS,
 ) -> tuple[list[dict[str, Any]], list[tuple[str, str, str]]]:
     list_url = source.get("url")
     if not isinstance(list_url, str) or not list_url.startswith(("http://", "https://")):
@@ -617,7 +737,7 @@ def discover_source_items(
     if isinstance(rss_url, str) and rss_url.startswith(("http://", "https://")):
         if max_pages > 1:
             def _fetch_feed(url: str) -> str:
-                body, _ = fetch_with_policy(
+                return fetch_discover_body(
                     url,
                     use_proxy=use_proxy,
                     proxy=proxy,
@@ -625,8 +745,9 @@ def discover_source_items(
                     mode=fetch_mode,
                     browser_on_cloudflare=boc,
                     browser_fetch_fn=browser_fetch_fn,
+                    list_cache=list_cache,
+                    list_cache_ttl=list_cache_ttl,
                 )
-                return body
 
             def _parse_feed(xml_text: str, base_url: str) -> list[dict[str, Any]]:
                 return parse_feed(xml_text, base_url=base_url)
@@ -638,6 +759,7 @@ def discover_source_items(
                     parse_feed_fn=_parse_feed,
                     max_pages=max_pages,
                     start_date=start_date,
+                    known_urls=known_urls,
                 )
                 errors.extend(pag_errors)
             except Exception as exc:
@@ -652,13 +774,15 @@ def discover_source_items(
                     mode=fetch_mode,
                     browser_on_cloudflare=boc,
                     browser_fetch_fn=browser_fetch_fn,
+                    list_cache=list_cache,
+                    list_cache_ttl=list_cache_ttl,
                 )
             except FetchError as e:
                 errors.append((e.method, e.url, e.reason))
     if not items:
         if max_pages > 1:
             def _fetch_page(url: str) -> str:
-                body, _ = fetch_with_policy(
+                return fetch_discover_body(
                     url,
                     use_proxy=use_proxy,
                     proxy=proxy,
@@ -666,8 +790,9 @@ def discover_source_items(
                     mode=fetch_mode,
                     browser_on_cloudflare=boc,
                     browser_fetch_fn=browser_fetch_fn,
+                    list_cache=list_cache,
+                    list_cache_ttl=list_cache_ttl,
                 )
-                return body
 
             def _extract(html: str, url: str) -> list[dict[str, Any]]:
                 return extract_links(html, url, date_attr=date_attr)
@@ -679,6 +804,7 @@ def discover_source_items(
                     extract_links_fn=_extract,
                     max_pages=max_pages,
                     start_date=start_date,
+                    known_urls=known_urls,
                 )
                 errors.extend(pag_errors)
             except Exception as exc:
@@ -694,6 +820,8 @@ def discover_source_items(
                     mode=fetch_mode,
                     browser_on_cloudflare=boc,
                     browser_fetch_fn=browser_fetch_fn,
+                    list_cache=list_cache,
+                    list_cache_ttl=list_cache_ttl,
                 )
             except FetchError as e:
                 errors.append((e.method, e.url, e.reason))
@@ -718,6 +846,8 @@ def discover_source_items(
                 mode=fetch_mode,
                 browser_on_cloudflare=boc,
                 browser_fetch_fn=browser_fetch_fn,
+                list_cache=list_cache,
+                list_cache_ttl=list_cache_ttl,
             )
         except FetchError as e:
             errors.append((e.method, e.url, e.reason))
@@ -1133,7 +1263,7 @@ def run(
     start_date: str,
     end_date: str,
     *,
-    skill_subdir: str,
+    skill_subdir: str | None = None,
     weekly_root=None,
     sources_path: Path | None = None,
     proxy: str | None = None,
@@ -1153,6 +1283,8 @@ def run(
     max_retries: int = DEFAULT_RETRY_MAX,
     retry_base_delay: float = DEFAULT_RETRY_BASE_DELAY,
     sleep_fn: Callable[[float], None] | None = None,
+    list_cache_ttl_seconds: int | None = None,
+    known_url_streak_stop: int | None = None,
 ) -> dict[str, int]:
     for label, d in (("start_date", start_date), ("end_date", end_date)):
         try:
@@ -1161,8 +1293,27 @@ def run(
             print(f"ERROR: invalid {label} (expected YYYY-MM-DD): {d!r}", file=sys.stderr)
             sys.exit(2)
 
-    ai_trends_dir = resolve_skill_dir(end_date, skill_subdir, weekly_root)
     sources_path = Path(sources_path) if sources_path else default_sources_path()
+    if skill_subdir is None:
+        skill_subdir = infer_skill_subdir(
+            str(sources_path) if sources_path else None,
+            Path(weekly_root) if weekly_root else None,
+            end_date,
+        )
+    if not skill_subdir:
+        # Test / local weekly layout often uses ai-trends under end_date.
+        if weekly_root is not None:
+            candidate = Path(weekly_root) / end_date / "ai-trends"
+            if candidate.is_dir():
+                skill_subdir = "ai-trends"
+    if not skill_subdir:
+        print(
+            "ERROR: cannot determine skill_subdir; pass skill_subdir= explicitly",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+
+    ai_trends_dir = resolve_skill_dir(end_date, skill_subdir, weekly_root)
     if not sources_path.is_file():
         print(f"ERROR: sources.json not found: {sources_path}", file=sys.stderr)
         sys.exit(2)
@@ -1172,6 +1323,9 @@ def run(
         raw_proxy = cfg.get("proxy")
         proxy = raw_proxy.strip() if isinstance(raw_proxy, str) and raw_proxy.strip() else None
     ttl_days = parse_body_ttl_days(cfg, body_ttl_days)
+    explicit_list_ttl = list_cache_ttl_seconds is not None
+    list_cache_ttl = parse_list_cache_ttl_seconds(cfg, list_cache_ttl_seconds)
+    streak_stop = parse_known_url_streak_stop(cfg, known_url_streak_stop)
     if search_cfg is None:
         search_cfg = resolve_search_config(cfg)
     cfg_global, cfg_per_source = parse_concurrency(cfg)
@@ -1207,6 +1361,9 @@ def run(
     counters_lock = threading.Lock()
     counters = {"fetched": 0, "skipped": 0, "errors": 0}
     global_sem = threading.Semaphore(global_workers)
+    list_cache = None
+    if list_cache_ttl > 0 and (fetch_fn is default_fetch or explicit_list_ttl):
+        list_cache = ListFetchCache()
 
     resolved_slugs: list[tuple[int, str]] = []
     for i, source in enumerate(sources):
@@ -1252,6 +1409,8 @@ def run(
 
         date_cache = date_cache_load() if fetch_fn is default_fetch else None
 
+        with known_urls_lock:
+            known_snapshot = set(known_urls)
         items, discover_errors = discover_source_items(
             source,
             start_date=start_date,
@@ -1265,6 +1424,9 @@ def run(
             browser_on_cloudflare=boc,
             browser_fetch_fn=source_browser_fetch_fn,
             max_pages=eff_max_pages,
+            known_urls=known_snapshot,
+            list_cache=list_cache,
+            list_cache_ttl=list_cache_ttl,
         )
         for method, err_url, reason in discover_errors:
             append_error_log(ai_trends_dir, method, err_url, reason)
@@ -1282,17 +1444,33 @@ def run(
             items_descending = all(dates[i] >= dates[i + 1] for i in range(len(dates) - 1))
 
         to_fetch: list[dict[str, Any]] = []
+        known_streak = 0
         for item in items:
             url = item["url"]
             with known_urls_lock:
                 if url in known_urls:
                     with counters_lock:
                         counters["skipped"] += 1
+                    known_streak += 1
+                    if (
+                        items_descending
+                        and streak_stop > 0
+                        and known_streak >= streak_stop
+                    ):
+                        break
                     continue
             if should_skip_from_site_index(url, site_index, retry_errors=retry_errors):
                 with counters_lock:
                     counters["skipped"] += 1
+                known_streak += 1
+                if (
+                    items_descending
+                    and streak_stop > 0
+                    and known_streak >= streak_stop
+                ):
+                    break
                 continue
+            known_streak = 0
             if not url_allowed(
                 url,
                 list_url=list_url,

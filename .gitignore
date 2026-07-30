@@ -23,3 +23,7 @@ makefile.auth
 
 # ai-trends-weekly runtime cache
 .agents/skills/ai-trends-weekly/data/
+
+# Discover list/RSS short-TTL cache + URL date cache
+data/list_fetch_cache/
+data/url_date_cache.jsonl

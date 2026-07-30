@@ -114,6 +114,55 @@ def method_label(use_proxy_flag: bool, *, mode: FetchMode = "http") -> str:
     return "curl(proxy)" if use_proxy_flag else "curl(direct)"
 
 
+def fetch_http_result(
+    url: str,
+    *,
+    proxy: str | None,
+    use_proxy_flag: bool,
+    timeout: int = 30,
+    extra_headers: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    """Fetch URL and return body plus cache validators.
+
+    Returns ``{"body", "etag", "last_modified", "not_modified"}``.
+    On HTTP 304, ``body`` is ``""`` and ``not_modified`` is True.
+    """
+    method = method_label(use_proxy_flag, mode="http")
+    handlers = []
+    if use_proxy_flag and proxy:
+        handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
+    else:
+        handlers.append(urllib.request.ProxyHandler({}))
+    opener = urllib.request.build_opener(*handlers)
+    headers = dict(DEFAULT_HEADERS)
+    if extra_headers:
+        headers.update(extra_headers)
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            charset = resp.headers.get_content_charset() or "utf-8"
+            body = resp.read().decode(charset, errors="replace")
+            return {
+                "body": body,
+                "etag": resp.headers.get("ETag"),
+                "last_modified": resp.headers.get("Last-Modified"),
+                "not_modified": False,
+            }
+    except urllib.error.HTTPError as e:
+        if e.code == 304:
+            return {
+                "body": "",
+                "etag": e.headers.get("ETag") if e.headers else None,
+                "last_modified": (
+                    e.headers.get("Last-Modified") if e.headers else None
+                ),
+                "not_modified": True,
+            }
+        raise FetchError(url, method, f"HTTP {e.code}") from e
+    except Exception as e:  # noqa: BLE001 — surface as fetch failure
+        raise FetchError(url, method, str(e) or type(e).__name__) from e
+
+
 def fetch_http(
     url: str,
     *,
@@ -122,22 +171,9 @@ def fetch_http(
     timeout: int = 30,
 ) -> str:
     """Fetch URL via urllib with browser-like headers. Raises FetchError."""
-    method = method_label(use_proxy_flag, mode="http")
-    handlers = []
-    if use_proxy_flag and proxy:
-        handlers.append(urllib.request.ProxyHandler({"http": proxy, "https": proxy}))
-    else:
-        handlers.append(urllib.request.ProxyHandler({}))
-    opener = urllib.request.build_opener(*handlers)
-    req = urllib.request.Request(url, headers=DEFAULT_HEADERS)
-    try:
-        with opener.open(req, timeout=timeout) as resp:
-            charset = resp.headers.get_content_charset() or "utf-8"
-            return resp.read().decode(charset, errors="replace")
-    except urllib.error.HTTPError as e:
-        raise FetchError(url, method, f"HTTP {e.code}") from e
-    except Exception as e:  # noqa: BLE001 — surface as fetch failure
-        raise FetchError(url, method, str(e) or type(e).__name__) from e
+    return fetch_http_result(
+        url, proxy=proxy, use_proxy_flag=use_proxy_flag, timeout=timeout,
+    )["body"]
 
 
 _HTTP_DATE_FORMATS = [

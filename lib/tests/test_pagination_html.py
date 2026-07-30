@@ -229,3 +229,40 @@ class TestDeduplication:
         assert len(result) == 2  # a1 deduped, a2 added
         urls = [item["url"] for item in result]
         assert urls.count("https://example.com/a1") == 1
+
+
+class TestKnownUrlEarlyStop:
+    def test_stops_when_entire_page_known(self):
+        fetched: list[str] = []
+
+        def tracking_fetch(url: str) -> str:
+            fetched.append(url)
+            pages = {
+                "https://example.com/blog": '<a rel="next" href="/blog?page=2">Next</a>',
+                "https://example.com/blog?page=2": "<html>page 2</html>",
+            }
+            if url not in pages:
+                raise RuntimeError(f"404: {url}")
+            return pages[url]
+
+        items = {
+            "https://example.com/blog": [
+                {"url": "https://example.com/a1", "publish_date": "2026-07-20"},
+                {"url": "https://example.com/a2", "publish_date": "2026-07-19"},
+            ],
+            "https://example.com/blog?page=2": [
+                {"url": "https://example.com/a3", "publish_date": "2026-07-10"},
+            ],
+        }
+        known = {"https://example.com/a1", "https://example.com/a2"}
+        result, errors = paginate_html_discovery(
+            "https://example.com/blog",
+            fetch_page_fn=tracking_fetch,
+            extract_links_fn=make_extractor(items),
+            max_pages=5,
+            start_date="2026-07-11",
+            known_urls=known,
+        )
+        assert errors == []
+        assert len(result) == 2
+        assert "https://example.com/blog?page=2" not in fetched

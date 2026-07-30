@@ -120,6 +120,16 @@ def _all_items_older_than(
     ])
 
 
+def _all_items_known(
+    items: list[dict[str, Any]], known_urls: set[str] | None,
+) -> bool:
+    """True when every item URL is already in ``known_urls`` (non-empty page)."""
+    if not known_urls or not items:
+        return False
+    urls = [it.get("url") for it in items if isinstance(it.get("url"), str) and it["url"]]
+    return bool(urls) and all(u in known_urls for u in urls)
+
+
 def paginate_html_discovery(
     list_url: str,
     *,
@@ -127,6 +137,7 @@ def paginate_html_discovery(
     extract_links_fn: Callable[[str, str], list[dict[str, Any]]],
     max_pages: int,
     start_date: str,
+    known_urls: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[tuple[str, str, str]]]:
     """Paginate through HTML listing pages, aggregating all discovered items.
 
@@ -139,6 +150,8 @@ def paginate_html_discovery(
         max_pages: Maximum number of pages to fetch (>= 1).
         start_date: Date string (YYYY-MM-DD). Items older than this trigger
             early-stop when all items on a page are older.
+        known_urls: Optional set of already-fetched article URLs. When every
+            item on a page is known, pagination stops (resume optimization).
 
     Returns:
         A tuple of (all_items, errors) where errors is a list of
@@ -170,6 +183,10 @@ def paginate_html_discovery(
         # Date early-stop: if all dated items on this page are older than
         # start_date, stop paginating (assuming descending order)
         if _all_items_older_than(new_items, start_date):
+            break
+
+        # Resume early-stop: entire page already in url_index
+        if _all_items_known(new_items, known_urls):
             break
 
         # Find next page URL
@@ -228,6 +245,7 @@ def paginate_feed_discovery(
     parse_feed_fn: Callable[[str, str], list[dict[str, Any]]],
     max_pages: int,
     start_date: str,
+    known_urls: set[str] | None = None,
 ) -> tuple[list[dict[str, Any]], list[tuple[str, str, str]]]:
     """Paginate through RSS/Atom feeds, aggregating all discovered items.
 
@@ -245,6 +263,8 @@ def paginate_feed_discovery(
         max_pages: Maximum number of pages to fetch (>= 1).
         start_date: Date string (YYYY-MM-DD). Items older than this trigger
             early-stop when all items on a page are older.
+        known_urls: Optional set of already-fetched article URLs. When every
+            item on a page is known, pagination stops (resume optimization).
 
     Returns:
         A tuple of (all_items, errors) where errors is a list of
@@ -281,6 +301,10 @@ def paginate_feed_discovery(
 
         # Date early-stop
         if _all_items_older_than(new_items, start_date):
+            break
+
+        # Resume early-stop: entire page already in url_index
+        if _all_items_known(new_items, known_urls):
             break
 
         # Find next page

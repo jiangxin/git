@@ -67,6 +67,8 @@ arguments:
 | `fetch_concurrency_per_source` | 每源并发上限（默认 2） |
 | `source_concurrency` | 同时跑多少个源（默认 4） |
 | `body_ttl_days` | 正文缓存 TTL 天数（默认 7） |
+| `list_cache_ttl_seconds` | 列表/RSS 发现页短缓存秒数（默认 1800）；`0` 关闭 |
+| `known_url_streak_stop` | 时间倒序列表上连续命中已抓 URL 条数后停止候选扫描（默认 5）；`0` 关闭 |
 | `default_max_pages` | 全局翻页上限（默认 1，即不翻页）；可被源级 `max_pages` 覆盖 |
 | `search_api` | 受限搜索：`{"provider":"serper","api_key_env":"SERPER_API_KEY"}`（可选） |
 | `playwright_storage_state_dir` | Playwright storage_state 文件存储目录（默认 `~/.playwright-cli/states/`） |
