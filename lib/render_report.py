@@ -16,6 +16,7 @@ from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from cluster_articles import load_clusters  # noqa: E402
 from filter_by_date import extract_date  # noqa: E402
 from site_store import iter_articles  # noqa: E402
 from summary_io import is_valid_summary, load_summary, summary_path  # noqa: E402
@@ -67,6 +68,7 @@ def collect_entries(skill_dir: Path) -> list[dict[str, Any]]:
                 "url": record.meta.get("url") or "",
                 "publish_date": record.meta.get("publish_date"),
                 "source": record.meta.get("source") or "",
+                "hash": record.hash,
                 "en_summary": sdata.get("en_summary", ""),
                 "cn_title": sdata.get("cn_title", ""),
                 "cn_summary": sdata.get("cn_summary", ""),
@@ -75,6 +77,9 @@ def collect_entries(skill_dir: Path) -> list[dict[str, Any]]:
             rh = sdata.get("rank_hint")
             if rh is not None:
                 entry["rank_hint"] = rh
+            topic_id = sdata.get("topic_id")
+            if topic_id:
+                entry["_topic_id"] = topic_id
             entries.append(entry)
     return entries
 
@@ -109,6 +114,61 @@ def group_by_date(entries: list[dict[str, Any]]) -> list[tuple[str, list[dict[st
     return [(day, buckets[day]) for day in ordered_days]
 
 
+def build_cluster_index(
+    clusters_data: dict[str, Any] | None,
+) -> dict[str, dict[str, Any]]:
+    """Map article hash → cluster record from ``clusters.json``."""
+    index: dict[str, dict[str, Any]] = {}
+    if not clusters_data:
+        return index
+    for cluster in clusters_data.get("clusters", []):
+        for art in cluster.get("articles", []):
+            h = art.get("hash")
+            if h:
+                index[h] = cluster
+    return index
+
+
+def partition_by_cluster(
+    entries: list[dict[str, Any]],
+    cluster_index: dict[str, dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split entries into cluster leaders and non-cluster members.
+
+    Returns ``(leaders, orphans)``. For each cluster, the first entry
+    (by existing sort order) becomes the leader; remaining members are
+    attached as ``_cluster_peers`` on the leader.
+    """
+    seen: set[str] = set()
+    leaders: list[dict[str, Any]] = []
+    orphans: list[dict[str, Any]] = []
+    entry_by_hash: dict[str, dict[str, Any]] = {
+        e["hash"]: e for e in entries if e.get("hash")
+    }
+
+    for entry in entries:
+        h = entry.get("hash") or ""
+        cluster = cluster_index.get(h)
+        if not cluster:
+            orphans.append(entry)
+            continue
+        cid = cluster["id"]
+        if cid in seen:
+            continue
+        seen.add(cid)
+        peers = [
+            entry_by_hash[a["hash"]]
+            for a in cluster.get("articles", [])
+            if a.get("hash") and a["hash"] != h and a["hash"] in entry_by_hash
+        ]
+        leader = dict(entry)
+        leader["_cluster_id"] = cid
+        leader["_cluster_peers"] = peers
+        leaders.append(leader)
+
+    return leaders, orphans
+
+
 def apply_max_per_day(
     entries: list[dict[str, Any]],
     max_per_day: int | None,
@@ -132,7 +192,22 @@ def format_item(entry: dict[str, Any]) -> str:
     summary = (entry.get("cn_summary") or "").rstrip("。. ")
     source = entry.get("source") or ""
     day = extract_date(entry.get("publish_date")) or str(entry.get("publish_date") or "")
-    return f"* **[{title}]({url})**：{summary}。📰 {source} 📅 {day}"
+    line = f"* **[{title}]({url})**：{summary}。📰 {source} 📅 {day}"
+    peers = entry.get("_cluster_peers")
+    if peers:
+        line += "\n"
+        line += f"  <details><summary>📎 相似文章 ({len(peers)})</summary>\n"
+        line += "\n"
+        for peer in peers:
+            p_title = peer.get("cn_title") or peer.get("original_title") or "(untitled)"
+            p_url = peer.get("url") or ""
+            p_summary = (peer.get("cn_summary") or "").rstrip("。. ")
+            p_source = peer.get("source") or ""
+            p_day = extract_date(peer.get("publish_date")) or str(peer.get("publish_date") or "")
+            line += f"  * [{p_title}]({p_url})：{p_summary}。📰 {p_source} 📅 {p_day}\n"
+        line += "\n"
+        line += "  </details>"
+    return line
 
 
 def render_markdown(
@@ -142,7 +217,12 @@ def render_markdown(
     subtitle: str,
     *,
     max_per_day: int | None = None,
+    clusters_data: dict[str, Any] | None = None,
 ) -> str:
+    cluster_index = build_cluster_index(clusters_data)
+    if cluster_index:
+        leaders, orphans = partition_by_cluster(entries, cluster_index)
+        entries = leaders + orphans
     items = apply_max_per_day(entries[:MAX_ITEMS], max_per_day)
     lines: list[str] = [
         f"## {end_date} {title}",
@@ -225,6 +305,49 @@ def _html_article_item(entry: dict[str, Any]) -> str:
     )
 
 
+def _html_cluster_item(entry: dict[str, Any]) -> str:
+    title = html_mod.escape(entry.get("cn_title") or entry.get("original_title") or "(untitled)")
+    url = html_mod.escape(entry.get("url") or "")
+    summary = html_mod.escape((entry.get("cn_summary") or "").rstrip("。. "))
+    source = html_mod.escape(entry.get("source") or "")
+    day = html_mod.escape(
+        extract_date(entry.get("publish_date")) or str(entry.get("publish_date") or "")
+    )
+    peers = entry.get("_cluster_peers") or []
+    peer_count = len(peers)
+    parts = [
+        f'<div class="article-item cluster-leader" data-source="{source}">'
+        f'<strong><a href="{url}">{title}</a></strong>'
+        f'：{summary}。'
+        f'<span class="meta">📰 {source} 📅 {day}</span>'
+    ]
+    if peer_count > 0:
+        parts.append(
+            f'<button class="cluster-toggle" onclick="'
+            f'this.classList.toggle(\'open\');'
+            f'this.nextElementSibling.classList.toggle(\'open\')">'
+            f'📎 相似文章 ({peer_count}) ▼</button>'
+        )
+        parts.append('<div class="cluster-details">')
+        for peer in peers:
+            p_title = html_mod.escape(peer.get("cn_title") or peer.get("original_title") or "(untitled)")
+            p_url = html_mod.escape(peer.get("url") or "")
+            p_summary = html_mod.escape((peer.get("cn_summary") or "").rstrip("。. "))
+            p_source = html_mod.escape(peer.get("source") or "")
+            p_day = html_mod.escape(
+                extract_date(peer.get("publish_date")) or str(peer.get("publish_date") or "")
+            )
+            parts.append(
+                f'<div class="article-item cluster-peer" data-source="{p_source}">'
+                f'<strong><a href="{p_url}">{p_title}</a></strong>'
+                f'：{p_summary}。'
+                f'<span class="meta">📰 {p_source} 📅 {p_day}</span></div>'
+            )
+        parts.append("</div>")
+    parts.append("</div>")
+    return "\n".join(parts)
+
+
 def render_html(
     end_date: str,
     entries: list[dict[str, Any]],
@@ -233,7 +356,12 @@ def render_html(
     subtitle: str,
     *,
     max_per_day: int | None = None,
+    clusters_data: dict[str, Any] | None = None,
 ) -> str:
+    cluster_index = build_cluster_index(clusters_data)
+    if cluster_index:
+        leaders, orphans = partition_by_cluster(entries, cluster_index)
+        entries = leaders + orphans
     items = apply_max_per_day(entries[:MAX_ITEMS], max_per_day)
     groups = group_by_date(items)
 
@@ -253,7 +381,10 @@ def render_html(
         articles_parts.append(f'<div class="date-group" data-date="{html_mod.escape(day)}">')
         articles_parts.append(f'<h3>{html_mod.escape(day)}</h3>')
         for entry in group:
-            articles_parts.append(_html_article_item(entry))
+            if entry.get("_cluster_peers"):
+                articles_parts.append(_html_cluster_item(entry))
+            else:
+                articles_parts.append(_html_article_item(entry))
         articles_parts.append("</div>")
     articles_html = "\n".join(articles_parts)
 
@@ -281,6 +412,14 @@ h1 {{ margin-bottom: 8px; }}
 .article-item a:hover {{ text-decoration: underline; }}
 .back-link {{ display: inline-flex; align-items: center; gap: 6px; color: #667eea; text-decoration: none; font-size: 14px; margin-bottom: 16px; transition: all 0.15s; }}
 .back-link:hover {{ color: #764ba2; gap: 10px; }}
+.cluster-toggle {{ background: none; border: 1px solid #ddd; border-radius: 4px; padding: 2px 10px; font-size: 12px; color: #666; cursor: pointer; margin: 4px 0 2px; transition: all .15s; }}
+.cluster-toggle:hover {{ background: #f0f0f0; }}
+.cluster-toggle.open {{ background: #e8f0fe; border-color: #2563eb; color: #2563eb; }}
+.cluster-details {{ display: none; margin: 4px 0 4px 16px; padding: 8px 12px; border-left: 3px solid #ddd; background: #fafafa; }}
+.cluster-details.open {{ display: block; }}
+.cluster-peer {{ margin: 4px 0; font-size: 13px; }}
+.cluster-peer .meta {{ font-size: 11px; }}
+.cluster-leader {{ border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 12px; background: #fff; }}
 </style>
 </head>
 <body>
@@ -366,7 +505,14 @@ def run_report(
         )
     emit_quality_warning(len(in_range), quality_min=quality_min)
     sorted_entries = sort_entries(in_range)
-    md = render_markdown(end_date, sorted_entries, title, subtitle, max_per_day=max_per_day)
+    clusters_data = load_clusters(skill_dir)
+    if clusters_data:
+        n_clusters = len(clusters_data.get("clusters", []))
+        print(f"CLUSTERS: found {n_clusters} clusters in clusters.json", file=sys.stderr)
+    md = render_markdown(
+        end_date, sorted_entries, title, subtitle,
+        max_per_day=max_per_day, clusters_data=clusters_data,
+    )
     week_dir = skill_dir.parent
     out_path = week_dir / output_filename
     out_path.write_text(md, encoding="utf-8")
@@ -374,7 +520,8 @@ def run_report(
     source_counts = collect_source_counts(in_range)
     html_filename = output_filename.rsplit(".", 1)[0] + ".html"
     html_content = render_html(
-        end_date, sorted_entries, source_counts, title, subtitle, max_per_day=max_per_day,
+        end_date, sorted_entries, source_counts, title, subtitle,
+        max_per_day=max_per_day, clusters_data=clusters_data,
     )
     html_path = week_dir / html_filename
     html_path.write_text(html_content, encoding="utf-8")
