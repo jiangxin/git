@@ -1,13 +1,13 @@
 """Article clustering for weekly reports.
 
-Groups similar articles by title token overlap (Jaccard), URL domain
-similarity, and optional ``topic_id`` hints from Agent summaries.
+Groups similar articles by summary token overlap (Jaccard), light title
+boost, and optional ``topic_id`` hints from Agent summaries.
 
 Usage as library::
 
     from cluster_articles import cluster_entries, write_clusters
 
-    clusters, singletons = cluster_entries(entries, threshold=0.45)
+    clusters, singletons = cluster_entries(entries, threshold=0.30)
     write_clusters(skill_dir, clusters, singletons)
 
 Usage as CLI::
@@ -18,13 +18,10 @@ Usage as CLI::
 from __future__ import annotations
 
 import json
-import math
 import re
-import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
 
 _STOP_WORDS: set[str] = set(
@@ -42,6 +39,13 @@ _STOP_WORDS: set[str] = set(
 _SPLIT_RE = re.compile(r"[^a-zA-Z0-9\u4e00-\u9fff]+")
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+# Summary carries the news payload; title is a light boost for short same-story
+# headlines. URL similarity is intentionally omitted: digest sources (e.g. 大黑
+# AI 速报) share templated paths and would false-merge entire days.
+_SUMMARY_WEIGHT = 0.7
+_TITLE_WEIGHT = 0.3
+_DEFAULT_THRESHOLD = 0.30
 
 
 def _tokenize(text: str) -> list[str]:
@@ -74,66 +78,28 @@ def _jaccard(tokens_a: list[str], tokens_b: list[str]) -> float:
     return intersection / union if union else 0.0
 
 
-def _extract_domain(url: str) -> str:
-    try:
-        parsed = urlparse(url)
-        host = parsed.hostname or ""
-        host = re.sub(r"^www\.", "", host)
-        return host
-    except Exception:
-        return ""
-
-
-def _url_path_tokens(url: str) -> list[str]:
-    try:
-        parsed = urlparse(url)
-        path = parsed.path.strip("/")
-        return [t for t in _SPLIT_RE.split(path) if t and len(t) > 2]
-    except Exception:
-        return []
-
-
-def _url_similarity(url_a: str, url_b: str) -> float:
-    if not url_a or not url_b:
+def _text_similarity(text_a: str, text_b: str) -> float:
+    if not text_a or not text_b:
         return 0.0
-    domain_a = _extract_domain(url_a)
-    domain_b = _extract_domain(url_b)
-    if not domain_a or not domain_b:
-        return 0.0
-    if domain_a != domain_b:
-        return 0.0
-    path_a = _url_path_tokens(url_a)
-    path_b = _url_path_tokens(url_b)
-    if not path_a or not path_b:
-        return 0.3
-    return _jaccard(path_a, path_b) * 0.5 + 0.5
+    return _jaccard(_tokenize(text_a), _tokenize(text_b))
 
 
-def _title_similarity(title_a: str, title_b: str) -> float:
-    if not title_a or not title_b:
-        return 0.0
-    tokens_a = _tokenize(title_a)
-    tokens_b = _tokenize(title_b)
-    return _jaccard(tokens_a, tokens_b)
+def _entry_title(entry: dict[str, Any]) -> str:
+    return entry.get("cn_title") or entry.get("original_title") or ""
 
 
 def _combined_similarity(entry_a: dict[str, Any], entry_b: dict[str, Any]) -> float:
-    title_a = (
-        entry_a.get("cn_title") or entry_a.get("original_title") or ""
+    summary_sim = _text_similarity(
+        entry_a.get("cn_summary") or "",
+        entry_b.get("cn_summary") or "",
     )
-    title_b = (
-        entry_b.get("cn_title") or entry_b.get("original_title") or ""
-    )
-    url_a = entry_a.get("url") or ""
-    url_b = entry_b.get("url") or ""
-    title_sim = _title_similarity(title_a, title_b)
-    url_sim = _url_similarity(url_a, url_b)
-    return 0.55 * title_sim + 0.45 * url_sim
+    title_sim = _text_similarity(_entry_title(entry_a), _entry_title(entry_b))
+    return _SUMMARY_WEIGHT * summary_sim + _TITLE_WEIGHT * title_sim
 
 
 def _union_find_cluster(
     entries: list[dict[str, Any]],
-    threshold: float = 0.45,
+    threshold: float = _DEFAULT_THRESHOLD,
 ) -> list[list[int]]:
     n = len(entries)
     parent = list(range(n))
@@ -166,7 +132,7 @@ def _union_find_cluster(
 
 def cluster_entries(
     entries: list[dict[str, Any]],
-    threshold: float = 0.45,
+    threshold: float = _DEFAULT_THRESHOLD,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Cluster entries into groups of similar articles.
 

@@ -162,7 +162,7 @@ Agent: 扫描缺 .summary.md 的文章，逐篇写 sidecar
 check_summaries.py --end-date
     → 断言：所有 fetched/cached 条目均有合法 summary
 cluster_articles.py --end-date
-    → 相似文章聚类（标题 Jaccard + URL 域名 + topic_id 合并）
+    → 相似文章聚类（摘要 Jaccard + 轻量标题 + topic_id 合并）
     → clusters.json（聚类结果）
 render_ai_trends.py --start-date --end-date
     → AI-trends.md + AI-trends.html（Top-50 + 按日分组 + 相似文章折叠）
@@ -226,13 +226,14 @@ python3 .agents/skills/ai-trends-weekly/scripts/cluster_articles.py --end-date "
 
 脚本对已抓取文章进行相似性聚类，生成 `clusters.json`。聚类方法：
 
-- **标题 Jaccard 相似度**：对中英文标题分词后计算 token 集合的 Jaccard 系数（权重 55%）
-- **URL 域名 + 路径相似度**：同域名下路径重叠度（权重 45%）
+- **摘要 Jaccard 相似度**：对 `cn_summary` 分词后计算 token 集合的 Jaccard 系数（权重 70%）
+- **标题轻量加权**：对中英文标题同样计算 Jaccard（权重 30%），用于同题短标题补强
 - **topic_id 合并**：Agent 在 `.summary.md` 中标注了相同 `topic_id` 的文章直接合并
+- **不使用 URL 相似度**：速报类源（如大黑 AI 速报）共享模板化 path，URL 加权会把整日各期错误并成一簇
 
-相似度超过阈值（默认 0.45）的文章被归为同一簇。`render_ai_trends.py` 会自动读取 `clusters.json`，在报告渲染时将相似文章折叠展示。
+相似度超过阈值（默认 0.30）的文章被归为同一簇。`render_ai_trends.py` 会自动读取 `clusters.json`，在报告渲染时将相似文章折叠展示。
 
-可选参数：`--weekly-root PATH`、`--threshold FLOAT`（默认 0.45）
+可选参数：`--weekly-root PATH`、`--threshold FLOAT`（默认 0.30）
 
 ### 6. 渲染周报 Markdown
 

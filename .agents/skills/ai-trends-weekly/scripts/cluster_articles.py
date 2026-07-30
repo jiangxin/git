@@ -34,8 +34,8 @@ def main() -> int:
     parser.add_argument("--end-date", required=True, help="End date YYYY-MM-DD")
     parser.add_argument("--weekly-root", metavar="PATH", default=None)
     parser.add_argument(
-        "--threshold", type=float, default=0.45,
-        help="Similarity threshold for clustering (default: 0.45)",
+        "--threshold", type=float, default=0.30,
+        help="Similarity threshold for clustering (default: 0.30)",
     )
     args = parser.parse_args()
 
