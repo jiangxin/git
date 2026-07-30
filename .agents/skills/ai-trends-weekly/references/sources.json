@@ -529,6 +529,8 @@
       "/about",
       "/archive"
     ],
+    "fetch": "browser",
+    "storage_state": "pragmaticengineer",
     "max_links": 30
   },
   {

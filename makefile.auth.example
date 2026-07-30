@@ -1,0 +1,27 @@
+# Local auth helpers — kept out of git. Copy this to makefile.auth and adjust paths.
+#
+# Usage:
+#   cp makefile.auth.example makefile.auth
+#   make auth-pragmaticengineer
+#
+# Each target opens a headed browser via playwright-cli for manual login,
+# then saves the session state to data/auth/<site>.json.
+
+AUTH_DIR := data/cache
+
+# ── The Pragmatic Engineer (Substack) ────────────────────────────────
+PRAGMATICENGINEER_LOGIN_URL ?= https://substack.com/sign-in?for_pub=pragmaticengineer
+PRAGMATICENGINEER_SESSION ?= pragmaticengineer
+PRAGMATICENGINEER_STATE_PATH ?= $(AUTH_DIR)/pragmaticengineer.json
+
+.PHONY: auth-pragmaticengineer
+
+auth-pragmaticengineer:
+	@mkdir -p $(AUTH_DIR)
+	@echo "═══ Pragmatic Engineer authentication ═══"
+	@echo "A browser window will open — please complete the login manually."
+	@echo "After logging in, close the browser or press Ctrl+C here."
+	playwright-cli -s=$(PRAGMATICENGINEER_SESSION) open "$(PRAGMATICENGINEER_LOGIN_URL)" --headed --persistent
+	playwright-cli -s=$(PRAGMATICENGINEER_SESSION) state-save $(PRAGMATICENGINEER_STATE_PATH)
+	@echo "State saved to $(PRAGMATICENGINEER_STATE_PATH)"
+	@echo ""
