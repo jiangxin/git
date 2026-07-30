@@ -186,28 +186,32 @@ def apply_max_per_day(
     return out
 
 
-def format_item(entry: dict[str, Any]) -> str:
+def _md_article_line(entry: dict[str, Any], *, bold_title: bool = True) -> str:
     title = entry.get("cn_title") or entry.get("original_title") or "(untitled)"
     url = entry.get("url") or ""
     summary = (entry.get("cn_summary") or "").rstrip("。. ")
     source = entry.get("source") or ""
     day = extract_date(entry.get("publish_date")) or str(entry.get("publish_date") or "")
-    line = f"* **[{title}]({url})**：{summary}。📰 {source} 📅 {day}"
+    link = f"**[{title}]({url})**" if bold_title else f"[{title}]({url})"
+    return f"* {link}：{summary}。📰 {source} 📅 {day}"
+
+
+def format_item(entry: dict[str, Any]) -> str:
     peers = entry.get("_cluster_peers")
-    if peers:
-        line += "\n"
-        line += f"  <details><summary>📎 相似文章 ({len(peers)})</summary>\n"
-        line += "\n"
-        for peer in peers:
-            p_title = peer.get("cn_title") or peer.get("original_title") or "(untitled)"
-            p_url = peer.get("url") or ""
-            p_summary = (peer.get("cn_summary") or "").rstrip("。. ")
-            p_source = peer.get("source") or ""
-            p_day = extract_date(peer.get("publish_date")) or str(peer.get("publish_date") or "")
-            line += f"  * [{p_title}]({p_url})：{p_summary}。📰 {p_source} 📅 {p_day}\n"
-        line += "\n"
-        line += "  </details>"
-    return line
+    if not peers:
+        return _md_article_line(entry)
+    n = len(peers)
+    lines = [
+        _md_article_line(entry),
+        "",
+        f'<details open><summary>相关报道 · {n} 篇（点击收起）</summary>',
+        "",
+    ]
+    for peer in peers:
+        lines.append(_md_article_line(peer))
+        lines.append("")
+    lines.append("</details>")
+    return "\n".join(lines)
 
 
 def render_markdown(
@@ -289,7 +293,8 @@ def collect_source_counts(entries: list[dict[str, Any]]) -> dict[str, int]:
     return counts
 
 
-def _html_article_item(entry: dict[str, Any]) -> str:
+def _html_article_body(entry: dict[str, Any]) -> tuple[str, str]:
+    """Return ``(source_escaped, inner_html)`` for one article row."""
     title = html_mod.escape(entry.get("cn_title") or entry.get("original_title") or "(untitled)")
     url = html_mod.escape(entry.get("url") or "")
     summary = html_mod.escape((entry.get("cn_summary") or "").rstrip("。. "))
@@ -297,53 +302,46 @@ def _html_article_item(entry: dict[str, Any]) -> str:
     day = html_mod.escape(
         extract_date(entry.get("publish_date")) or str(entry.get("publish_date") or "")
     )
-    return (
-        f'<div class="article-item" data-source="{source}">'
-        f'<strong><a href="{url}">{title}</a></strong>'
-        f'：{summary}。'
-        f'<span class="meta">📰 {source} 📅 {day}</span></div>'
-    )
-
-
-def _html_cluster_item(entry: dict[str, Any]) -> str:
-    title = html_mod.escape(entry.get("cn_title") or entry.get("original_title") or "(untitled)")
-    url = html_mod.escape(entry.get("url") or "")
-    summary = html_mod.escape((entry.get("cn_summary") or "").rstrip("。. "))
-    source = html_mod.escape(entry.get("source") or "")
-    day = html_mod.escape(
-        extract_date(entry.get("publish_date")) or str(entry.get("publish_date") or "")
-    )
-    peers = entry.get("_cluster_peers") or []
-    peer_count = len(peers)
-    parts = [
-        f'<div class="article-item cluster-leader" data-source="{source}">'
+    inner = (
         f'<strong><a href="{url}">{title}</a></strong>'
         f'：{summary}。'
         f'<span class="meta">📰 {source} 📅 {day}</span>'
+    )
+    return source, inner
+
+
+def _html_article_item(entry: dict[str, Any]) -> str:
+    source, inner = _html_article_body(entry)
+    return f'<div class="article-item" data-source="{source}">{inner}</div>'
+
+
+def _html_cluster_item(entry: dict[str, Any]) -> str:
+    """Leader as normal article; peers in mint indented tree, default expanded."""
+    peers = entry.get("_cluster_peers") or []
+    if not peers:
+        return _html_article_item(entry)
+    leader_source, leader_inner = _html_article_body(entry)
+    n = len(peers)
+    parts = [
+        '<div class="cluster-group">',
+        f'<div class="article-item" data-source="{leader_source}">{leader_inner}</div>',
+        '<div class="cluster">',
+        (
+            f'<button type="button" class="cluster-toggle" '
+            f'aria-expanded="true" onclick="toggleCluster(this)">'
+            f'<span class="chevron">▼</span>'
+            f'相关报道 · {n} 篇（<span class="toggle-label">点击收起</span>）'
+            f'</button>'
+        ),
+        '<ul class="cluster-list">',
     ]
-    if peer_count > 0:
+    for peer in peers:
+        source, inner = _html_article_body(peer)
         parts.append(
-            f'<button class="cluster-toggle" onclick="'
-            f'this.classList.toggle(\'open\');'
-            f'this.nextElementSibling.classList.toggle(\'open\')">'
-            f'📎 相似文章 ({peer_count}) ▼</button>'
+            f'<li class="article-item" data-source="{source}">{inner}</li>'
         )
-        parts.append('<div class="cluster-details">')
-        for peer in peers:
-            p_title = html_mod.escape(peer.get("cn_title") or peer.get("original_title") or "(untitled)")
-            p_url = html_mod.escape(peer.get("url") or "")
-            p_summary = html_mod.escape((peer.get("cn_summary") or "").rstrip("。. "))
-            p_source = html_mod.escape(peer.get("source") or "")
-            p_day = html_mod.escape(
-                extract_date(peer.get("publish_date")) or str(peer.get("publish_date") or "")
-            )
-            parts.append(
-                f'<div class="article-item cluster-peer" data-source="{p_source}">'
-                f'<strong><a href="{p_url}">{p_title}</a></strong>'
-                f'：{p_summary}。'
-                f'<span class="meta">📰 {p_source} 📅 {p_day}</span></div>'
-            )
-        parts.append("</div>")
+    parts.append("</ul>")
+    parts.append("</div>")
     parts.append("</div>")
     return "\n".join(parts)
 
@@ -412,14 +410,21 @@ h1 {{ margin-bottom: 8px; }}
 .article-item a:hover {{ text-decoration: underline; }}
 .back-link {{ display: inline-flex; align-items: center; gap: 6px; color: #667eea; text-decoration: none; font-size: 14px; margin-bottom: 16px; transition: all 0.15s; }}
 .back-link:hover {{ color: #764ba2; gap: 10px; }}
-.cluster-toggle {{ background: none; border: 1px solid #ddd; border-radius: 4px; padding: 2px 10px; font-size: 12px; color: #666; cursor: pointer; margin: 4px 0 2px; transition: all .15s; }}
-.cluster-toggle:hover {{ background: #f0f0f0; }}
-.cluster-toggle.open {{ background: #e8f0fe; border-color: #2563eb; color: #2563eb; }}
-.cluster-details {{ display: none; margin: 4px 0 4px 16px; padding: 8px 12px; border-left: 3px solid #ddd; background: #fafafa; }}
-.cluster-details.open {{ display: block; }}
-.cluster-peer {{ margin: 4px 0; font-size: 13px; }}
-.cluster-peer .meta {{ font-size: 11px; }}
-.cluster-leader {{ border: 1px solid #e0e0e0; border-radius: 6px; padding: 8px 12px; background: #fff; }}
+.cluster-group {{ margin: 10px 0; }}
+.cluster-group.hidden {{ display: none; }}
+.cluster {{ margin: 4px 0 10px; background: #f0fdf6; border: 1px solid #bbf7d0; border-radius: 8px; padding: 8px 12px 10px 8px; }}
+.cluster.hidden {{ display: none; }}
+.cluster-toggle {{ display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent; padding: 2px 4px; margin: 0 0 4px; font-size: 12px; color: #047857; cursor: pointer; text-align: left; }}
+.cluster-toggle:hover {{ color: #065f46; text-decoration: underline; }}
+.cluster-toggle .chevron {{ display: inline-block; font-size: 10px; transition: transform .15s; }}
+.cluster.collapsed .chevron {{ transform: rotate(-90deg); }}
+.cluster.collapsed .cluster-list {{ display: none; }}
+.cluster-list {{ list-style: none; margin: 0 0 0 6px; padding: 0 0 0 16px; }}
+.cluster-list > .article-item {{ position: relative; margin: 0; padding: 8px 0 8px 10px; }}
+.cluster-list > .article-item + .article-item {{ border-top: 1px solid rgba(6, 95, 70, .06); }}
+.cluster-list > .article-item::before {{ content: ""; position: absolute; left: -10px; top: 0; bottom: 0; width: 12px; border-left: 1px solid #86efac; }}
+.cluster-list > .article-item::after {{ content: ""; position: absolute; left: -10px; top: 18px; width: 12px; border-top: 1px solid #86efac; }}
+.cluster-list > .article-item:last-child::before {{ bottom: auto; height: 18px; }}
 </style>
 </head>
 <body>
@@ -433,11 +438,21 @@ h1 {{ margin-bottom: 8px; }}
 {articles_html}
 </div>
 <script>
+function toggleCluster(btn) {{
+  var cluster = btn.closest('.cluster');
+  cluster.classList.toggle('collapsed');
+  var open = !cluster.classList.contains('collapsed');
+  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  var label = btn.querySelector('.toggle-label');
+  if (label) label.textContent = open ? '点击收起' : '点击展开';
+}}
 (function() {{
   var allSources = {str(sorted_sources).replace("'", '"')};
   var selected = new Set(allSources);
   var chips = document.querySelectorAll('.source-chip');
   var items = document.querySelectorAll('.article-item');
+  var clusters = document.querySelectorAll('.cluster');
+  var clusterGroups = document.querySelectorAll('.cluster-group');
   var groups = document.querySelectorAll('.date-group');
 
   function updateUI() {{
@@ -453,6 +468,14 @@ h1 {{ margin-bottom: 8px; }}
     }});
     items.forEach(function(item) {{
       item.classList.toggle('hidden', !selected.has(item.dataset.source));
+    }});
+    clusters.forEach(function(c) {{
+      var visible = c.querySelectorAll('.article-item:not(.hidden)');
+      c.classList.toggle('hidden', visible.length === 0);
+    }});
+    clusterGroups.forEach(function(g) {{
+      var visible = g.querySelectorAll('.article-item:not(.hidden)');
+      g.classList.toggle('hidden', visible.length === 0);
     }});
     groups.forEach(function(g) {{
       var visible = g.querySelectorAll('.article-item:not(.hidden)');
